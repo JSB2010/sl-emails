@@ -21,7 +21,7 @@ Usage:
     python generate_games.py --output-dir testing               # Custom directory
 
 Author: Jacob Barkin (jbarkin28@kentdenver.org)
-Version: 2.2 - Enhanced with prioritization, dynamic content, sport colors, professional messaging, and email client compatibility
+Version: 2.3 - Enhanced with prioritization, dynamic content, sport colors, professional messaging, email client compatibility, and compact design
 """
 
 import argparse
@@ -983,18 +983,8 @@ def generate_html_email(games_by_date: Dict[str, List[Game]], date_range: str,
                   </tr>
 '''
 
-        # Featured Games Section
+        # Featured Games Section (no header for more compact design)
         if featured_games:
-            priority_label = "Home Games" if is_middle_school else "Featured Games"
-            html += f'''
-                  <tr>
-                    <td class="pad section-spacing" style="padding:0 0 8px 0;">
-                      <h4 class="section-title" style="margin:0 0 8px 0;color:#041e42;font-family:'Crimson Pro', Georgia, 'Times New Roman', serif;font-weight:700;font-size:18px;line-height:22px;">
-                        ⭐ {priority_label}
-                      </h4>
-                    </td>
-                  </tr>
-'''
 
             # Generate featured game cards in rows of 2
             for j in range(0, len(featured_games), 2):
@@ -1011,20 +1001,13 @@ def generate_html_email(games_by_date: Dict[str, List[Game]], date_range: str,
 
                 html += '\n                  </tr>\n'
 
-        # Other Games Section
+        # Other Games Section (no header for more compact design)
         if other_games:
-            # Use contextual title based on whether there are featured games
-            other_games_title = "📋 Other Games" if featured_games else "🏆 Games"
+            # Add spacing only if there are featured games above
+            spacing_style = "padding:16px 0 8px 0;" if featured_games else "padding:0 0 8px 0;"
             html += f'''
                   <tr>
-                    <td class="pad section-spacing" style="padding:{'16px' if featured_games else '0'} 0 8px 0;">
-                      <h4 class="section-title" style="margin:0 0 8px 0;color:#041e42;font-family:'Crimson Pro', Georgia, 'Times New Roman', serif;font-weight:700;font-size:18px;line-height:22px;">
-                        {other_games_title}
-                      </h4>
-                    </td>
-                  </tr>
-                  <tr>
-                    <td colspan="2" style="padding:0 0 8px 0;">
+                    <td colspan="2" style="{spacing_style}">
                       <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-radius:8px;border:1px solid #e6eaf2;background:#ffffff;">
 '''
 

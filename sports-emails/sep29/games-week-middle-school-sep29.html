@@ -18,6 +18,18 @@
       table, td { mso-table-lspace: 0pt; mso-table-rspace: 0pt; }
       #bodyTable { margin: 0; padding: 0; width: 100% !important; line-height: 100% !important; }
 
+      /* Outlook-specific fixes */
+      .mso-hide { mso-hide: all; }
+
+      /* Gmail and Apple Mail fixes */
+      u + .body .gmail-fix { display: none; }
+
+      /* Dark mode support */
+      @media (prefers-color-scheme: dark) {
+        .dark-mode-bg { background-color: #1a1a1a !important; }
+        .dark-mode-text { color: #ffffff !important; }
+      }
+
       /* Mobile Styles */
       @media only screen and (max-width: 600px) {
         .stack { display: block !important; width: 100% !important; }
@@ -27,7 +39,21 @@
         .game-time { font-size: 12px !important; }
         .mobile-center { text-align: center !important; }
         .mobile-hide { display: none !important; }
+        .featured-card { padding: 8px 6px !important; }
+        .featured-card-content { padding: 16px 14px 12px 14px !important; }
+        .featured-team-name { font-size: 18px !important; line-height: 22px !important; }
+        .section-title { font-size: 16px !important; }
+        .day-title { font-size: 20px !important; line-height: 24px !important; }
       }
+
+      /* Enhanced Typography */
+      .featured-game {
+        transition: transform 0.2s ease, box-shadow 0.2s ease;
+      }
+
+      /* Better spacing for readability */
+      .section-spacing { margin-bottom: 20px; }
+      .day-spacing { margin-bottom: 16px; }
 
       /* Dark Mode Support */
       @media (prefers-color-scheme: dark) {
@@ -70,7 +96,7 @@
                         </tr>
                       </table>
                       <p style="margin:12px 0 0 0;color:#d7e3ff;font-family:'Red Hat Text', Arial, Helvetica, sans-serif;font-size:16px;line-height:24px;">
-                        Big week ahead for Sun Devil athletics! Check out all the games below and come support our teams across 5 sports. Go Devils! 🔥😈
+                        Altitude advantage meets Sun Devil attitude! Our teams are ready to soar across 5 sports this week. Mile High, Sun Devil High! 🏔️🔥
                       </p>
                     </td>
                   </tr>
@@ -90,7 +116,7 @@
                         This week's schedule
                       </h2>
                       <p style="margin:0;color:#373737;font-family:'Red Hat Text', Arial, Helvetica, sans-serif;font-size:14px;line-height:22px;">
-                        Mark your calendars and come cheer on our Sun Devils across all sports and grade levels.
+                        Witness the excellence that happens when Sun Devil determination meets Colorado spirit in these exciting athletic events.
                       </p>
                     </td>
                   </tr>
@@ -112,7 +138,7 @@
                             <span style="font-size:24px;">📅</span>
                           </td>
                           <td style="vertical-align:middle;">
-                            <h3 style="margin:0;color:#041e42;font-family:'Crimson Pro', Georgia, 'Times New Roman', serif;font-weight:800;font-size:22px;line-height:26px;">
+                            <h3 class="day-title" style="margin:0;color:#041e42;font-family:'Crimson Pro', Georgia, 'Times New Roman', serif;font-weight:800;font-size:22px;line-height:26px;">
                               Monday, September 29
                             </h3>
                           </td>
@@ -120,89 +146,80 @@
                       </table>
                     </td>
                   </tr>
-                  <tr>
 
-    <td class="stack" width="50%" valign="top" style="padding:8px 10px;">
-      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-radius:8px;border:1px solid #e6eaf2;background:#ffffff;">
-        <tr><td style="height:12px;background:linear-gradient(135deg, #f59e0b 0%, #d97706 100%);border-top-left-radius:8px;border-top-right-radius:8px;"></td></tr>
-        <tr>
-          <td style="padding:16px 18px 14px 18px;">
-            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:8px;">
-              <tr>
-                <td style="width:28px;vertical-align:middle;">
-                  <span style="font-size:20px;">🏐</span>
-                </td>
-                <td style="vertical-align:middle;">
-                  <div style="display:inline-block;padding:4px 10px;border-radius:4px;background:#fef3c7;color:#92400e;font-family:'Red Hat Text', Arial, Helvetica, sans-serif;font-weight:700;font-size:11px;letter-spacing:.3px;text-transform:uppercase;">3:30PM • Away</div>
-                </td>
-              </tr>
-            </table>
-            <div style="color:#041e42;font-family:'Crimson Pro', Georgia, 'Times New Roman', serif;font-weight:800;font-size:19px;line-height:23px;margin-bottom:4px;">Volleyball - 7th</div>
-            <p style="margin:0;color:#374151;font-family:'Red Hat Text', Arial, Helvetica, sans-serif;font-size:15px;line-height:20px;font-weight:600;">
-              vs. <strong style="color:#041e42;">St. Anne’s Episcopal School</strong>
-            </p>
-            <p style="margin:4px 0 0 0;color:#6b7280;font-family:'Red Hat Text', Arial, Helvetica, sans-serif;font-size:13px;line-height:18px;">
-              📍 St. Anne’s Episcopal School
-            </p>
-          </td>
-        </tr>
-      </table>
-    </td>
-    <td class="stack" width="50%" valign="top" style="padding:8px 10px;">
-      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-radius:8px;border:1px solid #e6eaf2;background:#ffffff;">
-        <tr><td style="height:12px;background:linear-gradient(135deg, #06b6d4 0%, #0891b2 100%);border-top-left-radius:8px;border-top-right-radius:8px;"></td></tr>
-        <tr>
-          <td style="padding:16px 18px 14px 18px;">
-            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:8px;">
-              <tr>
-                <td style="width:28px;vertical-align:middle;">
-                  <span style="font-size:20px;">🎾</span>
-                </td>
-                <td style="vertical-align:middle;">
-                  <div style="display:inline-block;padding:4px 10px;border-radius:4px;background:#fef3c7;color:#92400e;font-family:'Red Hat Text', Arial, Helvetica, sans-serif;font-weight:700;font-size:11px;letter-spacing:.3px;text-transform:uppercase;">4:00PM • Away</div>
-                </td>
-              </tr>
-            </table>
-            <div style="color:#041e42;font-family:'Crimson Pro', Georgia, 'Times New Roman', serif;font-weight:800;font-size:19px;line-height:23px;margin-bottom:4px;">Tennis - Middle School Coed</div>
-            <p style="margin:0;color:#374151;font-family:'Red Hat Text', Arial, Helvetica, sans-serif;font-size:15px;line-height:20px;font-weight:600;">
-              vs. <strong style="color:#041e42;">Cherry Hills Christian MS</strong>
-            </p>
-            <p style="margin:4px 0 0 0;color:#6b7280;font-family:'Red Hat Text', Arial, Helvetica, sans-serif;font-size:13px;line-height:18px;">
-              📍 Lone Tree Golf Course
-            </p>
-          </td>
-        </tr>
-      </table>
-    </td>
+                  <tr>
+                    <td class="pad section-spacing" style="padding:0 0 8px 0;">
+                      <h4 class="section-title" style="margin:0 0 8px 0;color:#041e42;font-family:'Crimson Pro', Georgia, 'Times New Roman', serif;font-weight:700;font-size:18px;line-height:22px;">
+                        🏆 Games
+                      </h4>
+                    </td>
                   </tr>
                   <tr>
+                    <td colspan="2" style="padding:0 0 8px 0;">
+                      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-radius:8px;border:1px solid #e6eaf2;background:#ffffff;">
 
-    <td class="stack" width="50%" valign="top" style="padding:8px 10px;">
-      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-radius:8px;border:1px solid #e6eaf2;background:#ffffff;">
-        <tr><td style="height:12px;background:linear-gradient(135deg, #f59e0b 0%, #d97706 100%);border-top-left-radius:8px;border-top-right-radius:8px;"></td></tr>
-        <tr>
-          <td style="padding:16px 18px 14px 18px;">
-            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:8px;">
-              <tr>
-                <td style="width:28px;vertical-align:middle;">
-                  <span style="font-size:20px;">🏐</span>
-                </td>
-                <td style="vertical-align:middle;">
-                  <div style="display:inline-block;padding:4px 10px;border-radius:4px;background:#fef3c7;color:#92400e;font-family:'Red Hat Text', Arial, Helvetica, sans-serif;font-weight:700;font-size:11px;letter-spacing:.3px;text-transform:uppercase;">4:30PM • Away</div>
-                </td>
-              </tr>
-            </table>
-            <div style="color:#041e42;font-family:'Crimson Pro', Georgia, 'Times New Roman', serif;font-weight:800;font-size:19px;line-height:23px;margin-bottom:4px;">Volleyball - 8th</div>
-            <p style="margin:0;color:#374151;font-family:'Red Hat Text', Arial, Helvetica, sans-serif;font-size:15px;line-height:20px;font-weight:600;">
-              vs. <strong style="color:#041e42;">St. Anne’s Episcopal School</strong>
-            </p>
-            <p style="margin:4px 0 0 0;color:#6b7280;font-family:'Red Hat Text', Arial, Helvetica, sans-serif;font-size:13px;line-height:18px;">
-              📍 St. Anne’s Episcopal School
-            </p>
-          </td>
-        </tr>
-      </table>
-    </td>                    <td class="stack" width="50%" valign="top" style="padding:8px 10px;"></td>
+    <tr>
+      <td style="padding:12px 18px;border-bottom:1px solid #f3f4f6;border-left:4px solid #f59e0b;">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+          <tr>
+            <td style="width:24px;vertical-align:middle;">
+              <span style="font-size:16px;">🏐</span>
+            </td>
+            <td style="vertical-align:middle;padding-left:8px;">
+              <div style="color:#041e42;font-family:'Crimson Pro', Georgia, 'Times New Roman', serif;font-weight:600;font-size:16px;line-height:20px;margin-bottom:2px;">Volleyball - 7th</div>
+              <p style="margin:0;color:#374151;font-family:'Red Hat Text', Arial, Helvetica, sans-serif;font-size:13px;line-height:18px;">
+                vs. <strong>St. Anne’s Episcopal School</strong> • 📍 St. Anne’s Episcopal School
+              </p>
+            </td>
+            <td style="text-align:right;vertical-align:middle;width:80px;">
+              <div style="display:inline-block;padding:3px 8px;border-radius:4px;background:#fef3c7;color:#92400e;font-family:'Red Hat Text', Arial, Helvetica, sans-serif;font-weight:700;font-size:10px;letter-spacing:.2px;text-transform:uppercase;">3:30PM</div>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+    <tr>
+      <td style="padding:12px 18px;border-bottom:1px solid #f3f4f6;border-left:4px solid #06b6d4;">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+          <tr>
+            <td style="width:24px;vertical-align:middle;">
+              <span style="font-size:16px;">🎾</span>
+            </td>
+            <td style="vertical-align:middle;padding-left:8px;">
+              <div style="color:#041e42;font-family:'Crimson Pro', Georgia, 'Times New Roman', serif;font-weight:600;font-size:16px;line-height:20px;margin-bottom:2px;">Tennis - Middle School Coed</div>
+              <p style="margin:0;color:#374151;font-family:'Red Hat Text', Arial, Helvetica, sans-serif;font-size:13px;line-height:18px;">
+                vs. <strong>Cherry Hills Christian MS</strong> • 📍 Lone Tree Golf Course
+              </p>
+            </td>
+            <td style="text-align:right;vertical-align:middle;width:80px;">
+              <div style="display:inline-block;padding:3px 8px;border-radius:4px;background:#fef3c7;color:#92400e;font-family:'Red Hat Text', Arial, Helvetica, sans-serif;font-weight:700;font-size:10px;letter-spacing:.2px;text-transform:uppercase;">4:00PM</div>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+    <tr>
+      <td style="padding:12px 18px;border-bottom:1px solid #f3f4f6;border-left:4px solid #f59e0b;">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+          <tr>
+            <td style="width:24px;vertical-align:middle;">
+              <span style="font-size:16px;">🏐</span>
+            </td>
+            <td style="vertical-align:middle;padding-left:8px;">
+              <div style="color:#041e42;font-family:'Crimson Pro', Georgia, 'Times New Roman', serif;font-weight:600;font-size:16px;line-height:20px;margin-bottom:2px;">Volleyball - 8th</div>
+              <p style="margin:0;color:#374151;font-family:'Red Hat Text', Arial, Helvetica, sans-serif;font-size:13px;line-height:18px;">
+                vs. <strong>St. Anne’s Episcopal School</strong> • 📍 St. Anne’s Episcopal School
+              </p>
+            </td>
+            <td style="text-align:right;vertical-align:middle;width:80px;">
+              <div style="display:inline-block;padding:3px 8px;border-radius:4px;background:#fef3c7;color:#92400e;font-family:'Red Hat Text', Arial, Helvetica, sans-serif;font-weight:700;font-size:10px;letter-spacing:.2px;text-transform:uppercase;">4:30PM</div>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+                      </table>
+                    </td>
                   </tr>
                 </table>
               </td>
@@ -237,7 +254,7 @@
                             <span style="font-size:24px;">📅</span>
                           </td>
                           <td style="vertical-align:middle;">
-                            <h3 style="margin:0;color:#041e42;font-family:'Crimson Pro', Georgia, 'Times New Roman', serif;font-weight:800;font-size:22px;line-height:26px;">
+                            <h3 class="day-title" style="margin:0;color:#041e42;font-family:'Crimson Pro', Georgia, 'Times New Roman', serif;font-weight:800;font-size:22px;line-height:26px;">
                               Tuesday, September 30
                             </h3>
                           </td>
@@ -245,170 +262,272 @@
                       </table>
                     </td>
                   </tr>
+
+                  <tr>
+                    <td class="pad section-spacing" style="padding:0 0 8px 0;">
+                      <h4 class="section-title" style="margin:0 0 8px 0;color:#041e42;font-family:'Crimson Pro', Georgia, 'Times New Roman', serif;font-weight:700;font-size:18px;line-height:22px;">
+                        ⭐ Home Games
+                      </h4>
+                    </td>
+                  </tr>
                   <tr>
 
-    <td class="stack" width="50%" valign="top" style="padding:8px 10px;">
-      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-radius:8px;border:1px solid #e6eaf2;background:#ffffff;">
-        <tr><td style="height:12px;background:linear-gradient(135deg, #f59e0b 0%, #d97706 100%);border-top-left-radius:8px;border-top-right-radius:8px;"></td></tr>
+    <td class="stack featured-card" width="50%" valign="top" style="padding:10px 12px;">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" class="featured-game" style="border-radius:12px;-webkit-border-radius:12px;-moz-border-radius:12px;border:3px solid #22c55e;background:#ffffff;box-shadow:0 6px 20px rgba(34,197,94,0.15);">
+        <tr><td style="height:16px;background:linear-gradient(135deg, #22c55e 0%, #16a34a 100%);border-top-left-radius:12px;border-top-right-radius:12px;"></td></tr>
         <tr>
-          <td style="padding:16px 18px 14px 18px;">
-            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:8px;">
+          <td class="featured-card-content" style="padding:20px 22px 18px 22px;">
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:10px;">
               <tr>
-                <td style="width:28px;vertical-align:middle;">
-                  <span style="font-size:20px;">🏐</span>
+                <td style="width:32px;vertical-align:middle;">
+                  <span style="font-size:24px;">⚽</span>
                 </td>
                 <td style="vertical-align:middle;">
-                  <div style="display:inline-block;padding:4px 10px;border-radius:4px;background:#fef3c7;color:#92400e;font-family:'Red Hat Text', Arial, Helvetica, sans-serif;font-weight:700;font-size:11px;letter-spacing:.3px;text-transform:uppercase;">3:30PM • Away</div>
+                  <div style="display:inline-block;padding:6px 12px;border-radius:6px;background:#dcfce7;color:#166534;font-family:'Red Hat Text', Arial, Helvetica, sans-serif;font-weight:700;font-size:12px;letter-spacing:.3px;text-transform:uppercase;">4:00PM • Home</div>
                 </td>
               </tr>
             </table>
-            <div style="color:#041e42;font-family:'Crimson Pro', Georgia, 'Times New Roman', serif;font-weight:800;font-size:19px;line-height:23px;margin-bottom:4px;">Volleyball - 6th</div>
-            <p style="margin:0;color:#374151;font-family:'Red Hat Text', Arial, Helvetica, sans-serif;font-size:15px;line-height:20px;font-weight:600;">
+            <div class="featured-team-name" style="color:#041e42;font-family:'Crimson Pro', Georgia, 'Times New Roman', serif;font-weight:900;font-size:22px;line-height:26px;margin-bottom:6px;">Boys' Soccer - 6th<div style="display:inline-block;margin-left:8px;padding:2px 8px;border-radius:12px;-webkit-border-radius:12px;-moz-border-radius:12px;background:#22c55e;color:white;font-family:'Red Hat Text', Arial, sans-serif;font-weight:700;font-size:10px;letter-spacing:.5px;text-transform:uppercase;">HOME</div></div>
+            <p style="margin:0;color:#374151;font-family:'Red Hat Text', Arial, Helvetica, sans-serif;font-size:16px;line-height:22px;font-weight:600;">
               vs. <strong style="color:#041e42;">Stanley British Primary School</strong>
             </p>
-            <p style="margin:4px 0 0 0;color:#6b7280;font-family:'Red Hat Text', Arial, Helvetica, sans-serif;font-size:13px;line-height:18px;">
-              📍 Stanley British Primary School
-            </p>
-          </td>
-        </tr>
-      </table>
-    </td>
-    <td class="stack" width="50%" valign="top" style="padding:8px 10px;">
-      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-radius:8px;border:2px solid #dcfce7;background:#ffffff;">
-        <tr><td style="height:12px;background:linear-gradient(135deg, #22c55e 0%, #16a34a 100%);border-top-left-radius:8px;border-top-right-radius:8px;"></td></tr>
-        <tr>
-          <td style="padding:16px 18px 14px 18px;">
-            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:8px;">
-              <tr>
-                <td style="width:28px;vertical-align:middle;">
-                  <span style="font-size:20px;">⚽</span>
-                </td>
-                <td style="vertical-align:middle;">
-                  <div style="display:inline-block;padding:4px 10px;border-radius:4px;background:#dcfce7;color:#166534;font-family:'Red Hat Text', Arial, Helvetica, sans-serif;font-weight:700;font-size:11px;letter-spacing:.3px;text-transform:uppercase;">4:00PM • Home</div>
-                </td>
-              </tr>
-            </table>
-            <div style="color:#041e42;font-family:'Crimson Pro', Georgia, 'Times New Roman', serif;font-weight:900;font-size:19px;line-height:23px;margin-bottom:4px;">Boys' Soccer - 6th 🏠</div>
-            <p style="margin:0;color:#374151;font-family:'Red Hat Text', Arial, Helvetica, sans-serif;font-size:15px;line-height:20px;font-weight:600;">
-              vs. <strong style="color:#041e42;">Stanley British Primary School</strong>
-            </p>
-            <p style="margin:4px 0 0 0;color:#6b7280;font-family:'Red Hat Text', Arial, Helvetica, sans-serif;font-size:13px;line-height:18px;">
+            <p style="margin:6px 0 0 0;color:#6b7280;font-family:'Red Hat Text', Arial, Helvetica, sans-serif;font-size:14px;line-height:20px;">
               📍 Lower MS Game Field
             </p>
           </td>
         </tr>
       </table>
     </td>
-                  </tr>
-                  <tr>
-
-    <td class="stack" width="50%" valign="top" style="padding:8px 10px;">
-      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-radius:8px;border:2px solid #dcfce7;background:#ffffff;">
-        <tr><td style="height:12px;background:linear-gradient(135deg, #f59e0b 0%, #d97706 100%);border-top-left-radius:8px;border-top-right-radius:8px;"></td></tr>
+    <td class="stack featured-card" width="50%" valign="top" style="padding:10px 12px;">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" class="featured-game" style="border-radius:12px;-webkit-border-radius:12px;-moz-border-radius:12px;border:3px solid #22c55e;background:#ffffff;box-shadow:0 6px 20px rgba(34,197,94,0.15);">
+        <tr><td style="height:16px;background:linear-gradient(135deg, #f59e0b 0%, #d97706 100%);border-top-left-radius:12px;border-top-right-radius:12px;"></td></tr>
         <tr>
-          <td style="padding:16px 18px 14px 18px;">
-            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:8px;">
+          <td class="featured-card-content" style="padding:20px 22px 18px 22px;">
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:10px;">
               <tr>
-                <td style="width:28px;vertical-align:middle;">
-                  <span style="font-size:20px;">🏐</span>
+                <td style="width:32px;vertical-align:middle;">
+                  <span style="font-size:24px;">🏐</span>
                 </td>
                 <td style="vertical-align:middle;">
-                  <div style="display:inline-block;padding:4px 10px;border-radius:4px;background:#dcfce7;color:#166534;font-family:'Red Hat Text', Arial, Helvetica, sans-serif;font-weight:700;font-size:11px;letter-spacing:.3px;text-transform:uppercase;">4:00PM • Home</div>
+                  <div style="display:inline-block;padding:6px 12px;border-radius:6px;background:#dcfce7;color:#166534;font-family:'Red Hat Text', Arial, Helvetica, sans-serif;font-weight:700;font-size:12px;letter-spacing:.3px;text-transform:uppercase;">4:00PM • Home</div>
                 </td>
               </tr>
             </table>
-            <div style="color:#041e42;font-family:'Crimson Pro', Georgia, 'Times New Roman', serif;font-weight:900;font-size:19px;line-height:23px;margin-bottom:4px;">Volleyball - 7th 🏠</div>
-            <p style="margin:0;color:#374151;font-family:'Red Hat Text', Arial, Helvetica, sans-serif;font-size:15px;line-height:20px;font-weight:600;">
+            <div class="featured-team-name" style="color:#041e42;font-family:'Crimson Pro', Georgia, 'Times New Roman', serif;font-weight:900;font-size:22px;line-height:26px;margin-bottom:6px;">Volleyball - 7th<div style="display:inline-block;margin-left:8px;padding:2px 8px;border-radius:12px;-webkit-border-radius:12px;-moz-border-radius:12px;background:#22c55e;color:white;font-family:'Red Hat Text', Arial, sans-serif;font-weight:700;font-size:10px;letter-spacing:.5px;text-transform:uppercase;">HOME</div></div>
+            <p style="margin:0;color:#374151;font-family:'Red Hat Text', Arial, Helvetica, sans-serif;font-size:16px;line-height:22px;font-weight:600;">
               vs. <strong style="color:#041e42;">Stanley British Primary School</strong>
             </p>
-            <p style="margin:4px 0 0 0;color:#6b7280;font-family:'Red Hat Text', Arial, Helvetica, sans-serif;font-size:13px;line-height:18px;">
+            <p style="margin:6px 0 0 0;color:#6b7280;font-family:'Red Hat Text', Arial, Helvetica, sans-serif;font-size:14px;line-height:20px;">
               📍 Bullard Gymnasium
             </p>
           </td>
         </tr>
       </table>
     </td>
-    <td class="stack" width="50%" valign="top" style="padding:8px 10px;">
-      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-radius:8px;border:1px solid #e6eaf2;background:#ffffff;">
-        <tr><td style="height:12px;background:linear-gradient(135deg, #dc2626 0%, #991b1b 100%);border-top-left-radius:8px;border-top-right-radius:8px;"></td></tr>
-        <tr>
-          <td style="padding:16px 18px 14px 18px;">
-            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:8px;">
-              <tr>
-                <td style="width:28px;vertical-align:middle;">
-                  <span style="font-size:20px;">🏈</span>
-                </td>
-                <td style="vertical-align:middle;">
-                  <div style="display:inline-block;padding:4px 10px;border-radius:4px;background:#fef3c7;color:#92400e;font-family:'Red Hat Text', Arial, Helvetica, sans-serif;font-weight:700;font-size:11px;letter-spacing:.3px;text-transform:uppercase;">4:30PM • Away</div>
-                </td>
-              </tr>
-            </table>
-            <div style="color:#041e42;font-family:'Crimson Pro', Georgia, 'Times New Roman', serif;font-weight:800;font-size:19px;line-height:23px;margin-bottom:4px;">Football - Middle School</div>
-            <p style="margin:0;color:#374151;font-family:'Red Hat Text', Arial, Helvetica, sans-serif;font-size:15px;line-height:20px;font-weight:600;">
-              vs. <strong style="color:#041e42;">Westy Futures</strong>
-            </p>
-            <p style="margin:4px 0 0 0;color:#6b7280;font-family:'Red Hat Text', Arial, Helvetica, sans-serif;font-size:13px;line-height:18px;">
-              📍 Iver C. Ranum
-            </p>
-          </td>
-        </tr>
-      </table>
-    </td>
                   </tr>
                   <tr>
 
-    <td class="stack" width="50%" valign="top" style="padding:8px 10px;">
-      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-radius:8px;border:1px solid #e6eaf2;background:#ffffff;">
-        <tr><td style="height:12px;background:linear-gradient(135deg, #f59e0b 0%, #d97706 100%);border-top-left-radius:8px;border-top-right-radius:8px;"></td></tr>
+    <td class="stack featured-card" width="50%" valign="top" style="padding:10px 12px;">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" class="featured-game" style="border-radius:12px;-webkit-border-radius:12px;-moz-border-radius:12px;border:3px solid #22c55e;background:#ffffff;box-shadow:0 6px 20px rgba(34,197,94,0.15);">
+        <tr><td style="height:16px;background:linear-gradient(135deg, #22c55e 0%, #16a34a 100%);border-top-left-radius:12px;border-top-right-radius:12px;"></td></tr>
         <tr>
-          <td style="padding:16px 18px 14px 18px;">
-            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:8px;">
+          <td class="featured-card-content" style="padding:20px 22px 18px 22px;">
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:10px;">
               <tr>
-                <td style="width:28px;vertical-align:middle;">
-                  <span style="font-size:20px;">🏐</span>
+                <td style="width:32px;vertical-align:middle;">
+                  <span style="font-size:24px;">⚽</span>
                 </td>
                 <td style="vertical-align:middle;">
-                  <div style="display:inline-block;padding:4px 10px;border-radius:4px;background:#fef3c7;color:#92400e;font-family:'Red Hat Text', Arial, Helvetica, sans-serif;font-weight:700;font-size:11px;letter-spacing:.3px;text-transform:uppercase;">4:30PM • Away</div>
+                  <div style="display:inline-block;padding:6px 12px;border-radius:6px;background:#dcfce7;color:#166534;font-family:'Red Hat Text', Arial, Helvetica, sans-serif;font-weight:700;font-size:12px;letter-spacing:.3px;text-transform:uppercase;">5:00PM • Home</div>
                 </td>
               </tr>
             </table>
-            <div style="color:#041e42;font-family:'Crimson Pro', Georgia, 'Times New Roman', serif;font-weight:800;font-size:19px;line-height:23px;margin-bottom:4px;">Volleyball - 8th</div>
-            <p style="margin:0;color:#374151;font-family:'Red Hat Text', Arial, Helvetica, sans-serif;font-size:15px;line-height:20px;font-weight:600;">
+            <div class="featured-team-name" style="color:#041e42;font-family:'Crimson Pro', Georgia, 'Times New Roman', serif;font-weight:900;font-size:22px;line-height:26px;margin-bottom:6px;">Boys' Soccer - 7th/8th<div style="display:inline-block;margin-left:8px;padding:2px 8px;border-radius:12px;-webkit-border-radius:12px;-moz-border-radius:12px;background:#22c55e;color:white;font-family:'Red Hat Text', Arial, sans-serif;font-weight:700;font-size:10px;letter-spacing:.5px;text-transform:uppercase;">HOME</div></div>
+            <p style="margin:0;color:#374151;font-family:'Red Hat Text', Arial, Helvetica, sans-serif;font-size:16px;line-height:22px;font-weight:600;">
               vs. <strong style="color:#041e42;">Stanley British Primary School</strong>
             </p>
-            <p style="margin:4px 0 0 0;color:#6b7280;font-family:'Red Hat Text', Arial, Helvetica, sans-serif;font-size:13px;line-height:18px;">
-              📍 Stanley British Primary School
-            </p>
-          </td>
-        </tr>
-      </table>
-    </td>
-    <td class="stack" width="50%" valign="top" style="padding:8px 10px;">
-      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-radius:8px;border:2px solid #dcfce7;background:#ffffff;">
-        <tr><td style="height:12px;background:linear-gradient(135deg, #22c55e 0%, #16a34a 100%);border-top-left-radius:8px;border-top-right-radius:8px;"></td></tr>
-        <tr>
-          <td style="padding:16px 18px 14px 18px;">
-            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:8px;">
-              <tr>
-                <td style="width:28px;vertical-align:middle;">
-                  <span style="font-size:20px;">⚽</span>
-                </td>
-                <td style="vertical-align:middle;">
-                  <div style="display:inline-block;padding:4px 10px;border-radius:4px;background:#dcfce7;color:#166534;font-family:'Red Hat Text', Arial, Helvetica, sans-serif;font-weight:700;font-size:11px;letter-spacing:.3px;text-transform:uppercase;">5:00PM • Home</div>
-                </td>
-              </tr>
-            </table>
-            <div style="color:#041e42;font-family:'Crimson Pro', Georgia, 'Times New Roman', serif;font-weight:900;font-size:19px;line-height:23px;margin-bottom:4px;">Boys' Soccer - 7th/8th 🏠</div>
-            <p style="margin:0;color:#374151;font-family:'Red Hat Text', Arial, Helvetica, sans-serif;font-size:15px;line-height:20px;font-weight:600;">
-              vs. <strong style="color:#041e42;">Stanley British Primary School</strong>
-            </p>
-            <p style="margin:4px 0 0 0;color:#6b7280;font-family:'Red Hat Text', Arial, Helvetica, sans-serif;font-size:13px;line-height:18px;">
+            <p style="margin:6px 0 0 0;color:#6b7280;font-family:'Red Hat Text', Arial, Helvetica, sans-serif;font-size:14px;line-height:20px;">
               📍 Lower MS Game Field
             </p>
           </td>
         </tr>
       </table>
-    </td>
+    </td>                    <td class="stack" width="50%" valign="top" style="padding:10px 12px;"></td>
+                  </tr>
+
+                  <tr>
+                    <td class="pad section-spacing" style="padding:16px 0 8px 0;">
+                      <h4 class="section-title" style="margin:0 0 8px 0;color:#041e42;font-family:'Crimson Pro', Georgia, 'Times New Roman', serif;font-weight:700;font-size:18px;line-height:22px;">
+                        📋 Other Games
+                      </h4>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td colspan="2" style="padding:0 0 8px 0;">
+                      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-radius:8px;border:1px solid #e6eaf2;background:#ffffff;">
+
+    <tr>
+      <td style="padding:12px 18px;border-bottom:1px solid #f3f4f6;border-left:4px solid #f59e0b;">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+          <tr>
+            <td style="width:24px;vertical-align:middle;">
+              <span style="font-size:16px;">🏐</span>
+            </td>
+            <td style="vertical-align:middle;padding-left:8px;">
+              <div style="color:#041e42;font-family:'Crimson Pro', Georgia, 'Times New Roman', serif;font-weight:600;font-size:16px;line-height:20px;margin-bottom:2px;">Volleyball - 6th</div>
+              <p style="margin:0;color:#374151;font-family:'Red Hat Text', Arial, Helvetica, sans-serif;font-size:13px;line-height:18px;">
+                vs. <strong>Stanley British Primary School</strong> • 📍 Stanley British Primary School
+              </p>
+            </td>
+            <td style="text-align:right;vertical-align:middle;width:80px;">
+              <div style="display:inline-block;padding:3px 8px;border-radius:4px;background:#fef3c7;color:#92400e;font-family:'Red Hat Text', Arial, Helvetica, sans-serif;font-weight:700;font-size:10px;letter-spacing:.2px;text-transform:uppercase;">3:30PM</div>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+    <tr>
+      <td style="padding:12px 18px;border-bottom:1px solid #f3f4f6;border-left:4px solid #dc2626;">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+          <tr>
+            <td style="width:24px;vertical-align:middle;">
+              <span style="font-size:16px;">🏈</span>
+            </td>
+            <td style="vertical-align:middle;padding-left:8px;">
+              <div style="color:#041e42;font-family:'Crimson Pro', Georgia, 'Times New Roman', serif;font-weight:600;font-size:16px;line-height:20px;margin-bottom:2px;">Football - Middle School</div>
+              <p style="margin:0;color:#374151;font-family:'Red Hat Text', Arial, Helvetica, sans-serif;font-size:13px;line-height:18px;">
+                vs. <strong>Westy Futures</strong> • 📍 Iver C. Ranum
+              </p>
+            </td>
+            <td style="text-align:right;vertical-align:middle;width:80px;">
+              <div style="display:inline-block;padding:3px 8px;border-radius:4px;background:#fef3c7;color:#92400e;font-family:'Red Hat Text', Arial, Helvetica, sans-serif;font-weight:700;font-size:10px;letter-spacing:.2px;text-transform:uppercase;">4:30PM</div>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+    <tr>
+      <td style="padding:12px 18px;border-bottom:1px solid #f3f4f6;border-left:4px solid #f59e0b;">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+          <tr>
+            <td style="width:24px;vertical-align:middle;">
+              <span style="font-size:16px;">🏐</span>
+            </td>
+            <td style="vertical-align:middle;padding-left:8px;">
+              <div style="color:#041e42;font-family:'Crimson Pro', Georgia, 'Times New Roman', serif;font-weight:600;font-size:16px;line-height:20px;margin-bottom:2px;">Volleyball - 8th</div>
+              <p style="margin:0;color:#374151;font-family:'Red Hat Text', Arial, Helvetica, sans-serif;font-size:13px;line-height:18px;">
+                vs. <strong>Stanley British Primary School</strong> • 📍 Stanley British Primary School
+              </p>
+            </td>
+            <td style="text-align:right;vertical-align:middle;width:80px;">
+              <div style="display:inline-block;padding:3px 8px;border-radius:4px;background:#fef3c7;color:#92400e;font-family:'Red Hat Text', Arial, Helvetica, sans-serif;font-weight:700;font-size:10px;letter-spacing:.2px;text-transform:uppercase;">4:30PM</div>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+                      </table>
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+          </table>
+
+          <!-- DAY SEPARATOR -->
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f8f8f8;">
+            <tr>
+              <td>
+                <table role="presentation" class="inner" align="center" width="1000" cellpadding="0" cellspacing="0" style="width:94%;max-width:1000px;margin:0 auto;">
+                  <tr>
+                    <td style="padding:12px 0;">
+                      <div style="height:3px;background:linear-gradient(90deg, #041e42 0%, #a11919 50%, #041e42 100%);border-radius:2px;opacity:0.3;"></div>
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+          </table>
+
+          <!-- WEDNESDAY, OCTOBER 01 GAMES -->
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f8f8f8;">
+            <tr>
+              <td>
+                <table role="presentation" class="inner" align="center" width="1000" cellpadding="0" cellspacing="0" style="width:94%;max-width:1000px;margin:0 auto;">
+                  <tr>
+                    <td class="pad" style="padding:18px 0 8px 0;">
+                      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:12px;">
+                        <tr>
+                          <td style="width:36px;vertical-align:middle;">
+                            <span style="font-size:24px;">📅</span>
+                          </td>
+                          <td style="vertical-align:middle;">
+                            <h3 class="day-title" style="margin:0;color:#041e42;font-family:'Crimson Pro', Georgia, 'Times New Roman', serif;font-weight:800;font-size:22px;line-height:26px;">
+                              Wednesday, October 01
+                            </h3>
+                          </td>
+                        </tr>
+                      </table>
+                    </td>
+                  </tr>
+
+                  <tr>
+                    <td class="pad" style="padding:0 0 16px 0;">
+                      <div style="text-align:center;padding:24px;border-radius:8px;background:#f9fafb;border:1px solid #e5e7eb;">
+                        <span style="font-size:18px;margin-right:8px;">🗓️</span>
+                        <span style="color:#6b7280;font-family:'Red Hat Text', Arial, Helvetica, sans-serif;font-size:15px;line-height:20px;">No games scheduled</span>
+                      </div>
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+          </table>
+
+          <!-- DAY SEPARATOR -->
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f8f8f8;">
+            <tr>
+              <td>
+                <table role="presentation" class="inner" align="center" width="1000" cellpadding="0" cellspacing="0" style="width:94%;max-width:1000px;margin:0 auto;">
+                  <tr>
+                    <td style="padding:12px 0;">
+                      <div style="height:3px;background:linear-gradient(90deg, #041e42 0%, #a11919 50%, #041e42 100%);border-radius:2px;opacity:0.3;"></div>
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+          </table>
+
+          <!-- THURSDAY, OCTOBER 02 GAMES -->
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f8f8f8;">
+            <tr>
+              <td>
+                <table role="presentation" class="inner" align="center" width="1000" cellpadding="0" cellspacing="0" style="width:94%;max-width:1000px;margin:0 auto;">
+                  <tr>
+                    <td class="pad" style="padding:18px 0 8px 0;">
+                      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:12px;">
+                        <tr>
+                          <td style="width:36px;vertical-align:middle;">
+                            <span style="font-size:24px;">📅</span>
+                          </td>
+                          <td style="vertical-align:middle;">
+                            <h3 class="day-title" style="margin:0;color:#041e42;font-family:'Crimson Pro', Georgia, 'Times New Roman', serif;font-weight:800;font-size:22px;line-height:26px;">
+                              Thursday, October 02
+                            </h3>
+                          </td>
+                        </tr>
+                      </table>
+                    </td>
+                  </tr>
+
+                  <tr>
+                    <td class="pad" style="padding:0 0 16px 0;">
+                      <div style="text-align:center;padding:24px;border-radius:8px;background:#f9fafb;border:1px solid #e5e7eb;">
+                        <span style="font-size:18px;margin-right:8px;">🗓️</span>
+                        <span style="color:#6b7280;font-family:'Red Hat Text', Arial, Helvetica, sans-serif;font-size:15px;line-height:20px;">No games scheduled</span>
+                      </div>
+                    </td>
                   </tr>
                 </table>
               </td>
@@ -443,7 +562,7 @@
                             <span style="font-size:24px;">📅</span>
                           </td>
                           <td style="vertical-align:middle;">
-                            <h3 style="margin:0;color:#041e42;font-family:'Crimson Pro', Georgia, 'Times New Roman', serif;font-weight:800;font-size:22px;line-height:26px;">
+                            <h3 class="day-title" style="margin:0;color:#041e42;font-family:'Crimson Pro', Georgia, 'Times New Roman', serif;font-weight:800;font-size:22px;line-height:26px;">
                               Friday, October 03
                             </h3>
                           </td>
@@ -451,34 +570,40 @@
                       </table>
                     </td>
                   </tr>
-                  <tr>
 
-    <td class="stack" width="50%" valign="top" style="padding:8px 10px;">
-      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-radius:8px;border:1px solid #e6eaf2;background:#ffffff;">
-        <tr><td style="height:12px;background:linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%);border-top-left-radius:8px;border-top-right-radius:8px;"></td></tr>
-        <tr>
-          <td style="padding:16px 18px 14px 18px;">
-            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:8px;">
-              <tr>
-                <td style="width:28px;vertical-align:middle;">
-                  <span style="font-size:20px;">🏃</span>
-                </td>
-                <td style="vertical-align:middle;">
-                  <div style="display:inline-block;padding:4px 10px;border-radius:4px;background:#fef3c7;color:#92400e;font-family:'Red Hat Text', Arial, Helvetica, sans-serif;font-weight:700;font-size:11px;letter-spacing:.3px;text-transform:uppercase;">3:30PM • Away</div>
-                </td>
-              </tr>
-            </table>
-            <div style="color:#041e42;font-family:'Crimson Pro', Georgia, 'Times New Roman', serif;font-weight:800;font-size:19px;line-height:23px;margin-bottom:4px;">Cross Country - Middle School</div>
-            <p style="margin:0;color:#374151;font-family:'Red Hat Text', Arial, Helvetica, sans-serif;font-size:15px;line-height:20px;font-weight:600;">
-              vs. <strong style="color:#041e42;">Runners Roost</strong>
-            </p>
-            <p style="margin:4px 0 0 0;color:#6b7280;font-family:'Red Hat Text', Arial, Helvetica, sans-serif;font-size:13px;line-height:18px;">
-              📍 Addenbrooke Park
-            </p>
-          </td>
-        </tr>
-      </table>
-    </td>                    <td class="stack" width="50%" valign="top" style="padding:8px 10px;"></td>
+                  <tr>
+                    <td class="pad section-spacing" style="padding:0 0 8px 0;">
+                      <h4 class="section-title" style="margin:0 0 8px 0;color:#041e42;font-family:'Crimson Pro', Georgia, 'Times New Roman', serif;font-weight:700;font-size:18px;line-height:22px;">
+                        🏆 Games
+                      </h4>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td colspan="2" style="padding:0 0 8px 0;">
+                      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-radius:8px;border:1px solid #e6eaf2;background:#ffffff;">
+
+    <tr>
+      <td style="padding:12px 18px;border-bottom:1px solid #f3f4f6;border-left:4px solid #8b5cf6;">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+          <tr>
+            <td style="width:24px;vertical-align:middle;">
+              <span style="font-size:16px;">🏃</span>
+            </td>
+            <td style="vertical-align:middle;padding-left:8px;">
+              <div style="color:#041e42;font-family:'Crimson Pro', Georgia, 'Times New Roman', serif;font-weight:600;font-size:16px;line-height:20px;margin-bottom:2px;">Cross Country - Middle School</div>
+              <p style="margin:0;color:#374151;font-family:'Red Hat Text', Arial, Helvetica, sans-serif;font-size:13px;line-height:18px;">
+                vs. <strong>Runners Roost</strong> • 📍 Addenbrooke Park
+              </p>
+            </td>
+            <td style="text-align:right;vertical-align:middle;width:80px;">
+              <div style="display:inline-block;padding:3px 8px;border-radius:4px;background:#fef3c7;color:#92400e;font-family:'Red Hat Text', Arial, Helvetica, sans-serif;font-weight:700;font-size:10px;letter-spacing:.2px;text-transform:uppercase;">3:30PM</div>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+                      </table>
+                    </td>
                   </tr>
                 </table>
               </td>
@@ -500,15 +625,15 @@
                             <table role="presentation" cellpadding="0" cellspacing="0">
                               <tr>
                                 <td style="padding:6px 10px;border-radius:4px;background:#e7fff6;color:#041e42;font-family:'Red Hat Text', Arial, Helvetica, sans-serif;font-weight:700;font-size:12px;letter-spacing:.3px;text-transform:uppercase;">
-                                  Support Our Teams
+                                  Show Sun Devil Pride
                                 </td>
                               </tr>
                             </table>
                             <div style="margin-top:10px;color:#041e42;font-family:'Crimson Pro', Georgia, 'Times New Roman', serif;font-weight:800;font-size:24px;line-height:28px;">
-                              Go Sun Devils! 🔥😈
+                              Horns Up, Kent Denver! 🔥😈
                             </div>
                             <p style="margin:10px 0 0 0;color:#373737;font-family:'Red Hat Text', Arial, Helvetica, sans-serif;font-size:15px;line-height:24px;">
-                              Come out and cheer on our teams across all sports and grade levels. Your support makes a difference!
+                              Feel the excitement, share the spirit! Your cheers are the boost that helps our Sun Devils perform their best. Come join us!
                             </p>
                           </td>
                         </tr>

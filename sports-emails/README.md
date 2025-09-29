@@ -1,6 +1,6 @@
 # Kent Denver Games Email Generator
 
-This script automatically scrapes the Kent Denver athletics website and generates **two separate** weekly games emails - one for Middle School and one for Upper School - with the same styling and layout as your existing `games-week.html` template.
+This script automatically scrapes the Kent Denver athletics website and generates **two separate** weekly games emails - one for Middle School and one for Upper School - with advanced game prioritization, dynamic content variations, and professional styling.
 
 ## Quick Start
 
@@ -8,15 +8,11 @@ This script automatically scrapes the Kent Denver athletics website and generate
 ```bash
 python generate_games.py
 ```
+Creates folder `oct06/` with both email files inside.
 
 **For Current Week:**
 ```bash
 python generate_games.py --this-week
-```
-
-**For Next Week (Explicit):**
-```bash
-python generate_games.py --next-week
 ```
 
 **For Custom Date Range:**
@@ -24,9 +20,14 @@ python generate_games.py --next-week
 python generate_games.py --start-date "2025-09-29" --end-date "2025-10-05"
 ```
 
-All commands automatically create **two files** with descriptive names like:
-- `games-week-middle-school-sep22.html`
-- `games-week-upper-school-sep22.html`
+**Custom Output Directory:**
+```bash
+python generate_games.py --output-dir testing
+```
+
+All commands automatically create **organized folder structure** with descriptive names:
+- `sep29/games-week-middle-school-sep29.html`
+- `sep29/games-week-upper-school-sep29.html`
 
 ## Installation
 
@@ -35,80 +36,139 @@ All commands automatically create **two files** with descriptive names like:
 pip install -r requirements.txt
 ```
 
-## Usage Options
+## Command Line Options
 
-### Quick Options (Most Common)
-- **No arguments**: Generates emails for next week (Monday-Sunday)
-- `--this-week`: Generates emails for current week (Monday-Sunday)  
-- `--next-week`: Generates emails for next week (Monday-Sunday) - same as default
+```
+usage: generate_games.py [-h]
+                         [--this-week | --next-week | --start-date START_DATE]
+                         [--end-date END_DATE] [--output-dir OUTPUT_DIR]
+                         [--output-ms OUTPUT_MS] [--output-us OUTPUT_US]
 
-### Custom Options
-- `--start-date YYYY-MM-DD --end-date YYYY-MM-DD`: Custom date range
-- `--output-ms FILENAME`: Custom middle school filename (auto-generated if not specified)
-- `--output-us FILENAME`: Custom upper school filename (auto-generated if not specified)
+Generate Kent Denver weekly games emails
+
+options:
+  -h, --help            show this help message and exit
+  --this-week           Generate emails for current week (Monday-Sunday)
+  --next-week           Generate emails for next week (Monday-Sunday)
+  --start-date START_DATE
+                        Custom start date (YYYY-MM-DD). Requires --end-date
+  --end-date END_DATE   Custom end date (YYYY-MM-DD). Requires --start-date
+  --output-dir OUTPUT_DIR
+                        Output directory for generated files (defaults to
+                        auto-generated week folder)
+  --output-ms OUTPUT_MS
+                        Middle school output filename with path (auto-
+                        generated in output directory if not specified)
+  --output-us OUTPUT_US
+                        Upper school output filename with path (auto-generated
+                        in output directory if not specified)
+```
 
 ### Examples
 
 ```bash
-# Generate for next week (default)
+# Generate for next week in auto-created folder (e.g., oct06/)
 python generate_games.py
 
-# Generate for current week  
+# Generate for current week in auto-created folder (e.g., sep29/)
 python generate_games.py --this-week
 
-# Custom date range
-python generate_games.py --start-date "2025-09-29" --end-date "2025-10-05"
+# Custom date range in auto-created folder (e.g., sep22/)
+python generate_games.py --start-date 2025-09-22 --end-date 2025-09-27
 
-# Custom date range with custom filenames
-python generate_games.py --start-date "2025-09-29" --end-date "2025-10-05" --output-ms "homecoming-ms.html" --output-us "homecoming-us.html"
+# Custom output directory
+python generate_games.py --output-dir testing
+
+# Custom filenames (still creates folder structure)
+python generate_games.py --output-ms "special-ms.html" --output-us "special-us.html"
 ```
 
-## Features
+## ✨ Key Features
 
-- **Separate emails**: Automatically generates Middle School and Upper School emails
-- **Smart game sorting**: Games with "Middle School", "6th", "7th", or "8th" go to MS email, all others to US
-- **Home game emphasis**: Home games are highlighted with bold text, home icon (🏠), and green border
-- **Automatic scraping**: Pulls game data directly from the Kent Denver athletics website
-- **Exact styling**: Uses the same colors, fonts, and layout as your existing template
-- **Sport-specific styling**: Each sport gets its own emoji and color scheme
-- **Responsive design**: Works on both desktop and mobile
-- **Date formatting**: Automatically formats date ranges (e.g., "September 22–28, 2025")
+### 🎯 **Game Prioritization System**
+- **Featured Games**: Large cards with enhanced styling for home games and varsity games
+- **Other Games**: Compact list format for away JV/C Team games
+- **Visual Hierarchy**: Clear distinction between important and secondary games
+- **Smart Categorization**: Upper School prioritizes home OR varsity, Middle School prioritizes home only
 
-## How It Works
+### 🔄 **Dynamic Content Variations**
+- **Fresh Content Every Week**: 12 different variations each for hero text, CTA text, and intro text
+- **Synchronized Rotation**: All text components rotate together using ISO week numbers
+- **Deterministic Selection**: Same week always produces same text combination
+- **Additional Variations**: Title text, CTA button text, and CTA headers also rotate
+
+### 🏠 **Enhanced Visual Styling**
+- **Home + Varsity Games**: Gradient borders (green→yellow), enhanced shadows, special badges
+- **Home Games**: Thick green borders, enhanced shadows, "HOME" badge
+- **Varsity Games**: Thick yellow borders, enhanced shadows, "VARSITY" badge
+- **Sport-Specific Colors**: Each sport retains its unique color for the top accent bar
+
+### 📱 **Professional Design**
+- **Mobile-First**: Enhanced responsive breakpoints and mobile-specific styling
+- **Email-Safe CSS**: Table-based layouts with email client compatibility
+- **Organized Folder Structure**: Automatic weekly folder creation (e.g., `sep29/`, `oct06/`)
+- **Missing Day Detection**: Shows "No games scheduled" for missing weekdays
+
+## 🔧 How It Works
 
 1. **Scrapes** the Kent Denver athletics website for games in your date range
 2. **Separates** games into Middle School and Upper School based on team names
-3. **Emphasizes** home games with bold text, home icon (🏠), and green borders
-4. **Organizes** games by day with proper date formatting and calendar icons (📅)
-5. **Applies** sport-specific styling (soccer = green, football = red, tennis = cyan, etc.)
-6. **Generates** two complete HTML emails with the exact same styling as your original
-7. **Creates** responsive cards that look great on all devices
+3. **Categorizes** games into Featured (home/varsity) vs Other (away JV/C Team)
+4. **Applies** dynamic text variations based on ISO week number
+5. **Organizes** games by day with proper date formatting and missing day detection
+6. **Applies** sport-specific styling with enhanced visual hierarchy
+7. **Generates** two complete HTML emails with professional responsive design
+8. **Creates** organized folder structure for easy management
 
-## Game Separation Logic
+## 📊 Game Categorization Logic
 
+### School Level Separation
 - **Middle School**: Games with team names containing "Middle School", "MS", "6th", "7th", "8th", "sixth", "seventh", or "eighth"
 - **Upper School**: All other games (JV, Varsity, C Team, etc.)
 
-## Home Game Emphasis
+### Priority Classification
+- **Upper School Featured**: Home games OR Varsity games (gets large cards)
+- **Upper School Other**: Away JV/C Team games (gets compact list)
+- **Middle School Featured**: Home games only (gets large cards)
+- **Middle School Other**: Away games (gets compact list)
 
-Home games are visually emphasized with:
-- **Extra bold team name** (font-weight: 900 vs 800)
-- **Home icon** (🏠) next to the team name
-- **Green border** around the game card
-- **Green badge** for the time/location
+### Varsity Detection
+Automatically detects varsity games by checking for:
+- "Varsity" in team name
+- "V " prefix (e.g., "V Soccer")
+- Absence of "JV", "C Team", "Middle School" indicators
 
-## Sport Colors & Emojis
+## 🎨 Visual Design System
 
+### Sport Colors & Emojis
 The script automatically assigns colors and emojis based on sport:
 
-- ⚽ Soccer: Green gradient
-- 🏈 Football: Red gradient  
-- 🎾 Tennis: Cyan gradient
-- ⛳ Golf: Yellow gradient
-- 🏃 Cross Country: Purple gradient
-- 🏑 Field Hockey: Pink gradient
-- 🏐 Volleyball: Orange gradient
+- ⚽ Soccer: Green (#22c55e)
+- 🏈 Football: Red (#dc2626)
+- 🎾 Tennis: Cyan (#06b6d4)
+- ⛳ Golf: Yellow (#eab308)
+- 🏃 Cross Country: Purple (#8b5cf6)
+- 🏑 Field Hockey: Pink (#ec4899)
+- 🏐 Volleyball: Orange (#f97316)
+- 🏀 Basketball: Orange (#f97316)
+- 🏊 Swimming: Blue (#3b82f6)
+- 🤸 Gymnastics: Purple (#8b5cf6)
 - And more...
+
+### Enhanced Game Cards
+- **Featured Games**: Large cards with sport-specific top accent + priority borders
+- **Home + Varsity**: Gradient borders (green→yellow) with "HOME • VARSITY" badge
+- **Home Only**: Green borders with "HOME" badge
+- **Varsity Only**: Yellow borders with "VARSITY" badge
+- **Other Games**: Compact single-row list format with full-width layout
+
+### Dynamic Text Variations (12 each)
+- **Hero Text**: Main header content with sport count integration
+- **CTA Text**: Call-to-action messaging encouraging attendance
+- **Intro Text**: Introductory paragraph setting the tone
+- **Title Text**: Main page title variations ("Games This Week", "Sun Devil Athletics", etc.)
+- **CTA Button**: Button text variations ("Support Our Teams", "Show Your Spirit", etc.)
+- **CTA Header**: Motivational headers ("Go Sun Devils!", "Sun Devil Pride!", etc.)
 
 ## Email Client Compatibility
 
@@ -139,23 +199,39 @@ If emails don't display correctly:
 2. Check that images and fonts are loading properly
 3. Verify the HTML validates as XHTML 1.0 Transitional
 
-## Files Included
+## 📁 File Structure
 
-- `generate_games.py` - Main script with all functionality
-- `requirements.txt` - Python dependencies
-- `games-week.html` - Original template for reference
-- `README.md` - This documentation
+```
+sports-emails/
+├── generate_games.py      # Main script with all functionality
+├── requirements.txt       # Python dependencies
+├── README.md             # This documentation
+├── .gitignore           # Git ignore file for test folders
+├── sep29/               # Auto-generated weekly folders
+│   ├── games-week-middle-school-sep29.html
+│   └── games-week-upper-school-sep29.html
+└── oct06/
+    ├── games-week-middle-school-oct06.html
+    └── games-week-upper-school-oct06.html
+```
 
-## Output
+## 📧 Email Output Features
 
-The script generates professional HTML emails that are identical to your hand-crafted version but with live data from the athletics website. Each email includes:
+The script generates professional HTML emails with:
 
-- Hero section with school-specific title
-- Game cards organized by day with calendar icons
-- Sport-specific colors and emojis
-- Home game emphasis with visual indicators
-- Complete footer with call-to-action
-- Responsive design for all devices
+### Content Structure
+- **Dynamic hero section** with rotating titles and messaging
+- **Featured game cards** with enhanced styling for priority games
+- **Compact game lists** for secondary games with full-width layout
+- **Missing day detection** showing "No games scheduled" when appropriate
+- **Smart section titles** ("Games" vs "Other Games" based on context)
+
+### Technical Features
+- **Email client compatibility** across desktop, mobile, and web clients
+- **Responsive design** with mobile-first breakpoints
+- **Sport-specific styling** with consistent color schemes
+- **Professional typography** using Red Hat Text and Crimson Pro fonts
+- **Accessibility features** with proper semantic HTML structure
 
 ## Support
 

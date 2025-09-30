@@ -1,0 +1,56 @@
+name: Generate Sports Emails
+
+on:
+  schedule:
+    # Every Sunday at 3:00 PM Mountain Time (10:00 PM UTC)
+    # Adjust this if you're in a different timezone
+    - cron: '0 22 * * 0'
+  workflow_dispatch: # Allows manual triggering for testing
+
+jobs:
+  generate-emails:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          # This ensures we can push back to the repo
+          token: ${{ secrets.GITHUB_TOKEN }}
+          
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+          
+      - name: Install dependencies
+        run: |
+          cd sports-emails
+          pip install -r requirements.txt
+          
+      - name: Generate sports emails
+        run: |
+          cd sports-emails
+          python generate_games.py
+          
+      - name: Check if files were generated
+        run: |
+          echo "Checking for generated files..."
+          find sports-emails -name "*.html" -mtime -1 -ls || echo "No new HTML files found"
+          
+      - name: Commit and push generated files
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: '🏈 Auto-generate sports emails for week of ${{ github.run_id }}'
+          file_pattern: 'sports-emails/*/*.html'
+          commit_user_name: 'Sports Email Bot'
+          commit_user_email: 'actions@github.com'
+          commit_author: 'Sports Email Bot <actions@github.com>'
+          
+      - name: Create summary
+        run: |
+          echo "## 🏈 Sports Email Generation Complete" >> $GITHUB_STEP_SUMMARY
+          echo "Generated files:" >> $GITHUB_STEP_SUMMARY
+          find sports-emails -name "*.html" -mtime -1 -exec echo "- {}" \; >> $GITHUB_STEP_SUMMARY || echo "- No files generated" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Files are now available for Google Apps Script to fetch and send!" >> $GITHUB_STEP_SUMMARY

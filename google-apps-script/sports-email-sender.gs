@@ -21,11 +21,11 @@ const CONFIG = {
   // Update these with actual email addresses
   EMAIL_RECIPIENTS: {
     MIDDLE_SCHOOL: [
-      'middle-school-athletics@kentdenver.org',
+      'jbarkin@community.kentdenver.org',
       // Add more recipients as needed
     ],
     UPPER_SCHOOL: [
-      'upper-school-athletics@kentdenver.org',
+      'jbarkin28@kentdenver.org',
       // Add more recipients as needed
     ]
   },

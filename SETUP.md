@@ -4,7 +4,7 @@ Complete automation system that generates and sends sports emails every Sunday.
 
 ## 📋 Overview
 
-**Sunday 3:00 PM (Mountain Time)**: GitHub Actions generates HTML files and commits them
+**Sunday 3:00 PM (Mountain Time)**: GitHub Actions generates HTML files and commits them  
 **Sunday 4:00 PM (Mountain Time)**: Google Apps Script fetches files and sends emails
 
 ## 📅 How Week Selection Works
@@ -29,7 +29,7 @@ The system generates emails for the **next occurring Monday**:
 1. Go to [script.google.com](https://script.google.com)
 2. Click **"New Project"** → Name it "Kent Denver Sports Email Sender"
 3. Delete default code
-4. Copy entire contents of `google-apps-script/sports-email-sender.js`
+4. Copy entire contents of `google-apps-script/sports-email-sender.gs`
 5. Paste into Code.gs and **Save** (Ctrl+S)
 6. **IMPORTANT**: Update email recipients in the `EMAIL_RECIPIENTS` section:
 
@@ -43,7 +43,7 @@ EMAIL_RECIPIENTS: {
 ### Step 3: Test & Enable Automation (5 min)
 1. Select `testGitHubAccess` from function dropdown → **Run** (authorize when prompted)
 2. Check logs - should find both HTML files
-3. Select `sendTestEmail` → **Run** (check your inbox)
+3. Select `sendTestEmail` → **Run** (check your inbox - emojis should display correctly!)
 4. Select `setupTriggers` → **Run** (enables Sunday 4:00 PM automation)
 
 ### Step 4: Done! ✅
@@ -83,13 +83,20 @@ In the Google Apps Script, you can customize:
 
 **GitHub Actions Issues:**
 - **No games found**: Check if Kent Denver athletics website is accessible
-- **Permission denied**: Make sure repository has Actions enabled
+- **Permission denied**: Make sure repository has Actions enabled and write permissions
 - **Python errors**: Check if `requirements.txt` has all needed packages
 
 **Google Apps Script Issues:**
 - **File not found**: GitHub Actions might not have run yet, or files weren't generated
 - **Gmail quota exceeded**: You can send 100 emails/day (consumer) or 1,500/day (Workspace)
 - **Authorization errors**: Re-run the authorization process
+- **Emojis showing as ������**: FIXED! The script now uses `MailApp` with UTF-8 encoding
+
+### Emoji Fix Details
+The emoji corruption issue was caused by character encoding problems. The fix:
+- Changed from `GmailApp.sendEmail()` to `MailApp.sendEmail()`
+- Added explicit `charset: 'UTF-8'` parameter
+- Fetch GitHub files with UTF-8 encoding: `response.getContentText('UTF-8')`
 
 ## 📊 Optional: Email Activity Logging
 
@@ -103,32 +110,7 @@ To track email sending history:
 
 ## 🚨 Error Notifications
 
-The system will email you if something goes wrong. Update the admin email:
-
-```javascript
-const adminEmail = 'your-email@kentdenver.org';
-```
-
-## 🧪 Testing Checklist
-
-Before going live:
-
-- [ ] GitHub Actions workflow runs successfully
-- [ ] HTML files are generated and committed
-- [ ] Google Apps Script can fetch files from GitHub
-- [ ] Test emails are sent successfully
-- [ ] Email recipients are correct
-- [ ] Triggers are set up for Sunday 4:00 PM
-- [ ] Error notifications work
-
-## 📅 Going Live
-
-Once everything is tested:
-
-1. The GitHub Actions will automatically run every Sunday at 3:00 PM
-2. The Google Apps Script will automatically run every Sunday at 4:00 PM
-3. You'll receive error notifications if anything fails
-4. Check the logs periodically to ensure everything is working
+The system will email you if something goes wrong. The admin email is already set to `jbarkin28@kentdenver.org`.
 
 ## 🛠️ Manual Override
 

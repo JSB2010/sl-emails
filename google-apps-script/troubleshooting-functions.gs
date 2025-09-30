@@ -81,16 +81,15 @@ function sendTestEmail() {
   `;
   
   try {
-    GmailApp.sendEmail(
-      testEmail,
-      '🧪 Sports Email Automation Test',
-      'This is a test email from the sports email automation system.',
-      {
-        htmlBody: testHtml,
-        name: 'Kent Denver Sports Email Test'
-      }
-    );
-    
+    // Use MailApp with UTF-8 charset to ensure emojis display correctly
+    MailApp.sendEmail({
+      to: testEmail,
+      subject: '🧪 Sports Email Automation Test',
+      htmlBody: testHtml,
+      name: 'Kent Denver Sports Email Test',
+      charset: 'UTF-8'
+    });
+
     console.log('✅ Test email sent successfully!');
   } catch (error) {
     console.error('❌ Failed to send test email:', error);

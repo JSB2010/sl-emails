@@ -150,17 +150,19 @@ function fetchSportsEmails(folderName) {
 function fetchGitHubFile(url) {
   try {
     console.log(`📥 Fetching: ${url}`);
-    
+
     const response = UrlFetchApp.fetch(url, {
       method: 'GET',
       headers: {
         'User-Agent': 'Kent Denver Sports Email Bot'
-      }
+      },
+      contentType: 'text/html; charset=UTF-8'
     });
-    
+
     if (response.getResponseCode() === 200) {
       console.log(`✅ Successfully fetched file`);
-      return response.getContentText();
+      // Explicitly get content as UTF-8
+      return response.getContentText('UTF-8');
     } else {
       console.warn(`⚠️ File not found (${response.getResponseCode()}): ${url}`);
       return null;
@@ -178,19 +180,19 @@ function sendEmailToRecipients(recipients, subject, htmlContent) {
   try {
     recipients.forEach(recipient => {
       console.log(`📧 Sending email to: ${recipient}`);
-      
-      GmailApp.sendEmail(
-        recipient,
-        subject,
-        '', // Plain text version (empty since we have HTML)
-        {
-          htmlBody: htmlContent,
-          name: CONFIG.EMAIL_FROM_NAME,
-          replyTo: 'noreply@kentdenver.org' // Update with appropriate reply-to
-        }
-      );
+
+      // Use MailApp instead of GmailApp for better UTF-8 support
+      MailApp.sendEmail({
+        to: recipient,
+        subject: subject,
+        htmlBody: htmlContent,
+        name: CONFIG.EMAIL_FROM_NAME,
+        replyTo: 'noreply@kentdenver.org',
+        charset: 'UTF-8', // Explicitly set UTF-8 encoding
+        noReply: false
+      });
     });
-    
+
     console.log(`✅ Sent emails to ${recipients.length} recipients`);
     return true;
   } catch (error) {
@@ -206,12 +208,13 @@ function sendErrorNotification(errorMessage) {
   try {
     // Update with your email address for error notifications
     const adminEmail = 'jbarkin28@kentdenver.org';
-    
-    GmailApp.sendEmail(
-      adminEmail,
-      '🚨 Sports Email Automation Error',
-      `The sports email automation encountered an error:\n\n${errorMessage}\n\nTime: ${new Date()}\n\nPlease check the logs and fix the issue.`
-    );
+
+    MailApp.sendEmail({
+      to: adminEmail,
+      subject: '🚨 Sports Email Automation Error',
+      body: `The sports email automation encountered an error:\n\n${errorMessage}\n\nTime: ${new Date()}\n\nPlease check the logs and fix the issue.`,
+      charset: 'UTF-8'
+    });
   } catch (error) {
     console.error('Failed to send error notification:', error);
   }

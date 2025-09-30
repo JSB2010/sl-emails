@@ -31,23 +31,26 @@ The system generates emails for the **next occurring Monday**:
 3. Delete default code
 4. Copy entire contents of `google-apps-script/sports-email-sender.gs`
 5. Paste into Code.gs and **Save** (Ctrl+S)
-6. **IMPORTANT**: Update email recipients in the `EMAIL_RECIPIENTS` section:
-
-```javascript
-EMAIL_RECIPIENTS: {
-  MIDDLE_SCHOOL: ['your-email@kentdenver.org'],
-  UPPER_SCHOOL: ['your-email@kentdenver.org']
-}
-```
+6. **Email recipients are already configured:**
+   - Middle School: `allmiddleschoolstudents@kentdenver.org`
+   - Upper School: `allupperschoolstudents@kentdenver.org`
+   - Emails are sent as BCC to protect privacy
+   - From name: "Student Leadership"
 
 ### Step 3: Test & Enable Automation (5 min)
 1. Select `testGitHubAccess` from function dropdown → **Run** (authorize when prompted)
-2. Check logs - should find both HTML files
+2. Check logs - should find both HTML files with correct subjects
 3. Select `sendTestEmail` → **Run** (check your inbox - emojis should display correctly!)
-4. Select `setupTriggers` → **Run** (enables Sunday 4:00 PM automation)
+4. **IMPORTANT**: Select `setupTriggers` → **Run** (enables Sunday 4:00 PM automation)
 
 ### Step 4: Done! ✅
-The system will now run automatically every Sunday at 3:00 PM (generate) and 4:00 PM (send).
+- ✅ GitHub Actions cron job: Already configured (Sundays 3:00 PM MT)
+- ✅ Google Apps Script trigger: Set up when you ran `setupTriggers()`
+- ✅ Email recipients: Configured for all students
+- ✅ Subject line: Auto-generated with date range
+- ✅ From name: "Student Leadership"
+
+The system will now run automatically every Sunday!
 
 ## ⚙️ Configuration Options
 
@@ -60,11 +63,15 @@ The GitHub Actions workflow is set for **Mountain Time**. If you're in a differe
    - For Eastern Time: `'0 20 * * 0'` (3:00 PM Eastern = 8:00 PM UTC)
    - For Pacific Time: `'0 23 * * 0'` (3:00 PM Pacific = 11:00 PM UTC)
 
-### Email Customization
-In the Google Apps Script, you can customize:
-- **Subject lines**: Update the subject in `sendEmailToRecipients` calls
-- **From name**: Change `EMAIL_FROM_NAME` in CONFIG
-- **Reply-to address**: Update `replyTo` in the email options
+### Email Configuration
+Current settings:
+- **Subject line**: Auto-generated as "Games This Week: {date range}" from HTML title
+- **From name**: "Student Leadership" (configured in CONFIG)
+- **Recipients**:
+  - Middle School: `allmiddleschoolstudents@kentdenver.org`
+  - Upper School: `allupperschoolstudents@kentdenver.org`
+- **BCC**: Can add additional recipients in `EMAIL_RECIPIENTS.bcc` array
+- **Reply-to**: `noreply@kentdenver.org`
 
 ## 🔍 Monitoring & Troubleshooting
 

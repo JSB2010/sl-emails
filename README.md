@@ -6,25 +6,26 @@ Automated email generation and distribution system for Kent Denver School athlet
 
 ```
 sl-emails/
-├── sports-emails/           # Sports email automation
-│   ├── generate_games.py    # Python script to scrape and generate emails
-│   ├── requirements.txt     # Python dependencies
-│   ├── README.md           # Sports email documentation
-│   └── [week folders]/     # Generated HTML files (e.g., oct06/, sep29/)
+├── sports-emails/                      # Sports email automation
+│   ├── generate_games.py               # Python script to scrape and generate emails
+│   ├── requirements.txt                # Python dependencies
+│   ├── README.md                       # Sports email documentation
+│   └── [week folders]/                 # Generated HTML files (e.g., sep29/, sep22/)
 │
-├── homecoming-week/        # Homecoming event emails
-│   ├── homecoming-ms.html  # Middle school homecoming email
-│   ├── homecoming-us.html  # Upper school homecoming email
-│   └── pep-rally.html      # Pep rally email
+├── homecoming-week/                    # Homecoming event emails
+│   ├── homecoming-ms.html              # Middle school homecoming email
+│   ├── homecoming-us.html              # Upper school homecoming email
+│   └── pep-rally.html                  # Pep rally email
 │
-├── google-apps-script/     # Google Apps Script for email sending
-│   ├── sports-email-sender.js          # Main automation script
-│   └── troubleshooting-functions.js    # Debug utilities
+├── google-apps-script/                 # Google Apps Script for email sending
+│   ├── sports-email-sender.gs          # Main automation script
+│   └── troubleshooting-functions.gs    # Debug utilities
 │
-├── .github/workflows/      # GitHub Actions automation
-│   └── generate-sports-emails.yml      # Weekly email generation
+├── .github/workflows/                  # GitHub Actions automation
+│   └── generate-sports-emails.yml      # Weekly email generation (Sundays 3PM)
 │
-└── AUTOMATION_SETUP_GUIDE.md  # Setup instructions
+├── README.md                           # This file
+└── SETUP.md                            # Complete setup instructions
 
 ```
 
@@ -37,11 +38,13 @@ sl-emails/
 **Features:**
 - Automatic game scraping from Kent Denver athletics website
 - Prioritized display (home games, varsity games)
-- Sport-specific styling and emojis
+- Sport-specific styling and emojis (UTF-8 encoded)
 - Mobile-responsive design
 - Separate emails for Middle School and Upper School
+- Auto-generated subject lines with date ranges
+- BCC delivery to protect student privacy
 
-**Setup:** See [AUTOMATION_SETUP_GUIDE.md](AUTOMATION_SETUP_GUIDE.md)
+**Setup:** See [SETUP.md](SETUP.md)
 
 ## 📧 Manual Email Generation
 
@@ -65,8 +68,8 @@ Pre-generated HTML files in `homecoming-week/` - ready to copy and send.
    ```
 
 2. **Set up sports email automation**
-   - Follow [AUTOMATION_SETUP_GUIDE.md](AUTOMATION_SETUP_GUIDE.md)
-   - Takes ~25 minutes total
+   - Follow [SETUP.md](SETUP.md)
+   - Takes ~20 minutes total
 
 3. **Generate emails manually** (optional)
    ```bash
@@ -84,9 +87,9 @@ All emails follow Kent Denver branding:
 
 ## 📝 Documentation
 
-- **[AUTOMATION_SETUP_GUIDE.md](AUTOMATION_SETUP_GUIDE.md)** - Complete automation setup
+- **[SETUP.md](SETUP.md)** - Complete automation setup guide
 - **[sports-emails/README.md](sports-emails/README.md)** - Sports email generator details
-- **[google-apps-script/](google-apps-script/)** - Email sending scripts
+- **[google-apps-script/](google-apps-script/)** - Email sending scripts (.gs files)
 
 ## 🛠️ Technologies
 
@@ -102,4 +105,4 @@ Student Leadership Media Team
 
 ---
 
-**Last Updated:** September 2024
+**Last Updated:** September 2025

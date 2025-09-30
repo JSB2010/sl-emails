@@ -18,20 +18,20 @@ const CONFIG = {
   GITHUB_BRANCH: 'main',
   BASE_PATH: 'sports-emails',
   
-  // Update these with actual email addresses
+  // BCC recipients for each school level
   EMAIL_RECIPIENTS: {
-    MIDDLE_SCHOOL: [
-      'jbarkin@community.kentdenver.org',
-      // Add more recipients as needed
-    ],
-    UPPER_SCHOOL: [
-      'jbarkin28@kentdenver.org',
-      // Add more recipients as needed
-    ]
+    MIDDLE_SCHOOL: {
+      to: 'allmiddleschoolstudents@kentdenver.org',
+      bcc: [] // Add additional BCC recipients if needed
+    },
+    UPPER_SCHOOL: {
+      to: 'allupperschoolstudents@kentdenver.org',
+      bcc: [] // Add additional BCC recipients if needed
+    }
   },
-  
+
   // Email settings
-  EMAIL_FROM_NAME: 'Kent Denver Athletics',
+  EMAIL_FROM_NAME: 'Student Leadership',
   
   // Timezone for logging (Mountain Time)
   TIMEZONE: 'America/Denver'
@@ -60,21 +60,21 @@ function sendSportsEmails() {
     
     // Send emails
     let sentCount = 0;
-    
+
     if (emails.middleSchool) {
-      const success = sendEmailToRecipients(
+      const success = sendEmail(
         CONFIG.EMAIL_RECIPIENTS.MIDDLE_SCHOOL,
-        'Kent Denver Middle School Games This Week',
-        emails.middleSchool
+        emails.middleSchool.subject,
+        emails.middleSchool.html
       );
       if (success) sentCount++;
     }
-    
+
     if (emails.upperSchool) {
-      const success = sendEmailToRecipients(
+      const success = sendEmail(
         CONFIG.EMAIL_RECIPIENTS.UPPER_SCHOOL,
-        'Kent Denver Upper School Games This Week',
-        emails.upperSchool
+        emails.upperSchool.subject,
+        emails.upperSchool.html
       );
       if (success) sentCount++;
     }
@@ -134,14 +134,50 @@ function getCurrentWeekFolder() {
  */
 function fetchSportsEmails(folderName) {
   const baseUrl = `https://raw.githubusercontent.com/${CONFIG.GITHUB_REPO}/${CONFIG.GITHUB_BRANCH}/${CONFIG.BASE_PATH}`;
-  
+
   const middleSchoolFile = `${folderName}/games-week-middle-school-${folderName}.html`;
   const upperSchoolFile = `${folderName}/games-week-upper-school-${folderName}.html`;
-  
+
+  const msHtml = fetchGitHubFile(`${baseUrl}/${middleSchoolFile}`);
+  const usHtml = fetchGitHubFile(`${baseUrl}/${upperSchoolFile}`);
+
   return {
-    middleSchool: fetchGitHubFile(`${baseUrl}/${middleSchoolFile}`),
-    upperSchool: fetchGitHubFile(`${baseUrl}/${upperSchoolFile}`)
+    middleSchool: msHtml ? { html: msHtml, subject: extractSubject(msHtml) } : null,
+    upperSchool: usHtml ? { html: usHtml, subject: extractSubject(usHtml) } : null
   };
+}
+
+/**
+ * Extract date range from HTML title and create subject line
+ * Example title: "Kent Denver — Games This Week (September 29–October 05, 2025) — Middle School"
+ * Returns: "Games This Week: September 29 - October 05"
+ */
+function extractSubject(html) {
+  try {
+    // Extract the title content
+    const titleMatch = html.match(/<title>(.*?)<\/title>/i);
+    if (!titleMatch) return 'Games This Week';
+
+    const title = titleMatch[1];
+
+    // Extract date range from parentheses: (September 29–October 05, 2025)
+    const dateMatch = title.match(/\(([^)]+)\)/);
+    if (!dateMatch) return 'Games This Week';
+
+    const dateRange = dateMatch[1];
+
+    // Remove year and replace en-dash with hyphen
+    // "September 29–October 05, 2025" -> "September 29 - October 05"
+    const cleanedRange = dateRange
+      .replace(/,\s*\d{4}/, '') // Remove year
+      .replace(/–/g, '-')       // Replace en-dash with hyphen
+      .trim();
+
+    return `Games This Week: ${cleanedRange}`;
+  } catch (error) {
+    console.error('Error extracting subject:', error);
+    return 'Games This Week';
+  }
 }
 
 /**
@@ -174,29 +210,37 @@ function fetchGitHubFile(url) {
 }
 
 /**
- * Send email to multiple recipients
+ * Send email with BCC recipients
  */
-function sendEmailToRecipients(recipients, subject, htmlContent) {
+function sendEmail(recipientConfig, subject, htmlContent) {
   try {
-    recipients.forEach(recipient => {
-      console.log(`📧 Sending email to: ${recipient}`);
+    console.log(`📧 Sending email to: ${recipientConfig.to}`);
+    if (recipientConfig.bcc && recipientConfig.bcc.length > 0) {
+      console.log(`📧 BCC: ${recipientConfig.bcc.join(', ')}`);
+    }
 
-      // Use MailApp instead of GmailApp for better UTF-8 support
-      MailApp.sendEmail({
-        to: recipient,
-        subject: subject,
-        htmlBody: htmlContent,
-        name: CONFIG.EMAIL_FROM_NAME,
-        replyTo: 'noreply@kentdenver.org',
-        charset: 'UTF-8', // Explicitly set UTF-8 encoding
-        noReply: false
-      });
-    });
+    // Use MailApp with UTF-8 support
+    const emailOptions = {
+      to: recipientConfig.to,
+      subject: subject,
+      htmlBody: htmlContent,
+      name: CONFIG.EMAIL_FROM_NAME,
+      replyTo: 'noreply@kentdenver.org',
+      charset: 'UTF-8',
+      noReply: false
+    };
 
-    console.log(`✅ Sent emails to ${recipients.length} recipients`);
+    // Add BCC if there are any
+    if (recipientConfig.bcc && recipientConfig.bcc.length > 0) {
+      emailOptions.bcc = recipientConfig.bcc.join(',');
+    }
+
+    MailApp.sendEmail(emailOptions);
+
+    console.log(`✅ Email sent successfully`);
     return true;
   } catch (error) {
-    console.error(`❌ Error sending emails:`, error);
+    console.error(`❌ Error sending email:`, error);
     return false;
   }
 }

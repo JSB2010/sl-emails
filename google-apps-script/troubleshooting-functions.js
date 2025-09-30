@@ -150,34 +150,44 @@ function listTriggers() {
 }
 
 /**
- * Test the current week folder calculation
+ * Test the week folder calculation
  */
 function testWeekFolderCalculation() {
   console.log('📅 Testing week folder calculation...');
-  
+  console.log('Logic: Generate for the next occurring Monday');
+  console.log('(On Monday, still generates for that Monday - gives flexibility for reruns)\n');
+
   const today = new Date();
   console.log(`Today: ${today}`);
   console.log(`Day of week: ${today.getDay()} (0=Sunday, 1=Monday, etc.)`);
-  
+
   // Test the current calculation
   const currentFolder = getCurrentWeekFolder();
-  console.log(`Current week folder: ${currentFolder}`);
-  
+  console.log(`Current folder: ${currentFolder}`);
+
+  // Calculate and show next Monday
+  const dayOfWeek = today.getDay();
+  const daysUntilMonday = dayOfWeek === 0 ? 1 : (8 - dayOfWeek);
+  const upcomingMonday = new Date(today);
+  upcomingMonday.setDate(today.getDate() + daysUntilMonday);
+  console.log(`Upcoming Monday: ${upcomingMonday.toDateString()}`);
+
   // Test for different days to see the pattern
-  console.log('\n📊 Week folder for different dates:');
-  for (let i = 0; i < 7; i++) {
+  console.log('\n📊 Folder for different dates:');
+  for (let i = 0; i < 14; i++) {
     const testDate = new Date(today);
     testDate.setDate(today.getDate() + i);
-    
-    // Calculate Monday for this test date
-    const monday = new Date(testDate);
-    const dayOfWeek = testDate.getDay();
-    const daysToMonday = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
-    monday.setDate(testDate.getDate() + daysToMonday);
-    
-    const folderName = Utilities.formatDate(monday, 'America/Denver', 'MMMdd').toLowerCase();
-    
-    console.log(`  ${testDate.toDateString()} → ${folderName}`);
+
+    // Calculate upcoming Monday from this test date
+    const testDayOfWeek = testDate.getDay();
+    const testDaysUntilMonday = testDayOfWeek === 0 ? 1 : (8 - testDayOfWeek);
+    const testUpcomingMonday = new Date(testDate);
+    testUpcomingMonday.setDate(testDate.getDate() + testDaysUntilMonday);
+
+    const folderName = Utilities.formatDate(testUpcomingMonday, 'America/Denver', 'MMMdd').toLowerCase();
+    const dayName = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][testDayOfWeek];
+
+    console.log(`  ${dayName} ${testDate.toDateString()} → ${folderName}`);
   }
 }
 

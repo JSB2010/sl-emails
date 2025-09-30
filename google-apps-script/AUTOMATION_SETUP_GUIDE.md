@@ -1,79 +1,53 @@
 # 🏈 Sports Email Automation Setup Guide
 
-This guide will help you set up the complete automation system that generates and sends sports emails every Sunday.
+Complete automation system that generates and sends sports emails every Sunday.
 
 ## 📋 Overview
 
-**Sunday 3:00 PM (Mountain Time)**: GitHub Actions runs your Python script and commits HTML files  
-**Sunday 4:00 PM (Mountain Time)**: Google Apps Script fetches the files and sends emails
+**Sunday 3:00 PM (Mountain Time)**: GitHub Actions generates HTML files and commits them
+**Sunday 4:00 PM (Mountain Time)**: Google Apps Script fetches files and sends emails
 
-## 🚀 Part 1: GitHub Actions Setup
+## 📅 How Week Selection Works
 
-### Step 1: Enable GitHub Actions
-1. Go to your repository on GitHub
-2. Click on the **Actions** tab
-3. If Actions are disabled, click **"I understand my workflows, go ahead and enable them"**
+The system generates emails for the **next occurring Monday**:
+- **Sep 29 (Mon) - Oct 5 (Sun)**: Generates emails for week of Oct 6
+- **Oct 6 (Mon)**: Still generates for Oct 6 (gives flexibility for manual reruns)
+- **Oct 7 (Tue) - Oct 12 (Sun)**: Generates emails for week of Oct 13
 
-### Step 2: Test the Workflow
-The workflow file has already been created at `.github/workflows/generate-sports-emails.yml`
+## 🚀 Quick Start (25 minutes total)
 
-**To test it manually:**
-1. Go to **Actions** tab in your GitHub repository
-2. Click on **"Generate Sports Emails"** workflow
-3. Click **"Run workflow"** button
-4. Click the green **"Run workflow"** button to start it
+### Step 1: Enable GitHub Actions & Test (5 min)
+1. Go to your repository → **Settings** → **Actions** → **General**
+2. Under **Workflow permissions**, select **"Read and write permissions"**
+3. Click **Save**
+4. Go to **Actions** tab → **"Generate Sports Emails"** workflow
+5. Click **"Run workflow"** → **"Run workflow"** (green button)
+6. Wait for green checkmark
+7. Verify new HTML files in `sports-emails/` folder
 
-### Step 3: Verify It Works
-After running the workflow:
-1. Check that new HTML files were created in the `sports-emails/` folder
-2. Look for a new commit with message like "🏈 Auto-generate sports emails for week of..."
-3. The workflow will automatically run every Sunday at 3:00 PM Mountain Time
-
-## 📧 Part 2: Google Apps Script Setup
-
-### Step 1: Create New Apps Script Project
+### Step 2: Set Up Google Apps Script (10 min)
 1. Go to [script.google.com](https://script.google.com)
-2. Click **"New Project"**
-3. Name it "Kent Denver Sports Email Sender"
-
-### Step 2: Add the Code
-1. Delete the default `myFunction()` code
-2. Copy the entire contents of `google-apps-script/sports-email-sender.js`
-3. Paste it into the Code.gs file
-4. Click **Save** (Ctrl+S)
-
-### Step 3: Configure Email Recipients
-In the code, find the `EMAIL_RECIPIENTS` section and update with real email addresses:
+2. Click **"New Project"** → Name it "Kent Denver Sports Email Sender"
+3. Delete default code
+4. Copy entire contents of `google-apps-script/sports-email-sender.js`
+5. Paste into Code.gs and **Save** (Ctrl+S)
+6. **IMPORTANT**: Update email recipients in the `EMAIL_RECIPIENTS` section:
 
 ```javascript
 EMAIL_RECIPIENTS: {
-  MIDDLE_SCHOOL: [
-    'middle-school-athletics@kentdenver.org',
-    'coach1@kentdenver.org',
-    // Add more recipients
-  ],
-  UPPER_SCHOOL: [
-    'upper-school-athletics@kentdenver.org', 
-    'coach2@kentdenver.org',
-    // Add more recipients
-  ]
+  MIDDLE_SCHOOL: ['your-email@kentdenver.org'],
+  UPPER_SCHOOL: ['your-email@kentdenver.org']
 }
 ```
 
-### Step 4: Test the Script
-1. In the Apps Script editor, select `testGitHubAccess` from the function dropdown
-2. Click **Run** (you'll need to authorize permissions)
-3. Check the **Execution transcript** to see if it can fetch files from GitHub
+### Step 3: Test & Enable Automation (5 min)
+1. Select `testGitHubAccess` from function dropdown → **Run** (authorize when prompted)
+2. Check logs - should find both HTML files
+3. Select `sendTestEmail` → **Run** (check your inbox)
+4. Select `setupTriggers` → **Run** (enables Sunday 4:00 PM automation)
 
-### Step 5: Set Up the Trigger
-1. In the Apps Script editor, select `setupTriggers` from the function dropdown
-2. Click **Run**
-3. This creates a trigger to run every Sunday at 4:00 PM
-
-### Step 6: Test Email Sending
-1. Select `sendSportsEmailsManual` from the function dropdown
-2. Click **Run**
-3. Check that emails are sent successfully
+### Step 4: Done! ✅
+The system will now run automatically every Sunday at 3:00 PM (generate) and 4:00 PM (send).
 
 ## ⚙️ Configuration Options
 

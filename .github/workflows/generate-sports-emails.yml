@@ -36,16 +36,25 @@ jobs:
         run: |
           cd sports-emails
           python generate_games.py
-          
+
+      - name: Get week date for commit message
+        id: get_date
+        run: |
+          # Calculate upcoming Monday (same logic as Google Apps Script)
+          # Get the next occurring Monday
+          UPCOMING_MONDAY=$(date -d "next monday" '+%B %d, %Y' 2>/dev/null || date -v+mon '+%B %d, %Y')
+          echo "week_date=$UPCOMING_MONDAY" >> $GITHUB_OUTPUT
+          echo "Week date: $UPCOMING_MONDAY"
+
       - name: Check if files were generated
         run: |
           echo "Checking for generated files..."
           find sports-emails -name "*.html" -mtime -1 -ls || echo "No new HTML files found"
-          
+
       - name: Commit and push generated files
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
-          commit_message: '🏈 Auto-generate sports emails for week of ${{ github.run_id }}'
+          commit_message: '🏈 Auto-generate sports emails for week of ${{ steps.get_date.outputs.week_date }}'
           file_pattern: 'sports-emails/*/*.html'
           commit_user_name: 'Sports Email Bot'
           commit_user_email: 'actions@github.com'

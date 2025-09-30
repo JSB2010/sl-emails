@@ -100,19 +100,33 @@ function sendSportsEmailsManual() {
 }
 
 /**
- * Get the current week's folder name (e.g., "oct06")
+ * Get the upcoming Monday's folder name (e.g., "oct06")
+ *
+ * Logic:
+ * - Sunday through Saturday: Generate for the next Monday
+ * - Example: Sep 29 (Mon) through Oct 5 (Sun) → generates "oct06"
+ * - On Monday Oct 6, still generates "oct06" (gives flexibility for manual reruns)
+ * - On Tuesday Oct 7 onwards → generates "oct13"
  */
 function getCurrentWeekFolder() {
   const today = new Date();
-  
-  // Get Monday of current week
-  const monday = new Date(today);
-  const dayOfWeek = today.getDay();
-  const daysToMonday = dayOfWeek === 0 ? -6 : 1 - dayOfWeek; // Handle Sunday
-  monday.setDate(today.getDate() + daysToMonday);
-  
+  const dayOfWeek = today.getDay(); // 0=Sunday, 1=Monday, etc.
+
+  // Calculate the next Monday
+  let daysUntilMonday;
+  if (dayOfWeek === 0) {
+    // Sunday: next Monday is 1 day away
+    daysUntilMonday = 1;
+  } else {
+    // Monday-Saturday: next Monday is (8 - dayOfWeek) days away
+    daysUntilMonday = 8 - dayOfWeek;
+  }
+
+  const upcomingMonday = new Date(today);
+  upcomingMonday.setDate(today.getDate() + daysUntilMonday);
+
   // Format as "oct06" style
-  return Utilities.formatDate(monday, CONFIG.TIMEZONE, 'MMMdd').toLowerCase();
+  return Utilities.formatDate(upcomingMonday, CONFIG.TIMEZONE, 'MMMdd').toLowerCase();
 }
 
 /**
@@ -270,14 +284,30 @@ function removeTriggers() {
  * Test function to check if GitHub files are accessible
  */
 function testGitHubAccess() {
+  const today = new Date();
+  const dayOfWeek = today.getDay();
+
+  // Calculate upcoming Monday using same logic as getCurrentWeekFolder
+  let daysUntilMonday;
+  if (dayOfWeek === 0) {
+    daysUntilMonday = 1;
+  } else {
+    daysUntilMonday = 8 - dayOfWeek;
+  }
+
+  const upcomingMonday = new Date(today);
+  upcomingMonday.setDate(today.getDate() + daysUntilMonday);
   const folderName = getCurrentWeekFolder();
+
+  console.log(`📅 Today: ${Utilities.formatDate(today, CONFIG.TIMEZONE, 'EEEE, MMMM dd, yyyy')}`);
+  console.log(`📅 Upcoming Monday: ${Utilities.formatDate(upcomingMonday, CONFIG.TIMEZONE, 'EEEE, MMMM dd, yyyy')}`);
   console.log(`🧪 Testing GitHub access for folder: ${folderName}`);
-  
+
   const emails = fetchSportsEmails(folderName);
-  
+
   console.log('Middle School email found:', !!emails.middleSchool);
   console.log('Upper School email found:', !!emails.upperSchool);
-  
+
   if (emails.middleSchool) {
     console.log('Middle School email length:', emails.middleSchool.length, 'characters');
   }

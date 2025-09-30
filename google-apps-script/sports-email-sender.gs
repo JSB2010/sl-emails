@@ -21,12 +21,12 @@ const CONFIG = {
   // BCC recipients for each school level
   EMAIL_RECIPIENTS: {
     MIDDLE_SCHOOL: {
-      to: 'allmiddleschoolstudents@kentdenver.org',
-      bcc: [] // Add additional BCC recipients if needed
+      to: '',
+      bcc: ["allmiddleschoolstudents@kentdenver.org","middleschoolteachers@kentdenver.org"] // Add additional BCC recipients if needed
     },
     UPPER_SCHOOL: {
-      to: 'allupperschoolstudents@kentdenver.org',
-      bcc: [] // Add additional BCC recipients if needed
+      to: "",
+      bcc: ["allupperschoolstudents@kentdenver.org","upperschoolteachers@kentdenver.org"] // Add additional BCC recipients if needed
     }
   },
 
@@ -225,7 +225,7 @@ function sendEmail(recipientConfig, subject, htmlContent) {
       subject: subject,
       htmlBody: htmlContent,
       name: CONFIG.EMAIL_FROM_NAME,
-      replyTo: 'noreply@kentdenver.org',
+      replyTo: 'studentleader@kentdenver.org',
       charset: 'UTF-8',
       noReply: false
     };

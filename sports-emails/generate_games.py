@@ -549,7 +549,7 @@ def get_dynamic_text_variations(start_date: str) -> Dict[str, str]:
         "From the mountains to the fields, Sun Devils stick together! Your presence energizes our athletes and shows your school pride.",
         "Horns up, voices loud! Pack the stands and show our student-athletes what it means to have Sun Devil nation behind them.",
         "Feel the excitement, share the spirit! Your cheers are the boost that helps our Sun Devils perform their best. Come join us!",
-        "Red and gold runs through our school, victory is our shared goal! Support our teams and be part of the Kent Denver tradition.",
+        "Red and blue runs through our school, victory is our shared goal! Support our teams and be part of the Kent Denver tradition.",
         "The altitude is high, but Sun Devil spirits soar higher! Join your fellow Sun Devils and create an amazing atmosphere.",
         "Champions are supported by community! Be the encouragement that helps our Sun Devils reach new heights of excellence.",
         "Your energy matters, your passion shows! Come witness greatness and help write the next chapter of Sun Devil athletics.",
@@ -594,7 +594,7 @@ def get_dynamic_text_variations(start_date: str) -> Dict[str, str]:
         "Horns Up, Hearts Out",
         "Support The Team",
         "Rally The Devils",
-        "Wear Red & Gold",
+        "Wear Red & Blue",
         "Answer The Call",
         "Stand With Us",
         "Embrace The Tradition"
@@ -604,7 +604,7 @@ def get_dynamic_text_variations(start_date: str) -> Dict[str, str]:
     cta_headers = [
         "Horns Up, Kent Denver! 🔥😈",
         "Sun Devil Spirit! 🔥⚡",
-        "Red & Gold Ready! ❤️💛",
+        "Red & Blue Ready! ❤️💛",
         "Mile High Devils! 🏔️🔥",
         "Show Your Pride! 😈⚡",
         "Sun Devil Strong! 💪🔥",

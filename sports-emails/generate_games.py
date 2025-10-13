@@ -604,7 +604,7 @@ def get_dynamic_text_variations(start_date: str) -> Dict[str, str]:
     cta_headers = [
         "Horns Up, Kent Denver! 🔥😈",
         "Sun Devil Spirit! 🔥⚡",
-        "Red & Blue Ready! ❤️💛",
+        "Red & Blue Ready! ❤️💙",
         "Mile High Devils! 🏔️🔥",
         "Show Your Pride! 😈⚡",
         "Sun Devil Strong! 💪🔥",

@@ -1,18 +1,20 @@
 #!/usr/bin/env python3
 """
-Kent Denver Games Email Generator
+Kent Denver Events Email Generator
 
-Automatically scrapes the Kent Denver athletics website and generates professional
-weekly games emails with advanced game prioritization, dynamic content variations,
+Automatically scrapes the Kent Denver athletics website and arts events calendar to generate
+professional weekly emails with advanced event prioritization, dynamic content variations,
 and responsive design.
 
 Features:
-- Game prioritization system (featured vs other games)
+- Combined sports games and arts events in one email
+- Event prioritization system (featured vs other events)
 - Dynamic text variations that rotate weekly (12 variations each)
-- Sport-specific styling with enhanced visual hierarchy
+- Event-specific styling with enhanced visual hierarchy
 - Mobile-responsive design with email client compatibility
 - Automatic folder organization by week
 - Missing day detection and smart section titles
+- iCal feed parsing for arts events
 
 Usage:
     python generate_games.py                                    # Next week in auto folder
@@ -21,7 +23,7 @@ Usage:
     python generate_games.py --output-dir testing               # Custom directory
 
 Author: Jacob Barkin (jbarkin28@kentdenver.org)
-Version: 2.3 - Enhanced with prioritization, dynamic content, sport colors, professional messaging, email client compatibility, and compact design
+Version: 3.0 - Added arts events integration via iCal feed
 """
 
 import argparse
@@ -29,9 +31,10 @@ import requests
 from bs4 import BeautifulSoup
 from datetime import datetime, timedelta
 import re
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Union
 import sys
 import os
+from icalendar import Calendar
 
 # Sport emoji and color mappings
 SPORT_CONFIG = {
@@ -50,8 +53,22 @@ SPORT_CONFIG = {
     'ice hockey': {'emoji': '🏒', 'color': 'linear-gradient(135deg, #64748b 0%, #475569 100%)', 'border_color': '#64748b'},
 }
 
+# Arts event emoji and color mappings
+ARTS_CONFIG = {
+    'dance': {'emoji': '💃', 'color': 'linear-gradient(135deg, #ec4899 0%, #db2777 100%)', 'border_color': '#ec4899'},
+    'music': {'emoji': '🎵', 'color': 'linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%)', 'border_color': '#8b5cf6'},
+    'theater': {'emoji': '🎭', 'color': 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)', 'border_color': '#f59e0b'},
+    'theatre': {'emoji': '🎭', 'color': 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)', 'border_color': '#f59e0b'},
+    'visual': {'emoji': '🎨', 'color': 'linear-gradient(135deg, #06b6d4 0%, #0891b2 100%)', 'border_color': '#06b6d4'},
+    'art': {'emoji': '🎨', 'color': 'linear-gradient(135deg, #06b6d4 0%, #0891b2 100%)', 'border_color': '#06b6d4'},
+    'concert': {'emoji': '🎶', 'color': 'linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%)', 'border_color': '#8b5cf6'},
+    'performance': {'emoji': '🎵', 'color': 'linear-gradient(135deg, #f97316 0%, #ea580c 100%)', 'border_color': '#f97316'},
+    'showcase': {'emoji': '✨', 'color': 'linear-gradient(135deg, #eab308 0%, #ca8a04 100%)', 'border_color': '#eab308'},
+    'exhibit': {'emoji': '🖼️', 'color': 'linear-gradient(135deg, #06b6d4 0%, #0891b2 100%)', 'border_color': '#06b6d4'},
+}
+
 class Game:
-    def __init__(self, team: str, opponent: str, date: str, time: str, location: str, 
+    def __init__(self, team: str, opponent: str, date: str, time: str, location: str,
                  is_home: bool, sport: str):
         self.team = team
         self.opponent = opponent
@@ -60,7 +77,8 @@ class Game:
         self.location = location
         self.is_home = is_home
         self.sport = sport.lower()
-        
+        self.event_type = 'game'  # To distinguish from arts events
+
     def get_sport_config(self) -> Dict[str, str]:
         """Get emoji and color for the sport"""
         for sport_key, config in SPORT_CONFIG.items():
@@ -68,7 +86,7 @@ class Game:
                 return config
         # Default fallback
         return {'emoji': '🏆', 'color': 'linear-gradient(135deg, #6b7280 0%, #4b5563 100%)', 'border_color': '#6b7280'}
-    
+
     def get_home_away_style(self) -> Dict[str, str]:
         """Get styling for home/away badge"""
         if self.is_home:
@@ -83,6 +101,36 @@ class Game:
                 'color': '#92400e',
                 'text': 'Away'
             }
+
+class Event:
+    """Class for arts and performance events"""
+    def __init__(self, title: str, date: str, time: str, location: str, category: str):
+        self.title = title
+        self.date = date
+        self.time = time
+        self.location = location
+        self.category = category.lower()
+        self.event_type = 'arts'  # To distinguish from games
+        # For compatibility with game functions
+        self.team = title
+        self.is_home = True  # Arts events are always "home"
+        self.sport = category.lower()
+
+    def get_sport_config(self) -> Dict[str, str]:
+        """Get emoji and color for the arts event category"""
+        for category_key, config in ARTS_CONFIG.items():
+            if category_key in self.category:
+                return config
+        # Default fallback for arts events
+        return {'emoji': '🎪', 'color': 'linear-gradient(135deg, #a11919 0%, #7c1414 100%)', 'border_color': '#a11919'}
+
+    def get_home_away_style(self) -> Dict[str, str]:
+        """Get styling for event badge (always 'Event')"""
+        return {
+            'background': '#e0e7ff',
+            'color': '#3730a3',
+            'text': 'Event'
+        }
 
 def scrape_athletics_schedule(start_date: str, end_date: str) -> List[Game]:
     """
@@ -124,6 +172,12 @@ def scrape_athletics_schedule(start_date: str, end_date: str) -> List[Game]:
                 
                 # Parse opponent (remove "vs." prefix)
                 opponent = opponent_cell.replace('vs.', '').strip()
+
+                # Handle date ranges (e.g., "Oct202025-Oct212025" for multi-day events)
+                # Take the first date from the range
+                if '-' in date_str and len(date_str) > 15:
+                    # This is likely a date range, take the first date
+                    date_str = date_str.split('-')[0].strip()
 
                 # Fix date format - handle cases like "Sep222025" -> "Sep 22 2025" or "Oct32025" -> "Oct 3 2025"
                 if len(date_str) >= 8 and date_str[3:].isdigit():
@@ -186,18 +240,97 @@ def scrape_athletics_schedule(start_date: str, end_date: str) -> List[Game]:
 def extract_sport_from_team(team_name: str) -> str:
     """Extract sport name from team name"""
     team_lower = team_name.lower()
-    
+
     for sport in SPORT_CONFIG.keys():
         if sport in team_lower:
             return sport
-    
+
     # Additional mappings for common variations
     if 'xc' in team_lower or 'cross country' in team_lower:
         return 'cross country'
     elif 'track' in team_lower:
         return 'track'
-    
+
     return 'other'
+
+def extract_arts_category(event_title: str) -> str:
+    """Extract arts category from event title"""
+    title_lower = event_title.lower()
+
+    # Check for specific categories
+    for category in ARTS_CONFIG.keys():
+        if category in title_lower:
+            return category
+
+    # Default to 'performance' if no specific category found
+    return 'performance'
+
+def fetch_arts_events(start_date: str, end_date: str) -> List[Event]:
+    """
+    Fetch arts events from Kent Denver iCal feed for the specified date range
+    """
+    ical_url = "https://www.kentdenver.org/cf_calendar/feed.cfm?type=ical&feedID=8017725D73BE4200B7C10FDFFBB83FAF"
+
+    try:
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+        }
+        response = requests.get(ical_url, headers=headers)
+        response.raise_for_status()
+
+        # Parse iCal data
+        cal = Calendar.from_ical(response.content)
+        events = []
+
+        start_dt = datetime.strptime(start_date, '%Y-%m-%d').date()
+        end_dt = datetime.strptime(end_date, '%Y-%m-%d').date()
+
+        for component in cal.walk():
+            if component.name == "VEVENT":
+                try:
+                    # Extract event details
+                    summary = str(component.get('summary', 'Untitled Event'))
+                    location = str(component.get('location', 'TBA'))
+
+                    # Handle date/time
+                    dtstart = component.get('dtstart')
+                    if dtstart:
+                        event_dt = dtstart.dt
+
+                        # Handle both date and datetime objects
+                        if isinstance(event_dt, datetime):
+                            event_date = event_dt.date()
+                            event_time = event_dt.strftime('%I:%M %p').lstrip('0')
+                        else:
+                            event_date = event_dt
+                            event_time = 'All Day'
+
+                        # Check if event is in our date range
+                        if start_dt <= event_date <= end_dt:
+                            # Format date to match Game format
+                            date_str = event_date.strftime('%b %d %Y')
+
+                            # Determine category
+                            category = extract_arts_category(summary)
+
+                            event = Event(
+                                title=summary,
+                                date=date_str,
+                                time=event_time,
+                                location=location,
+                                category=category
+                            )
+                            events.append(event)
+
+                except Exception as e:
+                    print(f"Error parsing arts event: {e}")
+                    continue
+
+        return events
+
+    except requests.RequestException as e:
+        print(f"Error fetching arts events: {e}")
+        return []
 
 def format_date_range(start_date: str, end_date: str) -> str:
     """Format date range for display (e.g., 'September 22–27, 2025')"""
@@ -211,17 +344,53 @@ def format_date_range(start_date: str, end_date: str) -> str:
     else:
         return f"{start_dt.strftime('%B %d, %Y')}–{end_dt.strftime('%B %d, %Y')}"
 
-def group_games_by_date(games: List[Game]) -> Dict[str, List[Game]]:
-    """Group games by date"""
+def group_games_by_date(games: List[Union[Game, Event]]) -> Dict[str, List[Union[Game, Event]]]:
+    """Group games and events by date"""
     games_by_date = {}
-    
+
     for game in games:
         date_key = game.date
         if date_key not in games_by_date:
             games_by_date[date_key] = []
         games_by_date[date_key].append(game)
-    
+
     return games_by_date
+
+def generate_featured_event_card_html(event: Event) -> str:
+    """Generate HTML for a featured arts event card"""
+    event_config = event.get_sport_config()
+    event_badge_style = event.get_home_away_style()
+
+    # Arts events always get featured styling
+    top_accent = f"background:{event_config['color']};"
+    card_border = "border:2px solid #a11919;"  # Kent Denver red border for arts
+    card_shadow = "box-shadow:0 6px 20px rgba(161,25,25,0.15);"
+    inner_radius = "border-radius:12px;-webkit-border-radius:12px;-moz-border-radius:12px;"
+
+    return f'''
+    <td class="stack featured-card" width="50%" valign="top" style="padding:10px 12px;">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" class="featured-game" style="{inner_radius}{card_border}background:#ffffff;{card_shadow}">
+        <tr><td style="height:16px;{top_accent}border-top-left-radius:12px;border-top-right-radius:12px;"></td></tr>
+        <tr>
+          <td class="featured-card-content" style="padding:20px 22px 18px 22px;">
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:10px;">
+              <tr>
+                <td style="width:32px;vertical-align:middle;">
+                  <span style="font-size:24px;">{event_config['emoji']}</span>
+                </td>
+                <td style="vertical-align:middle;">
+                  <div style="display:inline-block;padding:6px 12px;border-radius:6px;background:{event_badge_style['background']};color:{event_badge_style['color']};font-family:'Red Hat Text', Arial, Helvetica, sans-serif;font-weight:700;font-size:12px;letter-spacing:.3px;text-transform:uppercase;">{event.time} • {event_badge_style['text']}</div>
+                </td>
+              </tr>
+            </table>
+            <div class="featured-team-name" style="color:#041e42;font-family:'Crimson Pro', Georgia, 'Times New Roman', serif;font-weight:800;font-size:22px;line-height:26px;margin-bottom:6px;">{event.title}</div>
+            <p style="margin:6px 0 0 0;color:#6b7280;font-family:'Red Hat Text', Arial, Helvetica, sans-serif;font-size:14px;line-height:20px;">
+              📍 {event.location}
+            </p>
+          </td>
+        </tr>
+      </table>
+    </td>'''
 
 def generate_featured_game_card_html(game: Game) -> str:
     """Generate HTML for a featured game card (larger, more prominent)"""
@@ -325,6 +494,33 @@ def generate_featured_game_card_html(game: Game) -> str:
         </tr>
       </table>
     </td>'''
+
+def generate_other_event_list_item_html(event: Event) -> str:
+    """Generate HTML for an arts event in the compact list format"""
+    event_config = event.get_sport_config()
+    event_badge_style = event.get_home_away_style()
+
+    return f'''
+    <tr>
+      <td style="padding:12px 18px;border-bottom:1px solid #f3f4f6;border-left:4px solid {event_config['border_color']};">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+          <tr>
+            <td style="width:24px;vertical-align:middle;">
+              <span style="font-size:16px;">{event_config['emoji']}</span>
+            </td>
+            <td style="vertical-align:middle;padding-left:8px;">
+              <div style="color:#041e42;font-family:'Crimson Pro', Georgia, 'Times New Roman', serif;font-weight:700;font-size:16px;line-height:20px;margin-bottom:2px;">{event.title}</div>
+              <p style="margin:0;color:#374151;font-family:'Red Hat Text', Arial, Helvetica, sans-serif;font-size:13px;line-height:18px;">
+                📍 {event.location}
+              </p>
+            </td>
+            <td style="text-align:right;vertical-align:middle;width:80px;">
+              <div style="display:inline-block;padding:3px 8px;border-radius:4px;background:{event_badge_style['background']};color:{event_badge_style['color']};font-family:'Red Hat Text', Arial, Helvetica, sans-serif;font-weight:700;font-size:10px;letter-spacing:.2px;text-transform:uppercase;">{event.time}</div>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>'''
 
 def generate_other_game_list_item_html(game: Game) -> str:
     """Generate HTML for a game in the compact list format"""
@@ -438,8 +634,12 @@ def is_varsity_game(team_name: str) -> bool:
     # If no specific level is mentioned and it's upper school, assume varsity
     return True
 
-def is_featured_game(game: Game, is_middle_school: bool) -> bool:
-    """Determine if a game should be featured (prioritized)"""
+def is_featured_game(game: Union[Game, Event], is_middle_school: bool) -> bool:
+    """Determine if a game or event should be featured (prioritized)"""
+    # Arts events are always featured
+    if isinstance(game, Event):
+        return True
+
     if is_middle_school:
         # For middle school, only prioritize home games
         return game.is_home
@@ -447,8 +647,8 @@ def is_featured_game(game: Game, is_middle_school: bool) -> bool:
         # For upper school, prioritize home games OR varsity games
         return game.is_home or is_varsity_game(game.team)
 
-def categorize_games_by_priority(games: List[Game], is_middle_school: bool) -> tuple[List[Game], List[Game]]:
-    """Separate games into featured and other categories"""
+def categorize_games_by_priority(games: List[Union[Game, Event]], is_middle_school: bool) -> tuple[List[Union[Game, Event]], List[Union[Game, Event]]]:
+    """Separate games and events into featured and other categories"""
     featured_games = []
     other_games = []
 
@@ -702,38 +902,46 @@ Examples:
     if not args.output_us:
         args.output_us = os.path.join(folder_name, f'games-week-upper-school-{date_str}.html')
 
-    print(f"🏈 Generating games emails for {date_source}: {start_date} to {end_date}")
+    print(f"🏈 Generating events emails for {date_source}: {start_date} to {end_date}")
 
     print("🔍 Scraping games from Kent Denver athletics website...")
     games = scrape_athletics_schedule(start_date, end_date)
+    print(f"✅ Found {len(games)} sports games")
 
-    if not games:
-        print("❌ No games found for the specified date range.")
+    print("🎭 Fetching arts events from Kent Denver calendar...")
+    arts_events = fetch_arts_events(start_date, end_date)
+    print(f"✅ Found {len(arts_events)} arts events")
+
+    # Combine games and arts events
+    all_events = games + arts_events
+
+    if not all_events:
+        print("❌ No games or events found for the specified date range.")
         print("   Please check:")
         print("   - Date range is correct")
-        print("   - Kent Denver athletics website is accessible")
-        print("   - Games are published on the website")
+        print("   - Kent Denver websites are accessible")
+        print("   - Events are published on the websites")
         sys.exit(1)
 
-    print(f"✅ Found {len(games)} total games")
+    print(f"✅ Total: {len(all_events)} events (games + arts)")
 
-    # Separate games by school level
-    middle_school_games, upper_school_games = separate_games_by_school(games)
+    # Separate events by school level
+    middle_school_events, upper_school_events = separate_games_by_school(all_events)
 
-    print(f"📚 Middle School: {len(middle_school_games)} games")
-    print(f"🎓 Upper School: {len(upper_school_games)} games")
+    print(f"📚 Middle School: {len(middle_school_events)} events")
+    print(f"🎓 Upper School: {len(upper_school_events)} events")
 
     # Generate date range string
     date_range = format_date_range(start_date, end_date)
 
     # Generate Middle School email
-    if middle_school_games:
-        ms_games_by_date = group_games_by_date(middle_school_games)
-        ms_sports = set(game.sport for game in middle_school_games)
-        ms_sports_list = ', '.join(sport.title() for sport in sorted(ms_sports))
+    if middle_school_events:
+        ms_events_by_date = group_games_by_date(middle_school_events)
+        ms_categories = set(event.sport for event in middle_school_events)
+        ms_categories_list = ', '.join(cat.title() for cat in sorted(ms_categories))
 
-        print(f"📝 Generating Middle School email for {len(ms_games_by_date)} days with {len(ms_sports)} sports...")
-        ms_html_content = generate_html_email(ms_games_by_date, date_range, ms_sports_list,
+        print(f"📝 Generating Middle School email for {len(ms_events_by_date)} days with {len(ms_categories)} categories...")
+        ms_html_content = generate_html_email(ms_events_by_date, date_range, ms_categories_list,
                                             start_date, end_date, "Middle School")
 
         with open(args.output_ms, 'w', encoding='utf-8') as f:
@@ -741,16 +949,16 @@ Examples:
 
         print(f"✅ Middle School email generated: {args.output_ms}")
     else:
-        print("⚠️  No Middle School games found")
+        print("⚠️  No Middle School events found")
 
     # Generate Upper School email
-    if upper_school_games:
-        us_games_by_date = group_games_by_date(upper_school_games)
-        us_sports = set(game.sport for game in upper_school_games)
-        us_sports_list = ', '.join(sport.title() for sport in sorted(us_sports))
+    if upper_school_events:
+        us_events_by_date = group_games_by_date(upper_school_events)
+        us_categories = set(event.sport for event in upper_school_events)
+        us_categories_list = ', '.join(cat.title() for cat in sorted(us_categories))
 
-        print(f"📝 Generating Upper School email for {len(us_games_by_date)} days with {len(us_sports)} sports...")
-        us_html_content = generate_html_email(us_games_by_date, date_range, us_sports_list,
+        print(f"📝 Generating Upper School email for {len(us_events_by_date)} days with {len(us_categories)} categories...")
+        us_html_content = generate_html_email(us_events_by_date, date_range, us_categories_list,
                                             start_date, end_date, "Upper School")
 
         with open(args.output_us, 'w', encoding='utf-8') as f:
@@ -758,10 +966,10 @@ Examples:
 
         print(f"✅ Upper School email generated: {args.output_us}")
     else:
-        print("⚠️  No Upper School games found")
+        print("⚠️  No Upper School events found")
 
     print(f"\n🎉 Email generation complete! Files saved in: {folder_name}/")
-    print(f"📧 Ready to send professional game emails with dynamic content and prioritized games!")
+    print(f"📧 Ready to send professional emails with sports games and arts events!")
 
 def generate_html_email(games_by_date: Dict[str, List[Game]], date_range: str,
                        sports_list: str, start_date: str, end_date: str, school_level: str = "") -> str:
@@ -983,25 +1191,33 @@ def generate_html_email(games_by_date: Dict[str, List[Game]], date_range: str,
                   </tr>
 '''
 
-        # Featured Games Section (no header for more compact design)
+        # Featured Games/Events Section (no header for more compact design)
         if featured_games:
 
-            # Generate featured game cards in rows of 2
+            # Generate featured cards in rows of 2
             for j in range(0, len(featured_games), 2):
                 html += '                  <tr>\n'
 
-                # First featured game in row
-                html += generate_featured_game_card_html(featured_games[j])
+                # First featured item in row
+                item = featured_games[j]
+                if isinstance(item, Event):
+                    html += generate_featured_event_card_html(item)
+                else:
+                    html += generate_featured_game_card_html(item)
 
-                # Second featured game in row (or spacer if odd number)
+                # Second featured item in row (or spacer if odd number)
                 if j + 1 < len(featured_games):
-                    html += generate_featured_game_card_html(featured_games[j + 1])
+                    item2 = featured_games[j + 1]
+                    if isinstance(item2, Event):
+                        html += generate_featured_event_card_html(item2)
+                    else:
+                        html += generate_featured_game_card_html(item2)
                 else:
                     html += '                    <td class="stack" width="50%" valign="top" style="padding:10px 12px;"></td>'
 
                 html += '\n                  </tr>\n'
 
-        # Other Games Section (no header for more compact design)
+        # Other Games/Events Section (no header for more compact design)
         if other_games:
             # Add spacing only if there are featured games above
             spacing_style = "padding:16px 0 8px 0;" if featured_games else "padding:0 0 8px 0;"
@@ -1011,9 +1227,12 @@ def generate_html_email(games_by_date: Dict[str, List[Game]], date_range: str,
                       <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-radius:8px;border:1px solid #e6eaf2;background:#ffffff;">
 '''
 
-            # Generate other games as list items
-            for game in other_games:
-                html += generate_other_game_list_item_html(game)
+            # Generate other games/events as list items
+            for item in other_games:
+                if isinstance(item, Event):
+                    html += generate_other_event_list_item_html(item)
+                else:
+                    html += generate_other_game_list_item_html(item)
 
             html += '''
                       </table>

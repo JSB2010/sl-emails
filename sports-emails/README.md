@@ -1,6 +1,6 @@
-# Kent Denver Games Email Generator
+# Kent Denver Events Email Generator
 
-This script automatically scrapes the Kent Denver athletics website and generates **two separate** weekly games emails - one for Middle School and one for Upper School - with advanced game prioritization, dynamic content variations, and professional styling.
+This script automatically scrapes the Kent Denver athletics website and arts events calendar to generate **two separate** weekly emails - one for Middle School and one for Upper School - combining sports games and arts events with advanced prioritization, dynamic content variations, and professional styling.
 
 ## Quick Start
 
@@ -85,10 +85,16 @@ python generate_games.py --output-ms "special-ms.html" --output-us "special-us.h
 
 ## ✨ Key Features
 
-### 🎯 **Game Prioritization System**
-- **Featured Games**: Large cards with enhanced styling for home games and varsity games
-- **Other Games**: Compact list format for away JV/C Team games
-- **Visual Hierarchy**: Clear distinction between important and secondary games
+### 🎭 **Arts Events Integration**
+- **iCal Feed Parsing**: Automatically fetches arts events from Kent Denver's arts calendar
+- **Combined Display**: Sports games and arts events shown together in chronological order
+- **Arts-Specific Styling**: Unique colors and emojis for dance, music, theater, and visual arts
+- **Always Featured**: Arts events are always displayed as featured cards for maximum visibility
+
+### 🎯 **Event Prioritization System**
+- **Featured Events**: Large cards with enhanced styling for home games, varsity games, and all arts events
+- **Other Events**: Compact list format for away JV/C Team games
+- **Visual Hierarchy**: Clear distinction between important and secondary events
 - **Smart Categorization**: Upper School prioritizes home OR varsity, Middle School prioritizes home only
 
 ### 🔄 **Dynamic Content Variations**
@@ -111,14 +117,16 @@ python generate_games.py --output-ms "special-ms.html" --output-us "special-us.h
 
 ## 🔧 How It Works
 
-1. **Scrapes** the Kent Denver athletics website for games in your date range
-2. **Separates** games into Middle School and Upper School based on team names
-3. **Categorizes** games into Featured (home/varsity) vs Other (away JV/C Team)
-4. **Applies** dynamic text variations based on ISO week number
-5. **Organizes** games by day with proper date formatting and missing day detection
-6. **Applies** sport-specific styling with enhanced visual hierarchy
-7. **Generates** two complete HTML emails with professional responsive design
-8. **Creates** organized folder structure for easy management
+1. **Scrapes** the Kent Denver athletics website for sports games in your date range
+2. **Fetches** arts events from Kent Denver's iCal feed for the same date range
+3. **Combines** sports games and arts events into a unified timeline
+4. **Separates** events into Middle School and Upper School based on team/event names
+5. **Categorizes** events into Featured (home/varsity/arts) vs Other (away JV/C Team)
+6. **Applies** dynamic text variations based on ISO week number
+7. **Organizes** events by day with proper date formatting and missing day detection
+8. **Applies** sport/arts-specific styling with enhanced visual hierarchy
+9. **Generates** two complete HTML emails with professional responsive design
+10. **Creates** organized folder structure for easy management
 
 ## 📊 Game Categorization Logic
 
@@ -143,6 +151,7 @@ Automatically detects varsity games by checking for:
 ### Sport Colors & Emojis
 The script automatically assigns colors and emojis based on sport:
 
+**Sports:**
 - ⚽ Soccer: Green (#22c55e)
 - 🏈 Football: Red (#dc2626)
 - 🎾 Tennis: Cyan (#06b6d4)
@@ -152,15 +161,24 @@ The script automatically assigns colors and emojis based on sport:
 - 🏐 Volleyball: Orange (#f97316)
 - 🏀 Basketball: Orange (#f97316)
 - 🏊 Swimming: Blue (#3b82f6)
-- 🤸 Gymnastics: Purple (#8b5cf6)
 - And more...
 
-### Enhanced Game Cards
-- **Featured Games**: Large cards with sport-specific top accent + priority borders
+**Arts Events:**
+- 💃 Dance: Pink (#ec4899)
+- 🎵 Music/Concert: Purple (#8b5cf6)
+- 🎭 Theater/Theatre: Orange (#f59e0b)
+- 🎨 Visual Art: Cyan (#06b6d4)
+- ✨ Showcase: Yellow (#eab308)
+- 🖼️ Exhibit: Cyan (#06b6d4)
+- 🎪 Performance: Orange (#f97316)
+
+### Enhanced Event Cards
+- **Featured Events**: Large cards with sport/arts-specific top accent + priority borders
+- **Arts Events**: Kent Denver red borders with "EVENT" badge (always featured)
 - **Home + Varsity**: Gradient borders (green→yellow) with "HOME • VARSITY" badge
 - **Home Only**: Green borders with "HOME" badge
 - **Varsity Only**: Yellow borders with "VARSITY" badge
-- **Other Games**: Compact single-row list format with full-width layout
+- **Other Events**: Compact single-row list format with full-width layout
 
 ### Dynamic Text Variations (12 each)
 - **Hero Text**: Main header content with sport count integration
@@ -189,15 +207,22 @@ The generated emails are optimized for maximum compatibility across email client
 
 ## Troubleshooting
 
-If the script doesn't find any games:
+If the script doesn't find any games or events:
 1. Check that the date range is correct
 2. Verify the Kent Denver athletics website is accessible
-3. The website structure may have changed - you may need to update the scraping logic
+3. Verify the Kent Denver arts calendar iCal feed is accessible
+4. The website structure may have changed - you may need to update the scraping logic
 
 If emails don't display correctly:
 1. Test in multiple email clients (Gmail, Outlook, Apple Mail)
 2. Check that images and fonts are loading properly
 3. Verify the HTML validates as XHTML 1.0 Transitional
+
+## Data Sources
+
+The script pulls data from two sources:
+1. **Sports Games**: Scraped from https://www.kentdenver.org/athletics-wellness/schedules-and-scores
+2. **Arts Events**: Fetched from iCal feed at https://www.kentdenver.org/cf_calendar/feed.cfm?type=ical&feedID=8017725D73BE4200B7C10FDFFBB83FAF
 
 ## 📁 File Structure
 

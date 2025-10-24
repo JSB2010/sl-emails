@@ -702,9 +702,9 @@ def get_missing_weekdays(games_by_date: Dict[str, List[Game]], start_date: str, 
 
     return missing_weekdays
 
-def get_dynamic_text_variations(start_date: str) -> Dict[str, str]:
+def get_dynamic_text_variations(start_date: str, has_arts_events: bool = False) -> Dict[str, str]:
     """
-    Get dynamic text variations based on the week
+    Get dynamic text variations based on the week and whether there are arts events
 
     TEXT VARIATION LOGIC:
     - Uses ISO week number (1-53) from the Monday start date as the selection key
@@ -721,58 +721,116 @@ def get_dynamic_text_variations(start_date: str) -> Dict[str, str]:
     DETERMINISTIC:
     - Same week always produces same text combination
     - Reproducible across multiple runs for the same date range
+
+    ARTS EVENTS:
+    - If has_arts_events=True, uses text variations that mention both sports and performances
+    - If has_arts_events=False, uses text variations that only mention sports
     """
     # Use the Monday date to determine which variation to use
     monday_date = datetime.strptime(start_date, '%Y-%m-%d')
     week_number = monday_date.isocalendar()[1]  # ISO week number
 
-    # Hero text variations (expanded to 12) - Kent Denver specific with appropriate tone
-    hero_texts = [
-        "The Sun Devil spirit shines bright this week! Our Kent Denver athletes are ready to compete across {sport_count} sports. Go Devils! 🔥😈",
-        "From the Rocky Mountains to the playing fields, our Sun Devils are bringing their competitive spirit to {sport_count} sports this week! 🏔️⚡",
-        "Kent Denver's finest are taking the field! Join us as we support {sport_count} sports packed with talent and determination. 🔥🏆",
-        "Excellence is our standard! This week features {sport_count} sports where Sun Devil talent shines brightest. 😈🏆",
-        "Altitude advantage meets Sun Devil attitude! Our teams are ready to soar across {sport_count} sports this week. Mile High, Sun Devil High! 🏔️🔥",
-        "Exciting action is coming your way! Kent Denver's Sun Devils are bringing their best to {sport_count} sports this week. ❤️⚡",
-        "The Sun Devil legacy continues! This week's {sport_count} sports showcase why Kent Denver develops champions. Come witness greatness! 🏆🔥",
-        "Horns up, spirits high! Our Sun Devils are ready to compete across {sport_count} sports with heart and determination. Join us! 😈⚡",
-        "Excellence is our tradition, victory is our goal! This week's {sport_count} sports showcase the depth of Sun Devil pride. 🌊🔥",
-        "From sunrise to sunset, our Sun Devils shine! Kent Denver's athletic talent is on display across {sport_count} sports this week. ✨😈",
-        "The mountains may be high, but Sun Devil spirits soar higher! Join us for {sport_count} sports of Colorado athletic excellence. 🏔️🔥",
-        "Built through dedication, strengthened by Sun Devil spirit! This week's {sport_count} sports will showcase your passion for Kent Denver athletics! 🔥⚡"
-    ]
+    # Hero text variations - Different sets for sports-only vs sports+arts
+    if has_arts_events:
+        # Hero texts when there are BOTH sports and arts events
+        hero_texts = [
+            "The Sun Devil spirit shines bright this week! Our Kent Denver students are ready to compete and perform across {sport_count} sports and arts events. Go Devils! 🔥😈🎭",
+            "From the Rocky Mountains to the playing fields and stages, our Sun Devils are bringing their competitive and creative spirit this week! 🏔️⚡🎨",
+            "Kent Denver's finest are taking the field and the stage! Join us as we support {sport_count} sports and performances packed with talent and determination. 🔥🏆🎭",
+            "Excellence is our standard! This week features {sport_count} sports and arts events where Sun Devil talent shines brightest. 😈🏆🎵",
+            "Altitude advantage meets Sun Devil attitude! Our teams and performers are ready to soar across {sport_count} sports and arts events this week. Mile High, Sun Devil High! 🏔️🔥🎭",
+            "Exciting action and performances are coming your way! Kent Denver's Sun Devils are bringing their best to {sport_count} sports and arts events this week. ❤️⚡🎨",
+            "The Sun Devil legacy continues! This week's {sport_count} sports and performances showcase why Kent Denver develops champions and artists. Come witness greatness! 🏆🔥🎭",
+            "Horns up, spirits high! Our Sun Devils are ready to compete and perform across {sport_count} sports and arts events with heart and determination. Join us! 😈⚡🎵",
+            "Excellence is our tradition, victory and artistry are our goals! This week's {sport_count} sports and performances showcase the depth of Sun Devil pride. 🌊🔥🎭",
+            "From sunrise to sunset, our Sun Devils shine! Kent Denver's athletic and artistic talent is on display across {sport_count} sports and arts events this week. ✨😈🎨",
+            "The mountains may be high, but Sun Devil spirits soar higher! Join us for {sport_count} sports and performances of Colorado excellence. 🏔️🔥🎭",
+            "Built through dedication, strengthened by Sun Devil spirit! This week's {sport_count} sports and arts events will showcase your passion for Kent Denver! 🔥⚡🎵"
+        ]
+    else:
+        # Hero texts when there are ONLY sports (no arts events)
+        hero_texts = [
+            "The Sun Devil spirit shines bright this week! Our Kent Denver athletes are ready to compete across {sport_count} sports. Go Devils! 🔥😈",
+            "From the Rocky Mountains to the playing fields, our Sun Devils are bringing their competitive spirit to {sport_count} sports this week! 🏔️⚡",
+            "Kent Denver's finest are taking the field! Join us as we support {sport_count} sports packed with talent and determination. 🔥🏆",
+            "Excellence is our standard! This week features {sport_count} sports where Sun Devil talent shines brightest. 😈🏆",
+            "Altitude advantage meets Sun Devil attitude! Our teams are ready to soar across {sport_count} sports this week. Mile High, Sun Devil High! 🏔️🔥",
+            "Exciting action is coming your way! Kent Denver's Sun Devils are bringing their best to {sport_count} sports this week. ❤️⚡",
+            "The Sun Devil legacy continues! This week's {sport_count} sports showcase why Kent Denver develops champions. Come witness greatness! 🏆🔥",
+            "Horns up, spirits high! Our Sun Devils are ready to compete across {sport_count} sports with heart and determination. Join us! 😈⚡",
+            "Excellence is our tradition, victory is our goal! This week's {sport_count} sports showcase the depth of Sun Devil pride. 🌊🔥",
+            "From sunrise to sunset, our Sun Devils shine! Kent Denver's athletic talent is on display across {sport_count} sports this week. ✨😈",
+            "The mountains may be high, but Sun Devil spirits soar higher! Join us for {sport_count} sports of Colorado athletic excellence. 🏔️🔥",
+            "Built through dedication, strengthened by Sun Devil spirit! This week's {sport_count} sports will showcase your passion for Kent Denver athletics! 🔥⚡"
+        ]
 
-    # CTA text variations (expanded to 12) - Kent Denver specific with appropriate tone
-    cta_texts = [
-        "Show your Sun Devil pride! Come cheer as our athletes compete for Kent Denver across every sport and grade level.",
-        "The Sun Devil community needs YOU! Join us and help our teams feel the power of true Kent Denver spirit.",
-        "From the mountains to the fields, Sun Devils stick together! Your presence energizes our athletes and shows your school pride.",
-        "Horns up, voices loud! Pack the stands and show our student-athletes what it means to have Sun Devil nation behind them.",
-        "Feel the excitement, share the spirit! Your cheers are the boost that helps our Sun Devils perform their best. Come join us!",
-        "Red and blue runs through our school, victory is our shared goal! Support our teams and be part of the Kent Denver tradition.",
-        "The altitude is high, but Sun Devil spirits soar higher! Join your fellow Sun Devils and create an amazing atmosphere.",
-        "Champions are supported by community! Be the encouragement that helps our Sun Devils reach new heights of excellence.",
-        "Your energy matters, your passion shows! Come witness greatness and help write the next chapter of Sun Devil athletics.",
-        "From morning games to evening victories, our Sun Devils need their community! Join us and feel the rush of Kent Denver pride.",
-        "The strength is in the details, and you are that strength! Your support creates the home advantage that makes a difference.",
-        "Wear red, dream big, cheer loud! Come celebrate the heart, dedication, and talent of Kent Denver's finest student-athletes!"
-    ]
+    # CTA text variations - Different sets for sports-only vs sports+arts
+    if has_arts_events:
+        # CTA texts when there are BOTH sports and arts events
+        cta_texts = [
+            "Show your Sun Devil pride! Come cheer and applaud as our athletes and performers represent Kent Denver across every sport, stage, and grade level.",
+            "The Sun Devil community needs YOU! Join us and help our teams and performers feel the power of true Kent Denver spirit.",
+            "From the mountains to the fields and stages, Sun Devils stick together! Your presence energizes our athletes and artists and shows your school pride.",
+            "Horns up, voices loud! Pack the stands and fill the seats to show our student-athletes and performers what it means to have Sun Devil nation behind them.",
+            "Feel the excitement, share the spirit! Your cheers and applause are the boost that helps our Sun Devils perform their best. Come join us!",
+            "Red and blue runs through our school, victory and artistry are our shared goals! Support our teams and performers and be part of the Kent Denver tradition.",
+            "The altitude is high, but Sun Devil spirits soar higher! Join your fellow Sun Devils and create an amazing atmosphere at games and performances.",
+            "Champions and artists are supported by community! Be the encouragement that helps our Sun Devils reach new heights of excellence.",
+            "Your energy matters, your passion shows! Come witness greatness on fields and stages and help write the next chapter of Sun Devil excellence.",
+            "From morning games to evening performances, our Sun Devils need their community! Join us and feel the rush of Kent Denver pride.",
+            "The strength is in the details, and you are that strength! Your support creates the home advantage and inspiring atmosphere that makes a difference.",
+            "Wear red, dream big, cheer loud! Come celebrate the heart, dedication, and talent of Kent Denver's finest student-athletes and performers!"
+        ]
+    else:
+        # CTA texts when there are ONLY sports (no arts events)
+        cta_texts = [
+            "Show your Sun Devil pride! Come cheer as our athletes compete for Kent Denver across every sport and grade level.",
+            "The Sun Devil community needs YOU! Join us and help our teams feel the power of true Kent Denver spirit.",
+            "From the mountains to the fields, Sun Devils stick together! Your presence energizes our athletes and shows your school pride.",
+            "Horns up, voices loud! Pack the stands and show our student-athletes what it means to have Sun Devil nation behind them.",
+            "Feel the excitement, share the spirit! Your cheers are the boost that helps our Sun Devils perform their best. Come join us!",
+            "Red and blue runs through our school, victory is our shared goal! Support our teams and be part of the Kent Denver tradition.",
+            "The altitude is high, but Sun Devil spirits soar higher! Join your fellow Sun Devils and create an amazing atmosphere.",
+            "Champions are supported by community! Be the encouragement that helps our Sun Devils reach new heights of excellence.",
+            "Your energy matters, your passion shows! Come witness greatness and help write the next chapter of Sun Devil athletics.",
+            "From morning games to evening victories, our Sun Devils need their community! Join us and feel the rush of Kent Denver pride.",
+            "The strength is in the details, and you are that strength! Your support creates the home advantage that makes a difference.",
+            "Wear red, dream big, cheer loud! Come celebrate the heart, dedication, and talent of Kent Denver's finest student-athletes!"
+        ]
 
-    # Intro text variations (expanded to 12) - Kent Denver specific with appropriate tone
-    intro_texts = [
-        "The Sun Devil spirit is shining bright! Mark your calendars for exciting competitions across every sport and grade level at Kent Denver.",
-        "Get ready for great matchups as our talented Sun Devil athletes take center stage in competitions that showcase their skills.",
-        "The mountains echo with excitement! Get ready to witness Kent Denver's finest athletes compete with determination this week.",
-        "From morning to evening, our Sun Devils are ready to represent our school with pride across multiple sports and divisions.",
-        "Witness the excellence that happens when Sun Devil determination meets Colorado spirit in these exciting athletic events.",
-        "Our student-athletes are bringing their best to represent the Kent Denver tradition with dedication and school pride.",
-        "Feel the excitement in the air as Sun Devil athletics brings together our community for outstanding moments of competition.",
-        "Rally behind our teams as they compete with heart, supported by passion and that strong Sun Devil spirit.",
-        "The stage is set for excellence! Our Sun Devil athletes are ready to deliver performances that make our school proud.",
-        "From courts to fields, our athletes are ready to compete in every arena with the heart of true Kent Denver Sun Devils.",
-        "Join the Sun Devil community as we unite to support student-athletes who represent excellence in every competition.",
-        "This week brings athletic excellence in action as our Sun Devils compete with the dedication that makes Kent Denver special."
-    ]
+    # Intro text variations - Different sets for sports-only vs sports+arts
+    if has_arts_events:
+        # Intro texts when there are BOTH sports and arts events
+        intro_texts = [
+            "The Sun Devil spirit is shining bright! Mark your calendars for exciting competitions and performances across every sport, art form, and grade level at Kent Denver.",
+            "Get ready for great matchups and captivating performances as our talented Sun Devil athletes and artists take center stage this week.",
+            "The mountains echo with excitement! Get ready to witness Kent Denver's finest athletes and performers compete and create with determination this week.",
+            "From morning to evening, our Sun Devils are ready to represent our school with pride across multiple sports, performances, and divisions.",
+            "Witness the excellence that happens when Sun Devil determination meets Colorado spirit in these exciting athletic and artistic events.",
+            "Our student-athletes and performers are bringing their best to represent the Kent Denver tradition with dedication and school pride.",
+            "Feel the excitement in the air as Sun Devil athletics and arts bring together our community for outstanding moments of competition and creativity.",
+            "Rally behind our teams and performers as they compete and create with heart, supported by passion and that strong Sun Devil spirit.",
+            "The stage is set for excellence! Our Sun Devil athletes and artists are ready to deliver performances that make our school proud.",
+            "From courts to fields to stages, our students are ready to compete and perform in every arena with the heart of true Kent Denver Sun Devils.",
+            "Join the Sun Devil community as we unite to support student-athletes and performers who represent excellence in every competition and performance.",
+            "This week brings athletic and artistic excellence in action as our Sun Devils compete and perform with the dedication that makes Kent Denver special."
+        ]
+    else:
+        # Intro texts when there are ONLY sports (no arts events)
+        intro_texts = [
+            "The Sun Devil spirit is shining bright! Mark your calendars for exciting competitions across every sport and grade level at Kent Denver.",
+            "Get ready for great matchups as our talented Sun Devil athletes take center stage in competitions that showcase their skills.",
+            "The mountains echo with excitement! Get ready to witness Kent Denver's finest athletes compete with determination this week.",
+            "From morning to evening, our Sun Devils are ready to represent our school with pride across multiple sports and divisions.",
+            "Witness the excellence that happens when Sun Devil determination meets Colorado spirit in these exciting athletic events.",
+            "Our student-athletes are bringing their best to represent the Kent Denver tradition with dedication and school pride.",
+            "Feel the excitement in the air as Sun Devil athletics brings together our community for outstanding moments of competition.",
+            "Rally behind our teams as they compete with heart, supported by passion and that strong Sun Devil spirit.",
+            "The stage is set for excellence! Our Sun Devil athletes are ready to deliver performances that make our school proud.",
+            "From courts to fields, our athletes are ready to compete in every arena with the heart of true Kent Denver Sun Devils.",
+            "Join the Sun Devil community as we unite to support student-athletes who represent excellence in every competition.",
+            "This week brings athletic excellence in action as our Sun Devils compete with the dedication that makes Kent Denver special."
+        ]
 
     # Main title variations (8) - Simple and professional
     title_variations = [
@@ -975,12 +1033,19 @@ def generate_html_email(games_by_date: Dict[str, List[Game]], date_range: str,
                        sports_list: str, start_date: str, end_date: str, school_level: str = "") -> str:
     """Generate the complete HTML email"""
 
-    # Get dynamic text variations
-    text_variations = get_dynamic_text_variations(start_date)
+    # Check if there are any arts events
+    all_events = [game for games in games_by_date.values() for game in games]
+    has_arts_events = any(isinstance(event, Event) for event in all_events)
+
+    # Get dynamic text variations based on whether there are arts events
+    text_variations = get_dynamic_text_variations(start_date, has_arts_events)
     sport_count = len(set(game.sport for games in games_by_date.values() for game in games))
 
     # HTML header and hero section
     title_suffix = f" — {school_level}" if school_level else ""
+    # Determine title based on whether there are arts events
+    title_type = "Games and Performances This Week" if has_arts_events else "Games This Week"
+
     html = f'''<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
 <html xmlns="http://www.w3.org/1999/xhtml" lang="en" style="margin:0;padding:0;">
   <head>
@@ -988,7 +1053,8 @@ def generate_html_email(games_by_date: Dict[str, List[Game]], date_range: str,
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="x-apple-disable-message-reformatting" />
     <meta name="format-detection" content="telephone=no,address=no,email=no,date=no,url=no" />
-    <title>Kent Denver — Games This Week ({date_range}){title_suffix}</title>
+    <meta name="has-arts-events" content="{str(has_arts_events).lower()}" />
+    <title>Kent Denver — {title_type} ({date_range}){title_suffix}</title>
     <!--[if !mso]><!-->
     <link href="https://fonts.googleapis.com/css2?family=Crimson+Pro:wght@700;800&family=Red+Hat+Text:wght@400;700&display=swap" rel="stylesheet">
     <!--<![endif]-->

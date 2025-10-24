@@ -150,19 +150,25 @@ function fetchSportsEmails(folderName) {
 /**
  * Extract date range from HTML title and create subject line
  * Example title: "Kent Denver — Games This Week (September 29–October 05, 2025) — Middle School"
+ * Or: "Kent Denver — Games and Performances This Week (September 29–October 05, 2025) — Middle School"
  * Returns: "Games This Week: September 29 - October 05"
+ * Or: "Sports and Performances This Week: September 29 - October 05"
  */
 function extractSubject(html) {
   try {
+    // Check if there are arts events by looking for the meta tag
+    const hasArtsMatch = html.match(/<meta name="has-arts-events" content="(true|false)"/i);
+    const hasArts = hasArtsMatch && hasArtsMatch[1] === 'true';
+
     // Extract the title content
     const titleMatch = html.match(/<title>(.*?)<\/title>/i);
-    if (!titleMatch) return 'Games This Week';
+    if (!titleMatch) return hasArts ? 'Sports and Performances This Week' : 'Sports This Week';
 
     const title = titleMatch[1];
 
     // Extract date range from parentheses: (September 29–October 05, 2025)
     const dateMatch = title.match(/\(([^)]+)\)/);
-    if (!dateMatch) return 'Games This Week';
+    if (!dateMatch) return hasArts ? 'Sports and Performances This Week' : 'Sports This Week';
 
     const dateRange = dateMatch[1];
 
@@ -173,10 +179,12 @@ function extractSubject(html) {
       .replace(/–/g, '-')       // Replace en-dash with hyphen
       .trim();
 
-    return `Games This Week: ${cleanedRange}`;
+    // Use different subject based on whether there are arts events
+    const subjectPrefix = hasArts ? 'Sports and Performances This Week' : 'Sports This Week';
+    return `${subjectPrefix}: ${cleanedRange}`;
   } catch (error) {
     console.error('Error extracting subject:', error);
-    return 'Games This Week';
+    return 'Sports This Week';
   }
 }
 

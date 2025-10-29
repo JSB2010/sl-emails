@@ -89,3 +89,8 @@ Thumbs.db
 draft-*.html
 test-*.html
 sample-*.html
+
+# Club email files
+*.csv
+Kent Denver Clubs & Activities 2025-26.pdf
+generate_club_email.py

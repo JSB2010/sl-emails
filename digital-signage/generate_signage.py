@@ -74,10 +74,10 @@ def categorize_events(events: List[Union[Game, Event]]):
     
     return featured, regular
 
-def generate_event_card_html(event: Union[Game, Event], is_featured: bool = False) -> str:
-    """Generate HTML for a single event card"""
+def generate_event_card_html(event: Union[Game, Event], is_featured: bool = False, card_size: str = "normal") -> str:
+    """Generate HTML for a single event card with dynamic sizing"""
     config = event.get_sport_config()
-    
+
     if event.event_type == 'arts':
         badge_style = event.get_home_away_style()
         title = event.title
@@ -86,33 +86,60 @@ def generate_event_card_html(event: Union[Game, Event], is_featured: bool = Fals
         badge_style = event.get_home_away_style()
         title = event.team
         subtitle = f"vs. {event.opponent} • 📍 {event.location}"
-    
-    # Card styling
-    if is_featured:
-        card_class = "featured-card"
-        card_style = f"border: 3px solid {config['border_color']}; box-shadow: 0 8px 24px rgba(0,0,0,0.12);"
-        top_accent_height = "20px"
+
+    # Dynamic sizing based on number of events
+    if card_size == "large":
+        # For 1-2 events - make them really big
+        emoji_size = "64px"
+        title_size = "42px"
+        subtitle_size = "28px"
+        badge_size = "24px"
+        time_size = "36px"
+        padding = "48px 56px"
+        top_accent = "28px"
+        border_width = "4px"
+        margin = "24px"
+    elif card_size == "medium":
+        # For 3-4 events
+        emoji_size = "48px"
+        title_size = "32px"
+        subtitle_size = "22px"
+        badge_size = "20px"
+        time_size = "28px"
+        padding = "36px 42px"
+        top_accent = "24px"
+        border_width = "3px"
+        margin = "20px"
     else:
-        card_class = "regular-card"
-        card_style = f"border: 2px solid {config['border_color']}; box-shadow: 0 4px 12px rgba(0,0,0,0.08);"
-        top_accent_height = "12px"
-    
+        # For 5+ events - normal size
+        emoji_size = "40px"
+        title_size = "26px"
+        subtitle_size = "18px"
+        badge_size = "16px"
+        time_size = "24px"
+        padding = "28px 32px"
+        top_accent = "20px"
+        border_width = "3px" if is_featured else "2px"
+        margin = "16px"
+
+    card_style = f"border: {border_width} solid {config['border_color']}; box-shadow: 0 8px 24px rgba(0,0,0,0.15);"
+
     return f'''
-    <div class="{card_class}" style="background: white; border-radius: 16px; {card_style} overflow: hidden; margin: 16px;">
-      <div style="height: {top_accent_height}; background: {config['color']};"></div>
-      <div style="padding: 24px 28px;">
-        <div style="display: flex; align-items: center; margin-bottom: 12px;">
-          <span style="font-size: 32px; margin-right: 12px;">{config['emoji']}</span>
+    <div class="event-card" style="background: white; border-radius: 20px; {card_style} overflow: hidden; margin: {margin};">
+      <div style="height: {top_accent}; background: {config['color']};"></div>
+      <div style="padding: {padding};">
+        <div style="display: flex; align-items: center; margin-bottom: 16px;">
+          <span style="font-size: {emoji_size}; margin-right: 16px;">{config['emoji']}</span>
           <div style="flex: 1;">
-            <div style="color: #041e42; font-family: 'Crimson Pro', Georgia, serif; font-weight: 700; font-size: 22px; line-height: 1.3; margin-bottom: 4px;">{title}</div>
-            <div style="color: #374151; font-family: 'Red Hat Text', Arial, sans-serif; font-size: 16px; line-height: 1.4;">{subtitle}</div>
+            <div style="color: #041e42; font-family: 'Crimson Pro', Georgia, serif; font-weight: 700; font-size: {title_size}; line-height: 1.2; margin-bottom: 8px;">{title}</div>
+            <div style="color: #374151; font-family: 'Red Hat Text', Arial, sans-serif; font-size: {subtitle_size}; line-height: 1.3; font-weight: 500;">{subtitle}</div>
           </div>
         </div>
-        <div style="display: flex; align-items: center; justify-content: space-between; margin-top: 16px;">
-          <div style="background: {badge_style['background']}; color: {badge_style['color']}; padding: 6px 14px; border-radius: 6px; font-family: 'Red Hat Text', Arial, sans-serif; font-weight: 600; font-size: 14px;">
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-top: 20px;">
+          <div style="background: {badge_style['background']}; color: {badge_style['color']}; padding: 10px 20px; border-radius: 8px; font-family: 'Red Hat Text', Arial, sans-serif; font-weight: 700; font-size: {badge_size};">
             {badge_style['text']}
           </div>
-          <div style="color: #041e42; font-family: 'Red Hat Text', Arial, sans-serif; font-weight: 700; font-size: 20px;">
+          <div style="color: #041e42; font-family: 'Red Hat Text', Arial, sans-serif; font-weight: 700; font-size: {time_size};">
             🕐 {event.time}
           </div>
         </div>
@@ -124,37 +151,55 @@ def generate_signage_html(events: List[Union[Game, Event]]) -> str:
     """Generate the complete HTML for digital signage"""
     today = datetime.now()
     date_display = today.strftime('%A, %B %d, %Y')
-    
+
+    # Kent Denver logo URL
+    logo_url = "https://cdn-assets-cloud.frontify.com/s3/frontify-cloud-files-us/eyJwYXRoIjoiZnJvbnRpZnlcL2FjY291bnRzXC9iNFwvNzU3NDlcL3Byb2plY3RzXC8xMDUwNjZcL2Fzc2V0c1wvYTNcLzY3NDA0OTZcLzlmYTY2NGYzZjhiOGI3YjY2ZDEwZDBkZGI5NjcxNmJmLTE2NTY4ODQyNjYucG5nIn0:frontify:0G-jY-31l0MCBnvlONY7KuK6-sTagdCay7zorKYJ6_o?width=1464&format=webp&quality=100"
+
     if not events:
         # No events today
         content_html = '''
-        <div style="text-align: center; padding: 100px 60px;">
-          <div style="font-size: 80px; margin-bottom: 30px;">📅</div>
-          <h2 style="color: #041e42; font-family: 'Crimson Pro', Georgia, serif; font-size: 48px; margin: 0 0 20px 0;">No Events Today</h2>
-          <p style="color: #6b7280; font-family: 'Red Hat Text', Arial, sans-serif; font-size: 28px; margin: 0;">Check back tomorrow for upcoming games and performances!</p>
+        <div style="text-align: center; padding: 150px 60px;">
+          <div style="font-size: 120px; margin-bottom: 40px;">📅</div>
+          <h2 style="color: #041e42; font-family: 'Crimson Pro', Georgia, serif; font-size: 64px; margin: 0 0 30px 0; font-weight: 700;">No Events Today</h2>
+          <p style="color: #6b7280; font-family: 'Red Hat Text', Arial, sans-serif; font-size: 36px; margin: 0; font-weight: 500;">Check back tomorrow for upcoming games and performances!</p>
         </div>
         '''
     else:
+        # Determine card size based on total number of events
+        total_events = len(events)
+        if total_events <= 2:
+            card_size = "large"
+            grid_columns = "1fr"
+            section_title_size = "48px"
+        elif total_events <= 4:
+            card_size = "medium"
+            grid_columns = "repeat(2, 1fr)"
+            section_title_size = "42px"
+        else:
+            card_size = "normal"
+            grid_columns = "repeat(auto-fit, minmax(500px, 1fr))"
+            section_title_size = "38px"
+
         # Categorize events
         featured, regular = categorize_events(events)
-        
+
         # Generate cards
         cards_html = ""
-        
+
         if featured:
-            cards_html += '<div style="margin-bottom: 30px;"><h3 style="color: #041e42; font-family: \'Crimson Pro\', Georgia, serif; font-size: 32px; margin: 0 0 20px 20px; font-weight: 700;">Featured Events</h3>'
-            cards_html += '<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(450px, 1fr)); gap: 20px;">'
+            cards_html += f'<div style="margin-bottom: 40px;"><h3 style="color: #041e42; font-family: \'Crimson Pro\', Georgia, serif; font-size: {section_title_size}; margin: 0 0 30px 20px; font-weight: 700;">Featured Events</h3>'
+            cards_html += f'<div style="display: grid; grid-template-columns: {grid_columns}; gap: 24px;">'
             for event in featured:
-                cards_html += generate_event_card_html(event, is_featured=True)
+                cards_html += generate_event_card_html(event, is_featured=True, card_size=card_size)
             cards_html += '</div></div>'
-        
+
         if regular:
-            cards_html += '<div><h3 style="color: #041e42; font-family: \'Crimson Pro\', Georgia, serif; font-size: 28px; margin: 0 0 20px 20px; font-weight: 700;">Other Events</h3>'
-            cards_html += '<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(400px, 1fr)); gap: 16px;">'
+            cards_html += f'<div><h3 style="color: #041e42; font-family: \'Crimson Pro\', Georgia, serif; font-size: {section_title_size}; margin: 0 0 30px 20px; font-weight: 700;">Other Events</h3>'
+            cards_html += f'<div style="display: grid; grid-template-columns: {grid_columns}; gap: 24px;">'
             for event in regular:
-                cards_html += generate_event_card_html(event, is_featured=False)
+                cards_html += generate_event_card_html(event, is_featured=False, card_size=card_size)
             cards_html += '</div></div>'
-        
+
         content_html = cards_html
 
     # Generate complete HTML
@@ -187,47 +232,60 @@ def generate_signage_html(events: List[Union[Game, Event]]) -> str:
         .header {{
             background: linear-gradient(135deg, #041e42 0%, #062a5e 100%);
             color: white;
-            padding: 40px 60px;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+            padding: 50px 70px;
+            box-shadow: 0 6px 24px rgba(0,0,0,0.2);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }}
+
+        .header-content {{
+            flex: 1;
         }}
 
         .header h1 {{
             font-family: 'Crimson Pro', Georgia, serif;
-            font-size: 64px;
+            font-size: 72px;
             font-weight: 700;
-            margin-bottom: 8px;
+            margin-bottom: 12px;
+            letter-spacing: -0.5px;
         }}
 
         .header .date {{
-            font-size: 32px;
-            opacity: 0.9;
-            font-weight: 500;
+            font-size: 38px;
+            opacity: 0.95;
+            font-weight: 600;
+        }}
+
+        .header-logo {{
+            height: 120px;
+            width: auto;
+            opacity: 0.95;
         }}
 
         .content {{
             flex: 1;
-            padding: 50px 60px;
+            padding: 60px 70px;
             overflow-y: auto;
         }}
 
         .footer {{
             background: #041e42;
             color: white;
-            padding: 20px 60px;
+            padding: 24px 70px;
             text-align: center;
-            font-size: 18px;
-        }}
-
-        .footer a {{
-            color: #93c5fd;
-            text-decoration: none;
+            font-size: 22px;
+            font-weight: 500;
         }}
     </style>
 </head>
 <body>
     <div class="header">
-        <h1>🏫 Kent Denver Events</h1>
-        <div class="date">{date_display}</div>
+        <div class="header-content">
+            <h1>Today's Events</h1>
+            <div class="date">{date_display}</div>
+        </div>
+        <img src="{logo_url}" alt="Kent Denver" class="header-logo">
     </div>
 
     <div class="content">
@@ -235,7 +293,7 @@ def generate_signage_html(events: List[Union[Game, Event]]) -> str:
     </div>
 
     <div class="footer">
-        Student Leadership Media Team • Designed by <a href="https://jacobbarkin.com">Jacob Barkin</a>
+        Student Leadership Media Team
     </div>
 </body>
 </html>'''

@@ -1,0 +1,53 @@
+name: Update Digital Signage
+
+on:
+  schedule:
+    # Run at midnight Denver time (MST/MDT)
+    # MST is UTC-7, MDT is UTC-6
+    # Running at 6 AM UTC covers both (midnight MST, 11 PM MDT previous day)
+    - cron: '0 6 * * *'
+  
+  # Allow manual trigger for testing
+  workflow_dispatch:
+
+jobs:
+  update-signage:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      
+      - name: Install dependencies
+        run: |
+          pip install -r sports-emails/requirements.txt
+      
+      - name: Generate digital signage
+        run: |
+          cd digital-signage
+          python generate_signage.py
+      
+      - name: Configure Git
+        run: |
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+      
+      - name: Commit and push changes
+        run: |
+          git add digital-signage/index.html
+          
+          # Only commit if there are changes
+          if git diff --staged --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "Update digital signage for $(date +'%Y-%m-%d')"
+            git push
+          fi
+

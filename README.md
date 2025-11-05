@@ -12,6 +12,11 @@ sl-emails/
 │   ├── README.md                       # Sports email documentation
 │   └── [week folders]/                 # Generated HTML files (e.g., sep29/, sep22/)
 │
+├── digital-signage/                    # Digital signage automation (NEW!)
+│   ├── generate_signage.py             # Daily signage generator
+│   ├── index.html                      # Auto-updated daily display
+│   └── README.md                       # Digital signage documentation
+│
 ├── homecoming-week/                    # Homecoming event emails
 │   ├── homecoming-ms.html              # Middle school homecoming email
 │   ├── homecoming-us.html              # Upper school homecoming email
@@ -22,7 +27,8 @@ sl-emails/
 │   └── troubleshooting-functions.gs    # Debug utilities
 │
 ├── .github/workflows/                  # GitHub Actions automation
-│   └── generate-sports-emails.yml      # Weekly email generation (Sundays 3PM)
+│   ├── generate-sports-emails.yml      # Weekly email generation (Sundays 3PM)
+│   └── update-signage.yml              # Daily signage updates (Midnight MT)
 │
 ├── README.md                           # This file
 └── SETUP.md                            # Complete setup instructions
@@ -46,7 +52,22 @@ sl-emails/
 
 **Setup:** See [SETUP.md](SETUP.md)
 
-## 📧 Manual Email Generation
+## 🖥️ Digital Signage (NEW!)
+
+**Automated daily digital signage** for displays around school:
+- **Midnight MT**: GitHub Actions generates today's events display
+- **Auto-deploy**: Cloudflare Pages serves updated HTML automatically
+
+**Features:**
+- Shows today's sports games and arts events
+- Card-based design similar to email styling
+- Optimized for 2500x1650px displays
+- Featured events (varsity games, arts events) highlighted
+- Updates automatically every day at midnight Denver time
+
+**Setup:** See [digital-signage/README.md](digital-signage/README.md)
+
+## 📧 Manual Generation
 
 ### Sports Emails
 ```bash
@@ -54,6 +75,12 @@ cd sports-emails
 python generate_games.py                    # Next week
 python generate_games.py --this-week        # Current week
 python generate_games.py --start-date 2025-10-06 --end-date 2025-10-12
+```
+
+### Digital Signage
+```bash
+cd digital-signage
+python3 generate_signage.py                 # Generate today's display
 ```
 
 ### Homecoming Emails
@@ -89,14 +116,16 @@ All emails follow Kent Denver branding:
 
 - **[SETUP.md](SETUP.md)** - Complete automation setup guide
 - **[sports-emails/README.md](sports-emails/README.md)** - Sports email generator details
+- **[digital-signage/README.md](digital-signage/README.md)** - Digital signage setup and usage
 - **[google-apps-script/](google-apps-script/)** - Email sending scripts (.gs files)
 
 ## 🛠️ Technologies
 
-- **Python 3.11+** - Email generation and web scraping
-- **GitHub Actions** - Automated scheduling
+- **Python 3.11+** - Email generation, web scraping, and signage generation
+- **GitHub Actions** - Automated scheduling (emails + signage)
 - **Google Apps Script** - Email distribution via Gmail
-- **HTML/CSS** - Email templates
+- **Cloudflare Pages** - Digital signage hosting and deployment
+- **HTML/CSS** - Email templates and signage displays
 
 ## 👤 Author
 
@@ -105,4 +134,4 @@ Student Leadership Media Team
 
 ---
 
-**Last Updated:** September 2025
+**Last Updated:** November 2025

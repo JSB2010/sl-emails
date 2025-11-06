@@ -11,6 +11,10 @@ Features:
 - Updates daily via GitHub Actions
 - Optimized for 2500x1650px displays
 
+Usage:
+    python generate_signage.py                    # Generate for today
+    python generate_signage.py --date 2025-11-08  # Generate for specific date
+
 Author: Jacob Barkin (jbarkin28@kentdenver.org)
 """
 
@@ -19,6 +23,7 @@ from bs4 import BeautifulSoup
 from datetime import datetime, timedelta
 import sys
 import os
+import argparse
 from typing import List, Dict, Union
 from icalendar import Calendar
 
@@ -30,31 +35,49 @@ from generate_games import (
     is_varsity_game, is_middle_school_game
 )
 
-def get_today_date_range():
-    """Get today's date in the format needed for fetching"""
-    today = datetime.now()
-    date_str = today.strftime('%Y-%m-%d')
-    return date_str, date_str
+def get_date_range(date_str=None):
+    """Get date in the format needed for fetching
 
-def fetch_todays_events():
-    """Fetch all games and events for today"""
-    start_date, end_date = get_today_date_range()
-    
-    print(f"🔍 Fetching events for {start_date}...")
-    
+    Args:
+        date_str: Optional date string in YYYY-MM-DD format. If None, uses today.
+    """
+    if date_str:
+        # Validate and use provided date
+        try:
+            target_date = datetime.strptime(date_str, '%Y-%m-%d')
+        except ValueError:
+            print(f"❌ Invalid date format: {date_str}")
+            print("   Please use YYYY-MM-DD format (e.g., 2025-11-08)")
+            sys.exit(1)
+    else:
+        target_date = datetime.now()
+
+    date_str = target_date.strftime('%Y-%m-%d')
+    return date_str, date_str, target_date
+
+def fetch_events_for_date(date_str=None):
+    """Fetch all games and events for the specified date
+
+    Args:
+        date_str: Optional date string in YYYY-MM-DD format. If None, uses today.
+    """
+    start_date, end_date, target_date = get_date_range(date_str)
+
+    print(f"🔍 Fetching events for {start_date} ({target_date.strftime('%A, %B %d, %Y')})...")
+
     # Fetch sports games
     games = scrape_athletics_schedule(start_date, end_date)
     print(f"✅ Found {len(games)} sports games")
-    
+
     # Fetch arts events
     arts_events = fetch_arts_events(start_date, end_date)
     print(f"✅ Found {len(arts_events)} arts events")
-    
+
     # Combine all events
     all_events = games + arts_events
     print(f"📊 Total: {len(all_events)} events")
-    
-    return all_events
+
+    return all_events, target_date
 
 def categorize_events(events: List[Union[Game, Event]]):
     """Categorize events into featured and regular"""
@@ -74,7 +97,138 @@ def categorize_events(events: List[Union[Game, Event]]):
     
     return featured, regular
 
-def generate_event_card_html(event: Union[Game, Event], is_featured: bool = False, card_size: str = "normal") -> str:
+def get_layout_config(total_events: int) -> dict:
+    """Get optimal layout configuration based on number of events
+
+    Returns dict with: card_size, grid_layout, section_title_size, card_height
+    """
+    # Screen is 2500x1650px
+    # Header ~200px, Footer ~70px, Content padding ~120px
+    # Available content height: ~1260px
+
+    if total_events == 1:
+        # Use same sizing as 2 events to avoid card being too large
+        return {
+            "emoji_size": "88px",
+            "title_size": "58px",
+            "subtitle_size": "38px",
+            "badge_size": "30px",
+            "time_size": "48px",
+            "padding": "70px 80px",
+            "top_accent": "28px",
+            "border_width": "4px",
+            "margin": "30px",
+            "grid_columns": "1fr",
+            "section_title_size": "48px",
+            "card_height": "auto"
+        }
+    elif total_events == 2:
+        return {
+            "emoji_size": "88px",
+            "title_size": "58px",
+            "subtitle_size": "38px",
+            "badge_size": "30px",
+            "time_size": "48px",
+            "padding": "70px 80px",
+            "top_accent": "28px",
+            "border_width": "4px",
+            "margin": "30px",
+            "grid_columns": "1fr",
+            "section_title_size": "48px",
+            "card_height": "auto"
+        }
+    elif total_events == 3:
+        return {
+            "emoji_size": "80px",
+            "title_size": "52px",
+            "subtitle_size": "34px",
+            "badge_size": "28px",
+            "time_size": "42px",
+            "padding": "60px 70px",
+            "top_accent": "26px",
+            "border_width": "4px",
+            "margin": "25px",
+            "grid_columns": "repeat(3, 1fr)",
+            "section_title_size": "46px",
+            "card_height": "auto"
+        }
+    elif total_events == 4:
+        return {
+            "emoji_size": "76px",
+            "title_size": "50px",
+            "subtitle_size": "34px",
+            "badge_size": "28px",
+            "time_size": "44px",
+            "padding": "70px 70px",
+            "top_accent": "26px",
+            "border_width": "4px",
+            "margin": "10px",
+            "grid_columns": "repeat(2, 1fr)",
+            "section_title_size": "46px",
+            "card_height": "auto"
+        }
+    elif total_events == 5:
+        return {
+            "emoji_size": "70px",
+            "title_size": "46px",
+            "subtitle_size": "30px",
+            "badge_size": "26px",
+            "time_size": "40px",
+            "padding": "55px 55px",
+            "top_accent": "24px",
+            "border_width": "4px",
+            "margin": "10px",
+            "grid_columns": "repeat(3, 1fr)",  # Will do 3+2 layout
+            "section_title_size": "44px",
+            "card_height": "auto"
+        }
+    elif total_events == 6:
+        return {
+            "emoji_size": "72px",
+            "title_size": "48px",
+            "subtitle_size": "32px",
+            "badge_size": "26px",
+            "time_size": "40px",
+            "padding": "60px 50px",
+            "top_accent": "24px",
+            "border_width": "4px",
+            "margin": "8px",
+            "grid_columns": "repeat(3, 1fr)",  # 3x2 grid
+            "section_title_size": "44px",
+            "card_height": "auto"
+        }
+    elif total_events == 7:
+        return {
+            "emoji_size": "64px",
+            "title_size": "42px",
+            "subtitle_size": "28px",
+            "badge_size": "24px",
+            "time_size": "36px",
+            "padding": "45px 45px",
+            "top_accent": "20px",
+            "border_width": "3px",
+            "margin": "8px",
+            "grid_columns": "repeat(4, 1fr)",  # Will do 4+3 layout
+            "section_title_size": "40px",
+            "card_height": "auto"
+        }
+    else:  # 8+ events
+        return {
+            "emoji_size": "60px",
+            "title_size": "40px",
+            "subtitle_size": "26px",
+            "badge_size": "22px",
+            "time_size": "34px",
+            "padding": "40px 40px",
+            "top_accent": "18px",
+            "border_width": "3px",
+            "margin": "6px",
+            "grid_columns": "repeat(4, 1fr)",  # 4x2 grid
+            "section_title_size": "38px",
+            "card_height": "auto"
+        }
+
+def generate_event_card_html(event: Union[Game, Event], is_featured: bool = False, layout_config: dict = None) -> str:
     """Generate HTML for a single event card with dynamic sizing"""
     config = event.get_sport_config()
 
@@ -87,56 +241,32 @@ def generate_event_card_html(event: Union[Game, Event], is_featured: bool = Fals
         title = event.team
         subtitle = f"vs. {event.opponent} • 📍 {event.location}"
 
-    # Dynamic sizing based on number of events
-    if card_size == "large":
-        # For 1-2 events - make them really big
-        emoji_size = "64px"
-        title_size = "42px"
-        subtitle_size = "28px"
-        badge_size = "24px"
-        time_size = "36px"
-        padding = "48px 56px"
-        top_accent = "28px"
-        border_width = "4px"
-        margin = "24px"
-    elif card_size == "medium":
-        # For 3-4 events
-        emoji_size = "48px"
-        title_size = "32px"
-        subtitle_size = "22px"
-        badge_size = "20px"
-        time_size = "28px"
-        padding = "36px 42px"
-        top_accent = "24px"
-        border_width = "3px"
-        margin = "20px"
-    else:
-        # For 5+ events - normal size
-        emoji_size = "40px"
-        title_size = "26px"
-        subtitle_size = "18px"
-        badge_size = "16px"
-        time_size = "24px"
-        padding = "28px 32px"
-        top_accent = "20px"
-        border_width = "3px" if is_featured else "2px"
-        margin = "16px"
+    # Use layout config
+    emoji_size = layout_config["emoji_size"]
+    title_size = layout_config["title_size"]
+    subtitle_size = layout_config["subtitle_size"]
+    badge_size = layout_config["badge_size"]
+    time_size = layout_config["time_size"]
+    padding = layout_config["padding"]
+    top_accent = layout_config["top_accent"]
+    border_width = layout_config["border_width"]
+    margin = layout_config["margin"]
 
     card_style = f"border: {border_width} solid {config['border_color']}; box-shadow: 0 8px 24px rgba(0,0,0,0.15);"
 
     return f'''
-    <div class="event-card" style="background: white; border-radius: 20px; {card_style} overflow: hidden; margin: {margin};">
-      <div style="height: {top_accent}; background: {config['color']};"></div>
-      <div style="padding: {padding};">
-        <div style="display: flex; align-items: center; margin-bottom: 16px;">
-          <span style="font-size: {emoji_size}; margin-right: 16px;">{config['emoji']}</span>
-          <div style="flex: 1;">
-            <div style="color: #041e42; font-family: 'Crimson Pro', Georgia, serif; font-weight: 700; font-size: {title_size}; line-height: 1.2; margin-bottom: 8px;">{title}</div>
-            <div style="color: #374151; font-family: 'Red Hat Text', Arial, sans-serif; font-size: {subtitle_size}; line-height: 1.3; font-weight: 500;">{subtitle}</div>
+    <div class="event-card" style="background: white; border-radius: 20px; {card_style} overflow: hidden; margin: {margin}; display: flex; flex-direction: column; height: 100%;">
+      <div style="height: {top_accent}; background: {config['color']}; flex-shrink: 0;"></div>
+      <div style="padding: {padding}; display: flex; flex-direction: column; flex: 1; justify-content: space-between;">
+        <div style="display: flex; align-items: flex-start; flex: 1;">
+          <span style="font-size: {emoji_size}; margin-right: 16px; line-height: 1;">{config['emoji']}</span>
+          <div style="flex: 1; display: flex; flex-direction: column; justify-content: center;">
+            <div style="color: #041e42; font-family: 'Crimson Pro', Georgia, serif; font-weight: 700; font-size: {title_size}; line-height: 1.2; margin-bottom: 12px;">{title}</div>
+            <div style="color: #374151; font-family: 'Red Hat Text', Arial, sans-serif; font-size: {subtitle_size}; line-height: 1.4; font-weight: 500;">{subtitle}</div>
           </div>
         </div>
-        <div style="display: flex; align-items: center; justify-content: space-between; margin-top: 20px;">
-          <div style="background: {badge_style['background']}; color: {badge_style['color']}; padding: 10px 20px; border-radius: 8px; font-family: 'Red Hat Text', Arial, sans-serif; font-weight: 700; font-size: {badge_size};">
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-top: 30px; flex-shrink: 0;">
+          <div style="background: {badge_style['background']}; color: {badge_style['color']}; padding: 12px 24px; border-radius: 10px; font-family: 'Red Hat Text', Arial, sans-serif; font-weight: 700; font-size: {badge_size};">
             {badge_style['text']}
           </div>
           <div style="color: #041e42; font-family: 'Red Hat Text', Arial, sans-serif; font-weight: 700; font-size: {time_size};">
@@ -147,10 +277,16 @@ def generate_event_card_html(event: Union[Game, Event], is_featured: bool = Fals
     </div>
     '''
 
-def generate_signage_html(events: List[Union[Game, Event]]) -> str:
-    """Generate the complete HTML for digital signage"""
-    today = datetime.now()
-    date_display = today.strftime('%A, %B %d, %Y')
+def generate_signage_html(events: List[Union[Game, Event]], target_date: datetime = None) -> str:
+    """Generate the complete HTML for digital signage
+
+    Args:
+        events: List of games and events to display
+        target_date: The date to display. If None, uses current date.
+    """
+    if target_date is None:
+        target_date = datetime.now()
+    date_display = target_date.strftime('%A, %B %d, %Y')
 
     # Kent Denver logo URL
     logo_url = "https://cdn-assets-cloud.frontify.com/s3/frontify-cloud-files-us/eyJwYXRoIjoiZnJvbnRpZnlcL2FjY291bnRzXC9iNFwvNzU3NDlcL3Byb2plY3RzXC8xMDUwNjZcL2Fzc2V0c1wvYTNcLzY3NDA0OTZcLzlmYTY2NGYzZjhiOGI3YjY2ZDEwZDBkZGI5NjcxNmJmLTE2NTY4ODQyNjYucG5nIn0:frontify:0G-jY-31l0MCBnvlONY7KuK6-sTagdCay7zorKYJ6_o?width=1464&format=webp&quality=100"
@@ -165,40 +301,66 @@ def generate_signage_html(events: List[Union[Game, Event]]) -> str:
         </div>
         '''
     else:
-        # Determine card size based on total number of events
+        # Get optimal layout configuration based on total number of events
         total_events = len(events)
-        if total_events <= 2:
-            card_size = "large"
-            grid_columns = "1fr"
-            section_title_size = "48px"
-        elif total_events <= 4:
-            card_size = "medium"
-            grid_columns = "repeat(2, 1fr)"
-            section_title_size = "42px"
-        else:
-            card_size = "normal"
-            grid_columns = "repeat(auto-fit, minmax(500px, 1fr))"
-            section_title_size = "38px"
+        layout_config = get_layout_config(total_events)
 
         # Categorize events
         featured, regular = categorize_events(events)
 
-        # Generate cards
+        # Combine all events for unified layout
+        all_events_list = featured + regular
+
+        # Generate cards with optimized layout
         cards_html = ""
 
-        if featured:
-            cards_html += f'<div style="margin-bottom: 40px;"><h3 style="color: #041e42; font-family: \'Crimson Pro\', Georgia, serif; font-size: {section_title_size}; margin: 0 0 30px 20px; font-weight: 700;">Featured Events</h3>'
-            cards_html += f'<div style="display: grid; grid-template-columns: {grid_columns}; gap: 24px;">'
-            for event in featured:
-                cards_html += generate_event_card_html(event, is_featured=True, card_size=card_size)
-            cards_html += '</div></div>'
+        # Section title
+        section_title_size = layout_config["section_title_size"]
+        grid_columns = layout_config["grid_columns"]
 
-        if regular:
-            cards_html += f'<div><h3 style="color: #041e42; font-family: \'Crimson Pro\', Georgia, serif; font-size: {section_title_size}; margin: 0 0 30px 20px; font-weight: 700;">Other Events</h3>'
-            cards_html += f'<div style="display: grid; grid-template-columns: {grid_columns}; gap: 24px;">'
-            for event in regular:
-                cards_html += generate_event_card_html(event, is_featured=False, card_size=card_size)
-            cards_html += '</div></div>'
+        # For better visual hierarchy, show "Today's Events" instead of separating featured/regular
+        # This creates a cleaner, more unified display
+        cards_html += f'<div style="flex: 1; display: flex; flex-direction: column;">'
+        cards_html += f'<h3 style="color: #041e42; font-family: \'Crimson Pro\', Georgia, serif; font-size: {section_title_size}; margin: 0 0 20px 20px; font-weight: 700;">Today\'s Events</h3>'
+
+        # Special layouts for specific counts
+        if total_events == 5:
+            # 3+2 layout for 5 events
+            cards_html += f'<div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; margin-bottom: 24px;">'
+            for i in range(3):
+                cards_html += generate_event_card_html(all_events_list[i], is_featured=(all_events_list[i] in featured), layout_config=layout_config)
+            cards_html += '</div>'
+            cards_html += f'<div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 24px; margin-bottom: 30px;">'
+            for i in range(3, 5):
+                cards_html += generate_event_card_html(all_events_list[i], is_featured=(all_events_list[i] in featured), layout_config=layout_config)
+            cards_html += '</div>'
+        elif total_events == 7:
+            # 4+3 layout for 7 events
+            cards_html += f'<div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; margin-bottom: 20px;">'
+            for i in range(4):
+                cards_html += generate_event_card_html(all_events_list[i], is_featured=(all_events_list[i] in featured), layout_config=layout_config)
+            cards_html += '</div>'
+            cards_html += f'<div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; margin-bottom: 30px;">'
+            for i in range(4, 7):
+                cards_html += generate_event_card_html(all_events_list[i], is_featured=(all_events_list[i] in featured), layout_config=layout_config)
+            cards_html += '</div>'
+        else:
+            # Standard grid layout for other counts
+            # Adjust gap based on event count for better space usage
+            gap_size = "16px" if total_events >= 6 else "24px"
+            bottom_margin = "30px"  # Balanced margin for spacing from footer (30px + 30px content padding = 60px total, matching top)
+
+            # For 1 event, position at top like 2-event layout (no flex: 1)
+            if total_events == 1:
+                cards_html += f'<div style="display: grid; grid-template-columns: {grid_columns}; gap: {gap_size}; margin-bottom: {bottom_margin};">'
+            else:
+                cards_html += f'<div style="display: grid; grid-template-columns: {grid_columns}; gap: {gap_size}; flex: 1; margin-bottom: {bottom_margin};">'
+
+            for event in all_events_list:
+                cards_html += generate_event_card_html(event, is_featured=(event in featured), layout_config=layout_config)
+            cards_html += '</div>'
+
+        cards_html += '</div>'
 
         content_html = cards_html
 
@@ -265,8 +427,10 @@ def generate_signage_html(events: List[Union[Game, Event]]) -> str:
 
         .content {{
             flex: 1;
-            padding: 60px 70px;
+            padding: 40px 70px 30px 70px;
             overflow-y: auto;
+            display: flex;
+            flex-direction: column;
         }}
 
         .footer {{
@@ -302,15 +466,34 @@ def generate_signage_html(events: List[Union[Game, Event]]) -> str:
 
 def main():
     """Main function to generate digital signage"""
+    # Parse command-line arguments
+    parser = argparse.ArgumentParser(
+        description='Generate Kent Denver digital signage HTML',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog='''
+Examples:
+  python generate_signage.py                    # Generate for today
+  python generate_signage.py --date 2025-11-08  # Generate for November 8, 2025
+        '''
+    )
+    parser.add_argument(
+        '--date',
+        type=str,
+        help='Date to generate signage for (YYYY-MM-DD format). Defaults to today.',
+        metavar='YYYY-MM-DD'
+    )
+
+    args = parser.parse_args()
+
     print("🖥️  Kent Denver Digital Signage Generator")
     print("=" * 50)
 
-    # Fetch today's events
-    events = fetch_todays_events()
+    # Fetch events for the specified date
+    events, target_date = fetch_events_for_date(args.date)
 
     # Generate HTML
     print("\n📝 Generating HTML...")
-    html = generate_signage_html(events)
+    html = generate_signage_html(events, target_date)
 
     # Save to index.html
     output_path = os.path.join(os.path.dirname(__file__), 'index.html')

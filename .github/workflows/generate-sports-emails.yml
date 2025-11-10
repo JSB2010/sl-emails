@@ -23,20 +23,29 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
           
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-          
+
+      - name: Cache Python dependencies
+        uses: actions/cache@v3
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('sports-emails/requirements.txt') }}-week-${{ github.run_number }}
+          restore-keys: |
+            ${{ runner.os }}-pip-${{ hashFiles('sports-emails/requirements.txt') }}-week-
+            ${{ runner.os }}-pip-
+
+      - name: Install Chrome dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y chromium-browser chromium-chromedriver
+
       - name: Install dependencies
         run: |
           cd sports-emails
           pip install -r requirements.txt
           
-      - name: Generate sports emails
-        run: |
-          cd sports-emails
-          python generate_games.py
-
       - name: Get week date for commit message
         id: get_date
         run: |
@@ -46,24 +55,61 @@ jobs:
           echo "week_date=$UPCOMING_MONDAY" >> $GITHUB_OUTPUT
           echo "Week date: $UPCOMING_MONDAY"
 
-      - name: Check if files were generated
+      - name: Generate sports emails
+        id: generate
         run: |
-          echo "Checking for generated files..."
-          find sports-emails -name "*.html" -mtime -1 -ls || echo "No new HTML files found"
+          cd sports-emails
+          OUTPUT=$(python generate_games.py 2>&1)
+          echo "$OUTPUT"
+
+          # Extract key information from output
+          SPORTS_GAMES=$(echo "$OUTPUT" | grep -oP '(?<=Found )\d+(?= sports games)' || echo "0")
+          ARTS_EVENTS=$(echo "$OUTPUT" | grep -oP '(?<=Found )\d+(?= arts events)' || echo "0")
+          MS_EVENTS=$(echo "$OUTPUT" | grep -oP '(?<=Middle School: )\d+(?= events)' || echo "0")
+          US_EVENTS=$(echo "$OUTPUT" | grep -oP '(?<=Upper School: )\d+(?= events)' || echo "0")
+          OUTPUT_DIR=$(echo "$OUTPUT" | grep -oP '(?<=Files saved in: )[^\s!]+' || echo "unknown")
+
+          # Save to output
+          echo "sports_games=$SPORTS_GAMES" >> $GITHUB_OUTPUT
+          echo "arts_events=$ARTS_EVENTS" >> $GITHUB_OUTPUT
+          echo "ms_events=$MS_EVENTS" >> $GITHUB_OUTPUT
+          echo "us_events=$US_EVENTS" >> $GITHUB_OUTPUT
+          echo "output_dir=$OUTPUT_DIR" >> $GITHUB_OUTPUT
 
       - name: Commit and push generated files
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
-          commit_message: '🏈 Auto-generate sports emails for week of ${{ steps.get_date.outputs.week_date }}'
+          commit_message: 'Auto-generate sports emails for week of ${{ steps.get_date.outputs.week_date }}'
           file_pattern: 'sports-emails/*/*.html'
-          commit_user_name: 'Sports Email Bot'
-          commit_user_email: 'actions@github.com'
-          commit_author: 'Sports Email Bot <actions@github.com>'
-          
+          commit_user_name: 'github-actions[bot]'
+          commit_user_email: 'github-actions[bot]@users.noreply.github.com'
+          commit_author: 'github-actions[bot] <github-actions[bot]@users.noreply.github.com>'
+
       - name: Create summary
         run: |
-          echo "## 🏈 Sports Email Generation Complete" >> $GITHUB_STEP_SUMMARY
-          echo "Generated files:" >> $GITHUB_STEP_SUMMARY
-          find sports-emails -name "*.html" -mtime -1 -exec echo "- {}" \; >> $GITHUB_STEP_SUMMARY || echo "- No files generated" >> $GITHUB_STEP_SUMMARY
+          echo "## Sports Email Generation Complete" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "Files are now available for Google Apps Script to fetch and send!" >> $GITHUB_STEP_SUMMARY
+          echo "**Week:** ${{ steps.get_date.outputs.week_date }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Events Found" >> $GITHUB_STEP_SUMMARY
+          echo "- **Sports Games:** ${{ steps.generate.outputs.sports_games }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Arts Events:** ${{ steps.generate.outputs.arts_events }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Total Events:** $((${{ steps.generate.outputs.sports_games }} + ${{ steps.generate.outputs.arts_events }}))" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Events by School Level" >> $GITHUB_STEP_SUMMARY
+          echo "- **Middle School:** ${{ steps.generate.outputs.ms_events }} events" >> $GITHUB_STEP_SUMMARY
+          echo "- **Upper School:** ${{ steps.generate.outputs.us_events }} events" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Generated Files" >> $GITHUB_STEP_SUMMARY
+          if [ -d "sports-emails/${{ steps.generate.outputs.output_dir }}" ]; then
+            for file in sports-emails/${{ steps.generate.outputs.output_dir }}/*.html; do
+              if [ -f "$file" ]; then
+                filename=$(basename "$file")
+                echo "- \`$filename\`" >> $GITHUB_STEP_SUMMARY
+              fi
+            done
+          else
+            echo "- No files generated" >> $GITHUB_STEP_SUMMARY
+          fi
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Status:** Files are ready for Google Apps Script to fetch and send" >> $GITHUB_STEP_SUMMARY

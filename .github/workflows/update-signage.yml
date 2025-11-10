@@ -10,44 +10,100 @@ on:
   # Allow manual trigger for testing
   workflow_dispatch:
 
+# Grant write permissions to the workflow
+permissions:
+  contents: write
+
 jobs:
   update-signage:
     runs-on: ubuntu-latest
-    
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-      
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      
+
+      - name: Cache Python dependencies
+        uses: actions/cache@v3
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('sports-emails/requirements.txt') }}-week-${{ github.run_number }}
+          restore-keys: |
+            ${{ runner.os }}-pip-${{ hashFiles('sports-emails/requirements.txt') }}-week-
+            ${{ runner.os }}-pip-
+
+      - name: Install Chrome dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y chromium-browser chromium-chromedriver
+
       - name: Install dependencies
         run: |
           pip install -r sports-emails/requirements.txt
       
       - name: Generate digital signage
+        id: generate
         run: |
           cd digital-signage
-          python generate_signage.py
-      
+          OUTPUT=$(python generate_signage.py 2>&1)
+          echo "$OUTPUT"
+
+          # Extract key information from output
+          SPORTS_GAMES=$(echo "$OUTPUT" | grep -oP '(?<=Found )\d+(?= sports games)' || echo "0")
+          ARTS_EVENTS=$(echo "$OUTPUT" | grep -oP '(?<=Found )\d+(?= arts events)' || echo "0")
+          TOTAL_EVENTS=$(echo "$OUTPUT" | grep -oP '(?<=Total: )\d+(?= events)' || echo "0")
+          DISPLAY_DATE=$(date +'%B %d, %Y')
+
+          # Save to output
+          echo "sports_games=$SPORTS_GAMES" >> $GITHUB_OUTPUT
+          echo "arts_events=$ARTS_EVENTS" >> $GITHUB_OUTPUT
+          echo "total_events=$TOTAL_EVENTS" >> $GITHUB_OUTPUT
+          echo "display_date=$DISPLAY_DATE" >> $GITHUB_OUTPUT
+
       - name: Configure Git
         run: |
           git config --local user.email "github-actions[bot]@users.noreply.github.com"
           git config --local user.name "github-actions[bot]"
-      
+
       - name: Commit and push changes
+        id: commit
         run: |
           git add digital-signage/index.html
-          
+
           # Only commit if there are changes
           if git diff --staged --quiet; then
             echo "No changes to commit"
+            echo "updated=false" >> $GITHUB_OUTPUT
           else
             git commit -m "Update digital signage for $(date +'%Y-%m-%d')"
             git push
+            echo "updated=true" >> $GITHUB_OUTPUT
           fi
+
+      - name: Create summary
+        run: |
+          echo "## Digital Signage Update Complete" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Date:** ${{ steps.generate.outputs.display_date }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Events Displayed" >> $GITHUB_STEP_SUMMARY
+          echo "- **Sports Games:** ${{ steps.generate.outputs.sports_games }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Arts Events:** ${{ steps.generate.outputs.arts_events }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Total Events:** ${{ steps.generate.outputs.total_events }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### File Status" >> $GITHUB_STEP_SUMMARY
+          if [ "${{ steps.commit.outputs.updated }}" == "true" ]; then
+            echo "- **Status:** Updated and committed" >> $GITHUB_STEP_SUMMARY
+            echo "- **File:** \`digital-signage/index.html\`" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "- **Status:** No changes (same events as previous run)" >> $GITHUB_STEP_SUMMARY
+          fi
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Display URL:** [View Signage](https://kds-sl.jacobbarkin.com)" >> $GITHUB_STEP_SUMMARY
 

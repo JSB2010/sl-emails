@@ -35,6 +35,15 @@ from typing import List, Dict, Optional, Union
 import sys
 import os
 from icalendar import Calendar
+from selenium import webdriver
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.common.exceptions import TimeoutException, NoSuchElementException
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.chrome.service import Service
+from webdriver_manager.chrome import ChromeDriverManager
+import time
 
 # Sport emoji and color mappings
 SPORT_CONFIG = {
@@ -132,110 +141,238 @@ class Event:
             'text': 'Event'
         }
 
-def scrape_athletics_schedule(start_date: str, end_date: str) -> List[Game]:
+def parse_games_from_soup(soup: BeautifulSoup, start_date: str, end_date: str) -> tuple[List[Game], Optional[datetime]]:
     """
-    Scrape the Kent Denver athletics website for games in the specified date range
+    Parse games from BeautifulSoup object
+    Returns: (list of games, latest game date found)
+    """
+    games = []
+    latest_date = None
+
+    # Find the games table
+    games_table = soup.find('table')
+    if not games_table:
+        print("Warning: Could not find games table on the website")
+        return [], None
+
+    # Parse each game row
+    rows = games_table.find_all('tr')[1:]  # Skip header row
+
+    for row in rows:
+        cells = row.find_all('td')
+        if len(cells) < 6:
+            continue
+
+        try:
+            team = cells[0].get_text(strip=True)
+            opponent_cell = cells[1].get_text(strip=True)
+            date_str = cells[2].get_text(strip=True)
+            time_str = cells[3].get_text(strip=True)
+            location = cells[4].get_text(strip=True)
+            advantage = cells[5].get_text(strip=True)
+
+            # Parse opponent (remove "vs." prefix)
+            opponent = opponent_cell.replace('vs.', '').strip()
+
+            # Handle date ranges (e.g., "Oct202025-Oct212025" for multi-day events)
+            # Take the first date from the range
+            if '-' in date_str and len(date_str) > 15:
+                # This is likely a date range, take the first date
+                date_str = date_str.split('-')[0].strip()
+
+            # Fix date format - handle cases like "Sep222025" -> "Sep 22 2025" or "Oct32025" -> "Oct 3 2025"
+            if len(date_str) >= 8 and date_str[3:].isdigit():
+                # Format like "Sep222025" or "Oct32025" - need to add spaces
+                month = date_str[:3]
+                rest = date_str[3:]
+                if len(rest) == 6:  # DDYYYY (like "222025")
+                    day = rest[:2]
+                    year = rest[2:]
+                    date_str = f"{month} {day} {year}"
+                elif len(rest) == 5:  # DYYYY (like "32025")
+                    day = rest[:1]
+                    year = rest[1:]
+                    date_str = f"{month} {day} {year}"
+                elif len(rest) == 7:  # DDDYYYY (like "1032025" - this shouldn't happen but just in case)
+                    day = rest[:2]
+                    year = rest[2:]
+                    date_str = f"{month} {day} {year}"
+
+            # Parse the date
+            try:
+                game_date = datetime.strptime(date_str, '%b %d %Y').date()
+            except ValueError:
+                # Try alternative format
+                try:
+                    game_date = datetime.strptime(date_str, '%b%d%Y').date()
+                except ValueError:
+                    print(f"Could not parse date: {date_str}")
+                    continue
+
+            # Track the latest date we've seen
+            if latest_date is None or game_date > latest_date:
+                latest_date = game_date
+
+            start_dt = datetime.strptime(start_date, '%Y-%m-%d').date()
+            end_dt = datetime.strptime(end_date, '%Y-%m-%d').date()
+
+            if start_dt <= game_date <= end_dt:
+                # Determine sport from team name
+                sport = extract_sport_from_team(team)
+                is_home = advantage.lower() == 'home'
+
+                game = Game(
+                    team=team,
+                    opponent=opponent,
+                    date=date_str,
+                    time=time_str,
+                    location=location,
+                    is_home=is_home,
+                    sport=sport
+                )
+                games.append(game)
+
+        except Exception as e:
+            print(f"Error parsing game row: {e}")
+            continue
+
+    return games, latest_date
+
+
+def scrape_athletics_schedule_with_selenium(start_date: str, end_date: str) -> List[Game]:
+    """
+    Scrape athletics schedule using Selenium to handle "Load More" button
     """
     url = "https://www.kentdenver.org/athletics-wellness/schedules-and-scores"
-    
+
+    print("🔄 Using Selenium to load more events...")
+
+    # Setup Chrome options for headless mode (works in GitHub Actions)
+    chrome_options = Options()
+    chrome_options.add_argument('--headless')
+    chrome_options.add_argument('--no-sandbox')
+    chrome_options.add_argument('--disable-dev-shm-usage')
+    chrome_options.add_argument('--disable-gpu')
+    chrome_options.add_argument('--window-size=1920,1080')
+    chrome_options.add_argument('user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36')
+
+    driver = None
+    try:
+        # Initialize the Chrome driver
+        service = Service(ChromeDriverManager().install())
+        driver = webdriver.Chrome(service=service, options=chrome_options)
+
+        # Navigate to the page
+        driver.get(url)
+        time.sleep(2)  # Wait for initial load
+
+        end_dt = datetime.strptime(end_date, '%Y-%m-%d').date()
+        max_clicks = 50  # Safety limit to prevent infinite loops
+        clicks = 0
+
+        while clicks < max_clicks:
+            # Parse current page content
+            soup = BeautifulSoup(driver.page_source, 'html.parser')
+            games, latest_date = parse_games_from_soup(soup, start_date, end_date)
+
+            # Check if we have events covering our date range
+            if latest_date and latest_date >= end_dt:
+                print(f"✅ Found events up to {latest_date}, which covers requested range")
+                break
+
+            # Try to find and click "Load More" button
+            try:
+                # Look for common "Load More" button patterns
+                load_more_button = None
+
+                # Try different selectors
+                selectors = [
+                    "//button[contains(text(), 'Load More')]",
+                    "//a[contains(text(), 'Load More')]",
+                    "//button[contains(@class, 'load-more')]",
+                    "//a[contains(@class, 'load-more')]",
+                    "//*[contains(text(), 'Show More')]",
+                    "//*[contains(text(), 'View More')]"
+                ]
+
+                for selector in selectors:
+                    try:
+                        load_more_button = driver.find_element(By.XPATH, selector)
+                        if load_more_button and load_more_button.is_displayed():
+                            break
+                    except NoSuchElementException:
+                        continue
+
+                if not load_more_button or not load_more_button.is_displayed():
+                    print(f"✅ No more 'Load More' button found after {clicks} clicks")
+                    break
+
+                # Click the button
+                driver.execute_script("arguments[0].scrollIntoView(true);", load_more_button)
+                time.sleep(0.5)
+                load_more_button.click()
+                clicks += 1
+                print(f"   Clicked 'Load More' ({clicks} times)...")
+                time.sleep(1.5)  # Wait for content to load
+
+            except Exception as e:
+                print(f"✅ Finished loading events (no more button available)")
+                break
+
+        # Final parse of all loaded content
+        soup = BeautifulSoup(driver.page_source, 'html.parser')
+        games, _ = parse_games_from_soup(soup, start_date, end_date)
+
+        return games
+
+    except Exception as e:
+        print(f"Error with Selenium scraping: {e}")
+        return []
+    finally:
+        if driver:
+            driver.quit()
+
+
+def scrape_athletics_schedule(start_date: str, end_date: str) -> List[Game]:
+    """
+    Two-stage scraping: Try BeautifulSoup first, fall back to Selenium if needed
+
+    Stage 1: Quick scrape with BeautifulSoup (fast)
+    Stage 2: Use Selenium to click "Load More" if we need more events (thorough)
+    """
+    url = "https://www.kentdenver.org/athletics-wellness/schedules-and-scores"
+
+    # STAGE 1: Try BeautifulSoup first (fast method)
+    print("📥 Stage 1: Quick fetch with BeautifulSoup...")
     try:
         headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
         }
         response = requests.get(url, headers=headers)
         response.raise_for_status()
-        
+
         soup = BeautifulSoup(response.content, 'html.parser')
-        games = []
-        
-        # Find the games table
-        games_table = soup.find('table')
-        if not games_table:
-            print("Warning: Could not find games table on the website")
-            return []
-        
-        # Parse each game row
-        rows = games_table.find_all('tr')[1:]  # Skip header row
-        
-        for row in rows:
-            cells = row.find_all('td')
-            if len(cells) < 6:
-                continue
-                
-            try:
-                team = cells[0].get_text(strip=True)
-                opponent_cell = cells[1].get_text(strip=True)
-                date_str = cells[2].get_text(strip=True)
-                time_str = cells[3].get_text(strip=True)
-                location = cells[4].get_text(strip=True)
-                advantage = cells[5].get_text(strip=True)
-                
-                # Parse opponent (remove "vs." prefix)
-                opponent = opponent_cell.replace('vs.', '').strip()
+        games, latest_date = parse_games_from_soup(soup, start_date, end_date)
 
-                # Handle date ranges (e.g., "Oct202025-Oct212025" for multi-day events)
-                # Take the first date from the range
-                if '-' in date_str and len(date_str) > 15:
-                    # This is likely a date range, take the first date
-                    date_str = date_str.split('-')[0].strip()
+        end_dt = datetime.strptime(end_date, '%Y-%m-%d').date()
 
-                # Fix date format - handle cases like "Sep222025" -> "Sep 22 2025" or "Oct32025" -> "Oct 3 2025"
-                if len(date_str) >= 8 and date_str[3:].isdigit():
-                    # Format like "Sep222025" or "Oct32025" - need to add spaces
-                    month = date_str[:3]
-                    rest = date_str[3:]
-                    if len(rest) == 6:  # DDYYYY (like "222025")
-                        day = rest[:2]
-                        year = rest[2:]
-                        date_str = f"{month} {day} {year}"
-                    elif len(rest) == 5:  # DYYYY (like "32025")
-                        day = rest[:1]
-                        year = rest[1:]
-                        date_str = f"{month} {day} {year}"
-                    elif len(rest) == 7:  # DDDYYYY (like "1032025" - this shouldn't happen but just in case)
-                        day = rest[:2]
-                        year = rest[2:]
-                        date_str = f"{month} {day} {year}"
+        # Check if we need Stage 2
+        if games and latest_date and latest_date >= end_dt:
+            print(f"✅ Stage 1 successful! Found {len(games)} games covering the date range")
+            return games
+        else:
+            if not games:
+                print(f"⚠️  Stage 1: No games found in date range")
+            else:
+                print(f"⚠️  Stage 1: Latest event is {latest_date}, but need events until {end_dt}")
+            print(f"🔄 Moving to Stage 2: Selenium with 'Load More' clicking...")
 
-                # Check if game is in our date range
-                try:
-                    game_date = datetime.strptime(date_str, '%b %d %Y').date()
-                except ValueError:
-                    # Try alternative format
-                    try:
-                        game_date = datetime.strptime(date_str, '%b%d%Y').date()
-                    except ValueError:
-                        print(f"Could not parse date: {date_str}")
-                        continue
-
-                start_dt = datetime.strptime(start_date, '%Y-%m-%d').date()
-                end_dt = datetime.strptime(end_date, '%Y-%m-%d').date()
-                
-                if start_dt <= game_date <= end_dt:
-                    # Determine sport from team name
-                    sport = extract_sport_from_team(team)
-                    is_home = advantage.lower() == 'home'
-                    
-                    game = Game(
-                        team=team,
-                        opponent=opponent,
-                        date=date_str,
-                        time=time_str,
-                        location=location,
-                        is_home=is_home,
-                        sport=sport
-                    )
-                    games.append(game)
-                    
-            except Exception as e:
-                print(f"Error parsing game row: {e}")
-                continue
-        
-        return games
-        
     except requests.RequestException as e:
-        print(f"Error fetching athletics schedule: {e}")
-        return []
+        print(f"⚠️  Stage 1 failed: {e}")
+        print(f"🔄 Moving to Stage 2: Selenium with 'Load More' clicking...")
+
+    # STAGE 2: Use Selenium to load more events
+    return scrape_athletics_schedule_with_selenium(start_date, end_date)
 
 def extract_sport_from_team(team_name: str) -> str:
     """Extract sport name from team name"""

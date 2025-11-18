@@ -45,36 +45,62 @@ from selenium.webdriver.chrome.service import Service
 from webdriver_manager.chrome import ChromeDriverManager
 import time
 
-# Sport emoji and color mappings
+ICON_CDN_BASE = "https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.5.2/svgs/solid"
+KDS_PRIMARY_LOGO_URL = (
+    "https://cdn-assets-cloud.frontify.com/s3/frontify-cloud-files-us/"
+    "eyJwYXRoIjoiZnJvbnRpZnlcL2FjY291bnRzXC9iNFwvNzU3NDlcL3Byb2plY3RzXC8xMDUwNjZc"
+    "L2Fzc2V0c1wvYTNcLzY3NDA0OTZcLzlmYTY2NGYzZjhiOGI3YjY2ZDEwZDBkZGI5NjcxNmJmLTE2"
+    "NTY4ODQyNjYucG5nIn0:frontify:0G-jY-31l0MCBnvlONY7KuK6-sTagdCay7zorKYJ6_o?width=600&format=png"
+)
+
+# Sport icon and color mappings
 SPORT_CONFIG = {
-    'soccer': {'emoji': '⚽', 'color': 'linear-gradient(135deg, #22c55e 0%, #16a34a 100%)', 'border_color': '#22c55e'},
-    'football': {'emoji': '🏈', 'color': 'linear-gradient(135deg, #dc2626 0%, #991b1b 100%)', 'border_color': '#dc2626'},
-    'tennis': {'emoji': '🎾', 'color': 'linear-gradient(135deg, #06b6d4 0%, #0891b2 100%)', 'border_color': '#06b6d4'},
-    'golf': {'emoji': '⛳', 'color': 'linear-gradient(135deg, #eab308 0%, #ca8a04 100%)', 'border_color': '#eab308'},
-    'cross country': {'emoji': '🏃', 'color': 'linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%)', 'border_color': '#8b5cf6'},
-    'field hockey': {'emoji': '🏑', 'color': 'linear-gradient(135deg, #ec4899 0%, #db2777 100%)', 'border_color': '#ec4899'},
-    'volleyball': {'emoji': '🏐', 'color': 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)', 'border_color': '#f59e0b'},
-    'basketball': {'emoji': '🏀', 'color': 'linear-gradient(135deg, #f97316 0%, #ea580c 100%)', 'border_color': '#f97316'},
-    'lacrosse': {'emoji': '🥍', 'color': 'linear-gradient(135deg, #10b981 0%, #059669 100%)', 'border_color': '#10b981'},
-    'baseball': {'emoji': '⚾', 'color': 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)', 'border_color': '#3b82f6'},
-    'swimming': {'emoji': '🏊', 'color': 'linear-gradient(135deg, #06b6d4 0%, #0891b2 100%)', 'border_color': '#06b6d4'},
-    'track': {'emoji': '🏃', 'color': 'linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%)', 'border_color': '#8b5cf6'},
-    'ice hockey': {'emoji': '🏒', 'color': 'linear-gradient(135deg, #64748b 0%, #475569 100%)', 'border_color': '#64748b'},
+    'soccer': {'icon': 'futbol', 'border_color': '#0066ff', 'accent_color': '#0066ff'},
+    'football': {'icon': 'football', 'border_color': '#a11919', 'accent_color': '#a11919'},
+    'tennis': {'icon': 'table-tennis-paddle-ball', 'border_color': '#13cf97', 'accent_color': '#13cf97'},
+    'golf': {'icon': 'golf-ball-tee', 'border_color': '#f2b900', 'accent_color': '#f2b900'},
+    'cross country': {'icon': 'person-hiking', 'border_color': '#8b5cf6', 'accent_color': '#8b5cf6'},
+    'field hockey': {'icon': 'hockey-puck', 'border_color': '#ec4899', 'accent_color': '#ec4899'},
+    'volleyball': {'icon': 'volleyball', 'border_color': '#f59e0b', 'accent_color': '#f59e0b'},
+    'basketball': {'icon': 'basketball', 'border_color': '#f97316', 'accent_color': '#f97316'},
+    'lacrosse': {'icon': 'helmet-safety', 'border_color': '#10b981', 'accent_color': '#10b981'},
+    'baseball': {'icon': 'baseball', 'border_color': '#3b82f6', 'accent_color': '#3b82f6'},
+    'swimming': {'icon': 'person-swimming', 'border_color': '#06b6d4', 'accent_color': '#06b6d4'},
+    'track': {'icon': 'person-running', 'border_color': '#8b5cf6', 'accent_color': '#8b5cf6'},
+    'ice hockey': {'icon': 'hockey-puck', 'border_color': '#64748b', 'accent_color': '#64748b'},
 }
 
-# Arts event emoji and color mappings
+# Arts event icon and color mappings
 ARTS_CONFIG = {
-    'dance': {'emoji': '💃', 'color': 'linear-gradient(135deg, #ec4899 0%, #db2777 100%)', 'border_color': '#ec4899'},
-    'music': {'emoji': '🎵', 'color': 'linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%)', 'border_color': '#8b5cf6'},
-    'theater': {'emoji': '🎭', 'color': 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)', 'border_color': '#f59e0b'},
-    'theatre': {'emoji': '🎭', 'color': 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)', 'border_color': '#f59e0b'},
-    'visual': {'emoji': '🎨', 'color': 'linear-gradient(135deg, #06b6d4 0%, #0891b2 100%)', 'border_color': '#06b6d4'},
-    'art': {'emoji': '🎨', 'color': 'linear-gradient(135deg, #06b6d4 0%, #0891b2 100%)', 'border_color': '#06b6d4'},
-    'concert': {'emoji': '🎶', 'color': 'linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%)', 'border_color': '#8b5cf6'},
-    'performance': {'emoji': '🎵', 'color': 'linear-gradient(135deg, #f97316 0%, #ea580c 100%)', 'border_color': '#f97316'},
-    'showcase': {'emoji': '✨', 'color': 'linear-gradient(135deg, #eab308 0%, #ca8a04 100%)', 'border_color': '#eab308'},
-    'exhibit': {'emoji': '🖼️', 'color': 'linear-gradient(135deg, #06b6d4 0%, #0891b2 100%)', 'border_color': '#06b6d4'},
+    'dance': {'icon': 'person-walking', 'border_color': '#ec4899', 'accent_color': '#ec4899'},
+    'music': {'icon': 'music', 'border_color': '#8b5cf6', 'accent_color': '#8b5cf6'},
+    'theater': {'icon': 'masks-theater', 'border_color': '#f59e0b', 'accent_color': '#f59e0b'},
+    'theatre': {'icon': 'masks-theater', 'border_color': '#f59e0b', 'accent_color': '#f59e0b'},
+    'visual': {'icon': 'palette', 'border_color': '#06b6d4', 'accent_color': '#06b6d4'},
+    'art': {'icon': 'palette', 'border_color': '#06b6d4', 'accent_color': '#06b6d4'},
+    'concert': {'icon': 'music', 'border_color': '#8b5cf6', 'accent_color': '#8b5cf6'},
+    'performance': {'icon': 'microphone-lines', 'border_color': '#f97316', 'accent_color': '#f97316'},
+    'showcase': {'icon': 'star', 'border_color': '#eab308', 'accent_color': '#eab308'},
+    'exhibit': {'icon': 'palette', 'border_color': '#06b6d4', 'accent_color': '#06b6d4'},
 }
+
+def build_icon_html(icon_name: Optional[str], alt_text: str, size: int = 20) -> str:
+    """Return inline HTML for a small icon (Font Awesome CDN or letter fallback)."""
+    if icon_name:
+        icon_url = f"{ICON_CDN_BASE}/{icon_name}.svg"
+        return (
+            f'<img src="{icon_url}" width="{size}" height="{size}" alt="{alt_text}" '
+            'style="display:block;" border="0" />'
+        )
+
+    fallback_letter = (alt_text[:1] if alt_text else "?").upper()
+    return (
+        f'<span role="img" aria-label="{alt_text}" '
+        f"style=\"display:inline-block;width:{size}px;height:{size}px;border-radius:50%;"
+        "background:#041e42;color:#ffffff;font-family:'Red Hat Text', Arial, sans-serif;"
+        f"font-size:{max(11, int(size*0.55))}px;line-height:{size}px;text-align:center;font-weight:700;\">"
+        f"{fallback_letter}</span>"
+    )
 
 class Game:
     def __init__(self, team: str, opponent: str, date: str, time: str, location: str,
@@ -89,12 +115,12 @@ class Game:
         self.event_type = 'game'  # To distinguish from arts events
 
     def get_sport_config(self) -> Dict[str, str]:
-        """Get emoji and color for the sport"""
+        """Get icon and color for the sport"""
         for sport_key, config in SPORT_CONFIG.items():
             if sport_key in self.sport:
                 return config
         # Default fallback
-        return {'emoji': '🏆', 'color': 'linear-gradient(135deg, #6b7280 0%, #4b5563 100%)', 'border_color': '#6b7280'}
+        return {'icon': 'trophy', 'border_color': '#6b7280'}
 
     def get_home_away_style(self) -> Dict[str, str]:
         """Get styling for home/away badge"""
@@ -126,12 +152,12 @@ class Event:
         self.sport = category.lower()
 
     def get_sport_config(self) -> Dict[str, str]:
-        """Get emoji and color for the arts event category"""
+        """Get icon and color for the arts event category"""
         for category_key, config in ARTS_CONFIG.items():
             if category_key in self.category:
                 return config
         # Default fallback for arts events
-        return {'emoji': '🎪', 'color': 'linear-gradient(135deg, #a11919 0%, #7c1414 100%)', 'border_color': '#a11919'}
+        return {'icon': 'star', 'border_color': '#a11919'}
 
     def get_home_away_style(self) -> Dict[str, str]:
         """Get styling for event badge (always 'Event')"""
@@ -493,206 +519,111 @@ def group_games_by_date(games: List[Union[Game, Event]]) -> Dict[str, List[Union
 
     return games_by_date
 
-def generate_featured_event_card_html(event: Event) -> str:
-    """Generate HTML for a featured arts event card"""
-    event_config = event.get_sport_config()
-    event_badge_style = event.get_home_away_style()
 
-    # Arts events always get featured styling
-    top_accent = f"background:{event_config['color']};"
-    card_border = "border:2px solid #a11919;"  # Kent Denver red border for arts
-    card_shadow = "box-shadow:0 6px 20px rgba(161,25,25,0.15);"
-    inner_radius = "border-radius:12px;-webkit-border-radius:12px;-moz-border-radius:12px;"
+def generate_featured_event_card_html(event: Event) -> str:
+    '''Generate HTML for a featured arts event card'''
+    event_config = event.get_sport_config()
+    category_label = event.category.title()
+    icon_html = build_icon_html(event_config.get('icon'), f"{category_label} icon")
 
     return f'''
-    <td class="stack featured-card" width="50%" valign="top" style="padding:10px 12px;">
-      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" class="featured-game" style="{inner_radius}{card_border}background:#ffffff;{card_shadow}">
-        <tr><td style="height:16px;{top_accent}border-top-left-radius:12px;border-top-right-radius:12px;"></td></tr>
-        <tr>
-          <td class="featured-card-content" style="padding:20px 22px 18px 22px;">
-            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:10px;">
-              <tr>
-                <td style="width:32px;vertical-align:middle;">
-                  <span style="font-size:24px;">{event_config['emoji']}</span>
-                </td>
-                <td style="vertical-align:middle;">
-                  <div style="display:inline-block;padding:6px 12px;border-radius:6px;background:{event_badge_style['background']};color:{event_badge_style['color']};font-family:'Red Hat Text', Arial, Helvetica, sans-serif;font-weight:700;font-size:12px;letter-spacing:.3px;text-transform:uppercase;">{event.time} • {event_badge_style['text']}</div>
-                </td>
-              </tr>
-            </table>
-            <div class="featured-team-name" style="color:#041e42;font-family:'Crimson Pro', Georgia, 'Times New Roman', serif;font-weight:800;font-size:22px;line-height:26px;margin-bottom:6px;">{event.title}</div>
-            <p style="margin:6px 0 0 0;color:#6b7280;font-family:'Red Hat Text', Arial, Helvetica, sans-serif;font-size:14px;line-height:20px;">
-              📍 {event.location}
-            </p>
-          </td>
-        </tr>
-      </table>
-    </td>'''
+                              <tr>
+                                <td style="padding:6px 0;">
+                                  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #e3e7ef;border-left:4px solid {event_config['border_color']};border-radius:12px;background:#fbfbfb;">
+                                    <tr>
+                                      <td style="padding:16px 18px;">
+                                        <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+                                          <tr>
+                                            <td style="width:28px;vertical-align:top;">{icon_html}</td>
+                                            <td style="padding-left:10px;">
+                                              <div style="font-size:12px;letter-spacing:.18em;color:#6b7280;text-transform:uppercase;">{category_label} • {event.time}</div>
+                                              <div style="margin:6px 0 4px 0;color:#041e42;font-family:'Crimson Pro', Georgia, 'Times New Roman', serif;font-size:18px;line-height:22px;font-weight:600;">{event.title}</div>
+                                              <p style="margin:0;color:#4b5563;font-size:14px;line-height:20px;">{event.location}</p>
+                                            </td>
+                                          </tr>
+                                        </table>
+                                      </td>
+                                    </tr>
+                                  </table>
+                                </td>
+                              </tr>'''
 
 def generate_featured_game_card_html(game: Game) -> str:
-    """Generate HTML for a featured game card (larger, more prominent)"""
+    '''Generate HTML for a featured game card (single column)'''
     sport_config = game.get_sport_config()
-    home_away_style = game.get_home_away_style()
+    icon_html = build_icon_html(sport_config.get('icon'), f"{game.sport.title()} icon")
+    detail_parts = [game.time, "Home" if game.is_home else "Away"]
+    if is_varsity_game(game.team):
+        detail_parts.append("Varsity")
+    time_line = " • ".join(detail_parts)
 
-    # Determine if this is a varsity game for additional styling
-    is_varsity = is_varsity_game(game.team)
-
-    # Enhanced styling for featured games with prominent visual effects
-    # Always use sport-specific color for top accent
-    top_accent = f"background:{sport_config['color']};"
-
-    if game.is_home and is_varsity:
-        team_style = "font-weight:900;"  # Extra bold for home varsity
-        # Use wrapper div approach for gradient border with proper radius alignment
-        card_border = ""  # No border on inner table
-        card_shadow = "box-shadow:0 8px 25px rgba(34,197,94,0.15), 0 3px 10px rgba(234,179,8,0.1);"
-        badge_html = '<div style="display:inline-block;margin-left:8px;padding:2px 8px;border-radius:12px;-webkit-border-radius:12px;-moz-border-radius:12px;background:#22c55e;background:linear-gradient(135deg, #22c55e, #eab308);color:white;font-family:\'Red Hat Text\', Arial, sans-serif;font-weight:700;font-size:10px;letter-spacing:.5px;text-transform:uppercase;">HOME • VARSITY</div>'
-        # Special wrapper for gradient border with email client fallbacks
-        wrapper_style = "background:#22c55e;background:linear-gradient(135deg, #22c55e, #eab308);padding:3px;border-radius:12px;-webkit-border-radius:12px;-moz-border-radius:12px;"
-        inner_radius = "border-radius:9px;-webkit-border-radius:9px;-moz-border-radius:9px;"  # Slightly smaller to account for padding
-    elif game.is_home:
-        team_style = "font-weight:900;"  # Extra bold for home games
-        card_border = "border:3px solid #22c55e;"  # Thick green border for home games
-        card_shadow = "box-shadow:0 6px 20px rgba(34,197,94,0.15);"
-        badge_html = '<div style="display:inline-block;margin-left:8px;padding:2px 8px;border-radius:12px;-webkit-border-radius:12px;-moz-border-radius:12px;background:#22c55e;color:white;font-family:\'Red Hat Text\', Arial, sans-serif;font-weight:700;font-size:10px;letter-spacing:.5px;text-transform:uppercase;">HOME</div>'
-        wrapper_style = ""
-        inner_radius = "border-radius:12px;-webkit-border-radius:12px;-moz-border-radius:12px;"
-    elif is_varsity:
-        team_style = "font-weight:900;"  # Extra bold for varsity
-        card_border = "border:3px solid #eab308;"  # Thick yellow border for varsity
-        card_shadow = "box-shadow:0 6px 20px rgba(234,179,8,0.15);"
-        badge_html = '<div style="display:inline-block;margin-left:8px;padding:2px 8px;border-radius:12px;-webkit-border-radius:12px;-moz-border-radius:12px;background:#eab308;color:white;font-family:\'Red Hat Text\', Arial, sans-serif;font-weight:700;font-size:10px;letter-spacing:.5px;text-transform:uppercase;">VARSITY</div>'
-        wrapper_style = ""
-        inner_radius = "border-radius:12px;-webkit-border-radius:12px;-moz-border-radius:12px;"
-    else:
-        team_style = "font-weight:800;"  # Normal bold
-        card_border = "border:1px solid #e6eaf2;"  # Normal border
-        card_shadow = ""
-        badge_html = ""
-        wrapper_style = ""
-        inner_radius = "border-radius:12px;-webkit-border-radius:12px;-moz-border-radius:12px;"
-
-    # Use wrapper div for gradient border on home+varsity games
-    if wrapper_style:
-        return f'''
-    <td class="stack featured-card" width="50%" valign="top" style="padding:10px 12px;">
-      <div style="{wrapper_style}">
-        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" class="featured-game" style="{inner_radius}background:#ffffff;{card_shadow}">
-          <tr><td style="height:16px;{top_accent}border-top-left-radius:9px;border-top-right-radius:9px;"></td></tr>
-          <tr>
-            <td class="featured-card-content" style="padding:20px 22px 18px 22px;">
-              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:10px;">
-                <tr>
-                  <td style="width:32px;vertical-align:middle;">
-                    <span style="font-size:24px;">{sport_config['emoji']}</span>
-                  </td>
-                  <td style="vertical-align:middle;">
-                    <div style="display:inline-block;padding:6px 12px;border-radius:6px;background:{home_away_style['background']};color:{home_away_style['color']};font-family:'Red Hat Text', Arial, Helvetica, sans-serif;font-weight:700;font-size:12px;letter-spacing:.3px;text-transform:uppercase;">{game.time} • {home_away_style['text']}</div>
-                  </td>
-                </tr>
-              </table>
-              <div class="featured-team-name" style="color:#041e42;font-family:'Crimson Pro', Georgia, 'Times New Roman', serif;{team_style}font-size:22px;line-height:26px;margin-bottom:6px;">{game.team}{badge_html}</div>
-              <p style="margin:0;color:#374151;font-family:'Red Hat Text', Arial, Helvetica, sans-serif;font-size:16px;line-height:22px;font-weight:600;">
-                vs. <strong style="color:#041e42;">{game.opponent}</strong>
-              </p>
-              <p style="margin:6px 0 0 0;color:#6b7280;font-family:'Red Hat Text', Arial, Helvetica, sans-serif;font-size:14px;line-height:20px;">
-                📍 {game.location}
-              </p>
-            </td>
-          </tr>
-        </table>
-      </div>
-    </td>'''
-    else:
-        return f'''
-    <td class="stack featured-card" width="50%" valign="top" style="padding:10px 12px;">
-      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" class="featured-game" style="{inner_radius}{card_border}background:#ffffff;{card_shadow}">
-        <tr><td style="height:16px;{top_accent}border-top-left-radius:12px;border-top-right-radius:12px;"></td></tr>
-        <tr>
-          <td class="featured-card-content" style="padding:20px 22px 18px 22px;">
-            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:10px;">
-              <tr>
-                <td style="width:32px;vertical-align:middle;">
-                  <span style="font-size:24px;">{sport_config['emoji']}</span>
-                </td>
-                <td style="vertical-align:middle;">
-                  <div style="display:inline-block;padding:6px 12px;border-radius:6px;background:{home_away_style['background']};color:{home_away_style['color']};font-family:'Red Hat Text', Arial, Helvetica, sans-serif;font-weight:700;font-size:12px;letter-spacing:.3px;text-transform:uppercase;">{game.time} • {home_away_style['text']}</div>
-                </td>
-              </tr>
-            </table>
-            <div class="featured-team-name" style="color:#041e42;font-family:'Crimson Pro', Georgia, 'Times New Roman', serif;{team_style}font-size:22px;line-height:26px;margin-bottom:6px;">{game.team}{badge_html}</div>
-            <p style="margin:0;color:#374151;font-family:'Red Hat Text', Arial, Helvetica, sans-serif;font-size:16px;line-height:22px;font-weight:600;">
-              vs. <strong style="color:#041e42;">{game.opponent}</strong>
-            </p>
-            <p style="margin:6px 0 0 0;color:#6b7280;font-family:'Red Hat Text', Arial, Helvetica, sans-serif;font-size:14px;line-height:20px;">
-              📍 {game.location}
-            </p>
-          </td>
-        </tr>
-      </table>
-    </td>'''
+    return f'''
+                              <tr>
+                                <td style="padding:6px 0;">
+                                  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #e3e7ef;border-left:4px solid {sport_config['border_color']};border-radius:12px;background:#fbfbfb;">
+                                    <tr>
+                                      <td style="padding:16px 18px;">
+                                        <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+                                          <tr>
+                                            <td style="width:28px;vertical-align:top;">{icon_html}</td>
+                                            <td style="padding-left:10px;">
+                                              <div style="font-size:12px;letter-spacing:.18em;color:#6b7280;text-transform:uppercase;">{time_line}</div>
+                                              <div style="margin:6px 0 4px 0;color:#041e42;font-family:'Crimson Pro', Georgia, 'Times New Roman', serif;font-size:18px;line-height:22px;font-weight:600;">{game.team}</div>
+                                              <p style="margin:0;color:#4b5563;font-size:14px;line-height:20px;">vs. {game.opponent}</p>
+                                              <p style="margin:6px 0 0 0;color:#6b7280;font-size:13px;line-height:18px;">{game.location}</p>
+                                            </td>
+                                          </tr>
+                                        </table>
+                                      </td>
+                                    </tr>
+                                  </table>
+                                </td>
+                              </tr>'''
 
 def generate_other_event_list_item_html(event: Event) -> str:
-    """Generate HTML for an arts event in the compact list format"""
-    event_config = event.get_sport_config()
-    event_badge_style = event.get_home_away_style()
+    '''Generate HTML for an arts event in the compact list format'''
+    category_label = event.category.title()
+    icon_html = build_icon_html(event.get_sport_config().get('icon'), f"{category_label} icon")
 
     return f'''
-    <tr>
-      <td style="padding:12px 18px;border-bottom:1px solid #f3f4f6;border-left:4px solid {event_config['border_color']};">
-        <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
-          <tr>
-            <td style="width:24px;vertical-align:middle;">
-              <span style="font-size:16px;">{event_config['emoji']}</span>
-            </td>
-            <td style="vertical-align:middle;padding-left:8px;">
-              <div style="color:#041e42;font-family:'Crimson Pro', Georgia, 'Times New Roman', serif;font-weight:700;font-size:16px;line-height:20px;margin-bottom:2px;">{event.title}</div>
-              <p style="margin:0;color:#374151;font-family:'Red Hat Text', Arial, Helvetica, sans-serif;font-size:13px;line-height:18px;">
-                📍 {event.location}
-              </p>
-            </td>
-            <td style="text-align:right;vertical-align:middle;width:80px;">
-              <div style="display:inline-block;padding:3px 8px;border-radius:4px;background:{event_badge_style['background']};color:{event_badge_style['color']};font-family:'Red Hat Text', Arial, Helvetica, sans-serif;font-weight:700;font-size:10px;letter-spacing:.2px;text-transform:uppercase;">{event.time}</div>
-            </td>
-          </tr>
-        </table>
-      </td>
-    </tr>'''
+                              <tr>
+                                <td style="padding:12px 0;border-top:1px solid #edf0f5;">
+                                  <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+                                    <tr>
+                                      <td style="width:28px;vertical-align:top;">{icon_html}</td>
+                                      <td style="font-family:'Crimson Pro', Georgia, 'Times New Roman', serif;font-weight:600;font-size:16px;line-height:20px;color:#041e42;padding-left:10px;">{event.title}</td>
+                                      <td style="text-align:right;color:#6b7280;font-size:12px;letter-spacing:.18em;text-transform:uppercase;">{event.time}</td>
+                                    </tr>
+                                    <tr>
+                                      <td></td>
+                                      <td colspan="2" style="padding-top:4px;color:#4b5563;font-size:13px;line-height:18px;">{category_label} • {event.location}</td>
+                                    </tr>
+                                  </table>
+                                </td>
+                              </tr>'''
 
 def generate_other_game_list_item_html(game: Game) -> str:
-    """Generate HTML for a game in the compact list format"""
-    sport_config = game.get_sport_config()
-    home_away_style = game.get_home_away_style()
-
-    # Simpler styling for list items
-    if game.is_home:
-        home_indicator = " 🏠"
-        team_style = "font-weight:700;"
-    else:
-        home_indicator = ""
-        team_style = "font-weight:600;"
+    '''Generate HTML for a game in the compact list format'''
+    detail_parts = [f"vs. {game.opponent}", "Home" if game.is_home else "Away"]
+    detail_line = " • ".join(detail_parts)
+    icon_html = build_icon_html(game.get_sport_config().get('icon'), f"{game.sport.title()} icon")
 
     return f'''
-    <tr>
-      <td style="padding:12px 18px;border-bottom:1px solid #f3f4f6;border-left:4px solid {sport_config['border_color']};">
-        <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
-          <tr>
-            <td style="width:24px;vertical-align:middle;">
-              <span style="font-size:16px;">{sport_config['emoji']}</span>
-            </td>
-            <td style="vertical-align:middle;padding-left:8px;">
-              <div style="color:#041e42;font-family:'Crimson Pro', Georgia, 'Times New Roman', serif;{team_style}font-size:16px;line-height:20px;margin-bottom:2px;">{game.team}{home_indicator}</div>
-              <p style="margin:0;color:#374151;font-family:'Red Hat Text', Arial, Helvetica, sans-serif;font-size:13px;line-height:18px;">
-                vs. <strong>{game.opponent}</strong> • 📍 {game.location}
-              </p>
-            </td>
-            <td style="text-align:right;vertical-align:middle;width:80px;">
-              <div style="display:inline-block;padding:3px 8px;border-radius:4px;background:{home_away_style['background']};color:{home_away_style['color']};font-family:'Red Hat Text', Arial, Helvetica, sans-serif;font-weight:700;font-size:10px;letter-spacing:.2px;text-transform:uppercase;">{game.time}</div>
-            </td>
-          </tr>
-        </table>
-      </td>
-    </tr>'''
+                              <tr>
+                                <td style="padding:12px 0;border-top:1px solid #edf0f5;">
+                                  <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+                                    <tr>
+                                      <td style="width:28px;vertical-align:top;">{icon_html}</td>
+                                      <td style="font-family:'Crimson Pro', Georgia, 'Times New Roman', serif;font-weight:600;font-size:16px;line-height:20px;color:#041e42;padding-left:10px;">{game.team}</td>
+                                      <td style="text-align:right;color:#6b7280;font-size:12px;letter-spacing:.18em;text-transform:uppercase;">{game.time}</td>
+                                    </tr>
+                                    <tr>
+                                      <td></td>
+                                      <td colspan="2" style="padding-top:4px;color:#4b5563;font-size:13px;line-height:18px;">{detail_line} • {game.location}</td>
+                                    </tr>
+                                  </table>
+                                </td>
+                              </tr>'''
 
 def is_middle_school_game(team_name: str) -> bool:
     """Determine if a game is for middle school based on team name"""
@@ -871,102 +802,90 @@ def get_dynamic_text_variations(start_date: str, has_arts_events: bool = False) 
     if has_arts_events:
         # Hero texts when there are BOTH sports and arts events
         hero_texts = [
-            "The Sun Devil spirit shines bright this week! Our Kent Denver students are ready to compete and perform across {sport_count} sports and arts events. Go Devils! 🔥😈🎭",
-            "From the Rocky Mountains to the playing fields and stages, our Sun Devils are bringing their competitive and creative spirit this week! 🏔️⚡🎨",
-            "Kent Denver's finest are taking the field and the stage! Join us as we support {sport_count} sports and performances packed with talent and determination. 🔥🏆🎭",
-            "Excellence is our standard! This week features {sport_count} sports and arts events where Sun Devil talent shines brightest. 😈🏆🎵",
-            "Altitude advantage meets Sun Devil attitude! Our teams and performers are ready to soar across {sport_count} sports and arts events this week. Mile High, Sun Devil High! 🏔️🔥🎭",
-            "Exciting action and performances are coming your way! Kent Denver's Sun Devils are bringing their best to {sport_count} sports and arts events this week. ❤️⚡🎨",
-            "The Sun Devil legacy continues! This week's {sport_count} sports and performances showcase why Kent Denver develops champions and artists. Come witness greatness! 🏆🔥🎭",
-            "Horns up, spirits high! Our Sun Devils are ready to compete and perform across {sport_count} sports and arts events with heart and determination. Join us! 😈⚡🎵",
-            "Excellence is our tradition, victory and artistry are our goals! This week's {sport_count} sports and performances showcase the depth of Sun Devil pride. 🌊🔥🎭",
-            "From sunrise to sunset, our Sun Devils shine! Kent Denver's athletic and artistic talent is on display across {sport_count} sports and arts events this week. ✨😈🎨",
-            "The mountains may be high, but Sun Devil spirits soar higher! Join us for {sport_count} sports and performances of Colorado excellence. 🏔️🔥🎭",
-            "Built through dedication, strengthened by Sun Devil spirit! This week's {sport_count} sports and arts events will showcase your passion for Kent Denver! 🔥⚡🎵"
+            "Sun Devil students are busy on the courts, fields, and stages this week with {sport_count} events on the calendar.",
+            "It's a full campus schedule with {sport_count} chances to watch our athletes compete and our performers share their work.",
+            "From rehearsals to walkthroughs, students have prepared for {sport_count} games and performances this week.",
+            "Take a look at the {sport_count} competitions and shows happening around Kent Denver and stop by when you can.",
+            "Our community comes together for {sport_count} athletic and arts events this week, and every clap or quiet audience helps.",
+            "Here is what is happening: {sport_count} events that highlight how our students balance practices, classes, and creativity.",
+            "We have {sport_count} upcoming games and performances that reflect the time our students have invested this season.",
+            "It is another busy stretch on campus with {sport_count} events where Sun Devils play, perform, and support one another.",
+            "Fields, courts, rehearsal rooms, and stages are active this week with {sport_count} student-led events.",
+            "Thanks for checking the schedule; {sport_count} competitions and performances await over the next few days."
         ]
     else:
         # Hero texts when there are ONLY sports (no arts events)
         hero_texts = [
-            "The Sun Devil spirit shines bright this week! Our Kent Denver athletes are ready to compete across {sport_count} sports. Go Devils! 🔥😈",
-            "From the Rocky Mountains to the playing fields, our Sun Devils are bringing their competitive spirit to {sport_count} sports this week! 🏔️⚡",
-            "Kent Denver's finest are taking the field! Join us as we support {sport_count} sports packed with talent and determination. 🔥🏆",
-            "Excellence is our standard! This week features {sport_count} sports where Sun Devil talent shines brightest. 😈🏆",
-            "Altitude advantage meets Sun Devil attitude! Our teams are ready to soar across {sport_count} sports this week. Mile High, Sun Devil High! 🏔️🔥",
-            "Exciting action is coming your way! Kent Denver's Sun Devils are bringing their best to {sport_count} sports this week. ❤️⚡",
-            "The Sun Devil legacy continues! This week's {sport_count} sports showcase why Kent Denver develops champions. Come witness greatness! 🏆🔥",
-            "Horns up, spirits high! Our Sun Devils are ready to compete across {sport_count} sports with heart and determination. Join us! 😈⚡",
-            "Excellence is our tradition, victory is our goal! This week's {sport_count} sports showcase the depth of Sun Devil pride. 🌊🔥",
-            "From sunrise to sunset, our Sun Devils shine! Kent Denver's athletic talent is on display across {sport_count} sports this week. ✨😈",
-            "The mountains may be high, but Sun Devil spirits soar higher! Join us for {sport_count} sports of Colorado athletic excellence. 🏔️🔥",
-            "Built through dedication, strengthened by Sun Devil spirit! This week's {sport_count} sports will showcase your passion for Kent Denver athletics! 🔥⚡"
+            "Sun Devil teams have {sport_count} games this week, and we appreciate every familiar face on the sidelines.",
+            "It's a steady slate of {sport_count} matchups across campus and around Colorado.",
+            "Here is a look at {sport_count} contests our athletes have been preparing for this week.",
+            "Practice has been focused, and now {sport_count} games are on deck.",
+            "This week features {sport_count} competitions that show how hard our teams have been working.",
+            "We have {sport_count} games ahead, and every cheer or quick check in makes a difference.",
+            "It is another busy stretch for Kent Denver athletics with {sport_count} scheduled matchups.",
+            "Keep an eye on these {sport_count} games and drop by if you are nearby.",
+            "Our athletes step into {sport_count} contests this week, and encouragement goes a long way.",
+            "Sharing this list of {sport_count} games helps rides, cheering sections, and coverage come together."
         ]
 
     # CTA text variations - Different sets for sports-only vs sports+arts
     if has_arts_events:
         # CTA texts when there are BOTH sports and arts events
         cta_texts = [
-            "Show your Sun Devil pride! Come cheer and applaud as our athletes and performers represent Kent Denver across every sport, stage, and grade level.",
-            "The Sun Devil community needs YOU! Join us and help our teams and performers feel the power of true Kent Denver spirit.",
-            "From the mountains to the fields and stages, Sun Devils stick together! Your presence energizes our athletes and artists and shows your school pride.",
-            "Horns up, voices loud! Pack the stands and fill the seats to show our student-athletes and performers what it means to have Sun Devil nation behind them.",
-            "Feel the excitement, share the spirit! Your cheers and applause are the boost that helps our Sun Devils perform their best. Come join us!",
-            "Red and blue runs through our school, victory and artistry are our shared goals! Support our teams and performers and be part of the Kent Denver tradition.",
-            "The altitude is high, but Sun Devil spirits soar higher! Join your fellow Sun Devils and create an amazing atmosphere at games and performances.",
-            "Champions and artists are supported by community! Be the encouragement that helps our Sun Devils reach new heights of excellence.",
-            "Your energy matters, your passion shows! Come witness greatness on fields and stages and help write the next chapter of Sun Devil excellence.",
-            "From morning games to evening performances, our Sun Devils need their community! Join us and feel the rush of Kent Denver pride.",
-            "The strength is in the details, and you are that strength! Your support creates the home advantage and inspiring atmosphere that makes a difference.",
-            "Wear red, dream big, cheer loud! Come celebrate the heart, dedication, and talent of Kent Denver's finest student-athletes and performers!"
+            "Stay for a quarter, a song, or one scene when you can; students notice familiar faces.",
+            "If you know someone performing or competing, share the schedule so they have company in the stands.",
+            "Offer a ride, snap a quick photo, or send a text afterward to let students know you saw their work.",
+            "Spread the word about these games and shows so classmates and families can plan together.",
+            "Check with coaches or directors if you have time to help with scorekeeping, tickets, or simple setup.",
+            "Bring someone who has never been to a Kent Denver event and show them what an ordinary week looks like.",
+            "If travel keeps you away, send a note of encouragement or share a highlight with the team or ensemble.",
+            "A simple clap or quiet cheer is enough; the goal is to let students know their effort is seen.",
+            "Consider staying a few minutes after an event to thank staff or help reset equipment.",
+            "Share photos or quick recaps so performers and athletes feel the community following along."
         ]
     else:
         # CTA texts when there are ONLY sports (no arts events)
         cta_texts = [
-            "Show your Sun Devil pride! Come cheer as our athletes compete for Kent Denver across every sport and grade level.",
-            "The Sun Devil community needs YOU! Join us and help our teams feel the power of true Kent Denver spirit.",
-            "From the mountains to the fields, Sun Devils stick together! Your presence energizes our athletes and shows your school pride.",
-            "Horns up, voices loud! Pack the stands and show our student-athletes what it means to have Sun Devil nation behind them.",
-            "Feel the excitement, share the spirit! Your cheers are the boost that helps our Sun Devils perform their best. Come join us!",
-            "Red and blue runs through our school, victory is our shared goal! Support our teams and be part of the Kent Denver tradition.",
-            "The altitude is high, but Sun Devil spirits soar higher! Join your fellow Sun Devils and create an amazing atmosphere.",
-            "Champions are supported by community! Be the encouragement that helps our Sun Devils reach new heights of excellence.",
-            "Your energy matters, your passion shows! Come witness greatness and help write the next chapter of Sun Devil athletics.",
-            "From morning games to evening victories, our Sun Devils need their community! Join us and feel the rush of Kent Denver pride.",
-            "The strength is in the details, and you are that strength! Your support creates the home advantage that makes a difference.",
-            "Wear red, dream big, cheer loud! Come celebrate the heart, dedication, and talent of Kent Denver's finest student-athletes!"
+            "Stop by for a half, an inning, or even a few serves; athletes notice support.",
+            "Share the schedule with teammates' families so carpools and cheering sections are easy to build.",
+            "Offer a ride or help gather gear after games if you have a few minutes.",
+            "If you cannot attend, send a quick note to the team wishing them luck.",
+            "Check with coaches about small volunteer needs like scoreboard help or snacks.",
+            "Bring a classmate or neighbor who has not seen Sun Devil athletics yet.",
+            "Post or forward final scores so the community stays informed.",
+            "A calm word on the sideline can help students reset between plays.",
+            "Stick around to thank officials and staff who make these games possible.",
+            "Wear school colors during the week so athletes know the community is thinking about them."
         ]
 
     # Intro text variations - Different sets for sports-only vs sports+arts
     if has_arts_events:
         # Intro texts when there are BOTH sports and arts events
         intro_texts = [
-            "The Sun Devil spirit is shining bright! Mark your calendars for exciting competitions and performances across every sport, art form, and grade level at Kent Denver.",
-            "Get ready for great matchups and captivating performances as our talented Sun Devil athletes and artists take center stage this week.",
-            "The mountains echo with excitement! Get ready to witness Kent Denver's finest athletes and performers compete and create with determination this week.",
-            "From morning to evening, our Sun Devils are ready to represent our school with pride across multiple sports, performances, and divisions.",
-            "Witness the excellence that happens when Sun Devil determination meets Colorado spirit in these exciting athletic and artistic events.",
-            "Our student-athletes and performers are bringing their best to represent the Kent Denver tradition with dedication and school pride.",
-            "Feel the excitement in the air as Sun Devil athletics and arts bring together our community for outstanding moments of competition and creativity.",
-            "Rally behind our teams and performers as they compete and create with heart, supported by passion and that strong Sun Devil spirit.",
-            "The stage is set for excellence! Our Sun Devil athletes and artists are ready to deliver performances that make our school proud.",
-            "From courts to fields to stages, our students are ready to compete and perform in every arena with the heart of true Kent Denver Sun Devils.",
-            "Join the Sun Devil community as we unite to support student-athletes and performers who represent excellence in every competition and performance.",
-            "This week brings athletic and artistic excellence in action as our Sun Devils compete and perform with the dedication that makes Kent Denver special."
+            "These are the games and performances on the calendar this week, grouped by day for quick reference.",
+            "Use this list to plan carpools, coordinate call times, or simply know where students will be.",
+            "Times and locations can shift, so double check details with the team or ensemble before leaving.",
+            "Feel free to forward this rundown to grandparents, siblings, or friends who want to follow along.",
+            "We include both athletics and arts so you can see how the week fits together.",
+            "Bookmark this note if you are tracking rehearsals, contests, and travel in one place.",
+            "Thank you for being flexible when events are added or weather creates last minute changes.",
+            "Let us know if you spot a correction so we can keep the shared schedule accurate.",
+            "Showing up for even one of these events helps keep the community connected.",
+            "If you take photos or capture sound, please share them with the students and coaches afterward."
         ]
     else:
         # Intro texts when there are ONLY sports (no arts events)
         intro_texts = [
-            "The Sun Devil spirit is shining bright! Mark your calendars for exciting competitions across every sport and grade level at Kent Denver.",
-            "Get ready for great matchups as our talented Sun Devil athletes take center stage in competitions that showcase their skills.",
-            "The mountains echo with excitement! Get ready to witness Kent Denver's finest athletes compete with determination this week.",
-            "From morning to evening, our Sun Devils are ready to represent our school with pride across multiple sports and divisions.",
-            "Witness the excellence that happens when Sun Devil determination meets Colorado spirit in these exciting athletic events.",
-            "Our student-athletes are bringing their best to represent the Kent Denver tradition with dedication and school pride.",
-            "Feel the excitement in the air as Sun Devil athletics brings together our community for outstanding moments of competition.",
-            "Rally behind our teams as they compete with heart, supported by passion and that strong Sun Devil spirit.",
-            "The stage is set for excellence! Our Sun Devil athletes are ready to deliver performances that make our school proud.",
-            "From courts to fields, our athletes are ready to compete in every arena with the heart of true Kent Denver Sun Devils.",
-            "Join the Sun Devil community as we unite to support student-athletes who represent excellence in every competition.",
-            "This week brings athletic excellence in action as our Sun Devils compete with the dedication that makes Kent Denver special."
+            "These are the games on the calendar this week, organized by day for easy planning.",
+            "Use this schedule to line up rides, meals, and meetups around each matchup.",
+            "Times and locations can change, so confirm details with the coaching staff before leaving.",
+            "Forward this email to families or classmates who might want to follow along.",
+            "We highlight every level so you can see how the week flows from middle school to varsity.",
+            "Bookmark this note if you are tracking practice wrap ups, travel plans, and game times.",
+            "Thanks for being patient when weather or brackets require quick adjustments.",
+            "Send updates our way if you notice a typo or a result that should be added.",
+            "Showing up for even a portion of a game helps students feel supported.",
+            "If you capture photos or film, share them with the team so everyone can relive the moment."
         ]
 
     # Main title variations (8) - Simple and professional
@@ -983,30 +902,30 @@ def get_dynamic_text_variations(start_date: str, has_arts_events: bool = False) 
 
     # CTA button text variations (10) - Kent Denver specific with appropriate tone
     cta_button_texts = [
-        "Show Sun Devil Pride",
-        "Join The Community",
-        "Share The Spirit",
-        "Horns Up, Hearts Out",
-        "Support The Team",
-        "Rally The Devils",
-        "Wear Red & Blue",
-        "Answer The Call",
-        "Stand With Us",
-        "Embrace The Tradition"
+        "Plan Your Week",
+        "Share The Schedule",
+        "Bring A Friend",
+        "Offer A Ride",
+        "Check Directions",
+        "Mark Your Calendar",
+        "Send Encouragement",
+        "Help On Game Day",
+        "Stay For A Bit",
+        "Pitch In"
     ]
 
     # CTA header variations (10) - More creative and Kent Denver specific
     cta_headers = [
-        "Horns Up, Kent Denver! 🔥😈",
-        "Sun Devil Spirit! 🔥⚡",
-        "Red & Blue Ready! ❤️💙",
-        "Mile High Devils! 🏔️🔥",
-        "Show Your Pride! 😈⚡",
-        "Sun Devil Strong! 💪🔥",
-        "Rise Up, Sun Devils! 🔥😈",
-        "School Spirit Awaits! ✨😈",
-        "Wear Red, Dream Big! ❤️🏆",
-        "Sun Devil Legacy! 🔥�"
+        "Thanks For Showing Up",
+        "Bring Someone Along",
+        "Small Crowds Matter",
+        "Faces In The Stands",
+        "Support On And Off Campus",
+        "Quiet Cheers Count",
+        "Neighbors In The Seats",
+        "Help When You Can",
+        "Keep The Updates Coming",
+        "Sun Devils Notice"
     ]
 
     # Use week number to select variations (modulo to cycle through options)
@@ -1177,6 +1096,46 @@ def generate_html_email(games_by_date: Dict[str, List[Game]], date_range: str,
     # Get dynamic text variations based on whether there are arts events
     text_variations = get_dynamic_text_variations(start_date, has_arts_events)
     sport_count = len(set(game.sport for games in games_by_date.values() for game in games))
+    total_events = len(all_events)
+    home_events = sum(1 for event in all_events if getattr(event, 'is_home', False))
+    away_events = total_events - home_events
+    arts_events_count = sum(1 for event in all_events if isinstance(event, Event))
+
+    summary_metrics = [
+        {'label': 'Events Scheduled', 'value': total_events, 'color': '#041e42'}
+    ]
+    if home_events:
+        summary_metrics.append({'label': 'Home On Campus', 'value': home_events, 'color': '#13cf97'})
+    if away_events:
+        summary_metrics.append({'label': 'Travel / Away', 'value': away_events, 'color': '#a11919'})
+    if arts_events_count:
+        summary_metrics.append({'label': 'Performances', 'value': arts_events_count, 'color': '#0066ff'})
+
+    metric_width = max(25, int(100 / len(summary_metrics))) if summary_metrics else 25
+    summary_cells = ''.join(
+        f'''
+                <td class="stack" width="{metric_width}%" valign="top" style="padding:8px;">
+                  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" height="140" style="height:140px;border:1px solid #e1e4eb;border-radius:12px;background:#ffffff;">
+                    <tr>
+                      <td height="140" style="height:140px;padding:16px 14px;text-align:left;">
+                        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="height:100%;">
+                          <tr>
+                            <td style="font-size:12px;letter-spacing:.18em;color:{metric['color']};text-transform:uppercase;font-family:'Red Hat Text', Arial, Helvetica, sans-serif;font-weight:600;">
+                              {metric['label']}
+                            </td>
+                          </tr>
+                          <tr>
+                            <td style="padding-top:10px;color:#041e42;font-family:'Crimson Pro', Georgia, 'Times New Roman', serif;font-size:24px;line-height:28px;font-weight:600;">
+                              {metric['value']}
+                            </td>
+                          </tr>
+                        </table>
+                      </td>
+                    </tr>
+                  </table>
+                </td>'''
+        for metric in summary_metrics
+    )
 
     # HTML header and hero section
     title_suffix = f" — {school_level}" if school_level else ""
@@ -1196,55 +1155,32 @@ def generate_html_email(games_by_date: Dict[str, List[Game]], date_range: str,
     <link href="https://fonts.googleapis.com/css2?family=Crimson+Pro:wght@700;800&family=Red+Hat+Text:wght@400;700&display=swap" rel="stylesheet">
     <!--<![endif]-->
     <style>
-      /* Client-specific Styles */
+      @import url('https://fonts.googleapis.com/css2?family=Crimson+Pro:wght@600;700&family=Red+Hat+Text:wght@400;500;600&display=swap');
+
+      body, table, td, a {{ -webkit-text-size-adjust: 100%; -ms-text-size-adjust: 100%; }}
+      table, td {{ mso-table-lspace: 0pt; mso-table-rspace: 0pt; }}
+      img {{ -ms-interpolation-mode: bicubic; border: 0; height: auto; line-height: 100%; outline: none; text-decoration: none; }}
+      table {{ border-collapse: collapse !important; }}
+      body {{ margin: 0 !important; padding: 0 !important; background-color: #f5f5f5; color: #1f2933; font-family: 'Red Hat Text', 'Helvetica Neue', Arial, sans-serif; }}
+
+      .hero-title {{ font-family: 'Crimson Pro', Georgia, 'Times New Roman', serif; font-size: 30px; line-height: 34px; }}
+      .day-title {{ font-family: 'Crimson Pro', Georgia, 'Times New Roman', serif; }}
+      .inner {{ width: 92%; max-width: 720px; margin: 0 auto; }}
+      .stack {{ display: table-cell; vertical-align: top; }}
+      .pad {{ padding: 28px 0; }}
+      a {{ color: #041e42; text-decoration: underline; }}
+
       #outlook a {{ padding: 0; }}
       .ReadMsgBody {{ width: 100%; }}
       .ExternalClass {{ width: 100%; }}
       .ExternalClass, .ExternalClass p, .ExternalClass span, .ExternalClass font, .ExternalClass td, .ExternalClass div {{ line-height: 100%; }}
-      table, td {{ mso-table-lspace: 0pt; mso-table-rspace: 0pt; }}
       #bodyTable {{ margin: 0; padding: 0; width: 100% !important; line-height: 100% !important; }}
 
-      /* Outlook-specific fixes */
-      .mso-hide {{ mso-hide: all; }}
-
-      /* Gmail and Apple Mail fixes */
-      u + .body .gmail-fix {{ display: none; }}
-
-      /* Dark mode support */
-      @media (prefers-color-scheme: dark) {{
-        .dark-mode-bg {{ background-color: #1a1a1a !important; }}
-        .dark-mode-text {{ color: #ffffff !important; }}
-      }}
-
-      /* Mobile Styles */
       @media only screen and (max-width: 600px) {{
         .stack {{ display: block !important; width: 100% !important; }}
-        .pad {{ padding: 16px !important; }}
-        .hero-title {{ font-size: 28px !important; line-height: 34px !important; }}
-        .inner {{ width: 92% !important; }}
-        .game-time {{ font-size: 12px !important; }}
-        .mobile-center {{ text-align: center !important; }}
-        .mobile-hide {{ display: none !important; }}
-        .featured-card {{ padding: 8px 6px !important; }}
-        .featured-card-content {{ padding: 16px 14px 12px 14px !important; }}
-        .featured-team-name {{ font-size: 18px !important; line-height: 22px !important; }}
-        .section-title {{ font-size: 16px !important; }}
-        .day-title {{ font-size: 20px !important; line-height: 24px !important; }}
-      }}
-
-      /* Enhanced Typography */
-      .featured-game {{
-        transition: transform 0.2s ease, box-shadow 0.2s ease;
-      }}
-
-      /* Better spacing for readability */
-      .section-spacing {{ margin-bottom: 20px; }}
-      .day-spacing {{ margin-bottom: 16px; }}
-
-      /* Dark Mode Support */
-      @media (prefers-color-scheme: dark) {{
-        .dark-mode-bg {{ background-color: #1a1a1a !important; }}
-        .dark-mode-text {{ color: #ffffff !important; }}
+        .pad {{ padding: 18px 0 !important; }}
+        .inner {{ width: 94% !important; max-width: 94% !important; }}
+        .hero-title {{ font-size: 26px !important; line-height: 32px !important; }}
       }}
     </style>
     <!--[if mso]>
@@ -1253,37 +1189,62 @@ def generate_html_email(games_by_date: Dict[str, List[Game]], date_range: str,
     </style>
     <![endif]-->
   </head>
-  <body style="margin:0;padding:0;background:#f8f8f8;">
+  <body style="margin:0;padding:0;background:#f5f5f5;">
     <!-- Preheader (hidden) -->
     <div style="display:none;visibility:hidden;opacity:0;color:transparent;height:0;width:0;overflow:hidden;mso-hide:all;font-size:1px;line-height:1px;max-height:0px;max-width:0px;">
-      {school_level + " " if school_level else ""}Games this week {date_range} — {sports_list}. Go Sun Devils! 🔥😈
+      {school_level + " " if school_level else ""}Games this week {date_range} — {sports_list}. Thanks for supporting our students.
     </div>
 
     <!-- Full-bleed outer wrapper -->
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f8f8f8;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f5f5f5;">
       <tr>
         <td align="center">
 
           <!-- HERO -->
-          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#041e42;">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f5f5f5;">
             <tr>
               <td>
-                <table role="presentation" class="inner" align="center" width="1000" cellpadding="0" cellspacing="0" style="width:94%;max-width:1000px;margin:0 auto;">
+                <table role="presentation" class="inner" align="center" width="720" cellpadding="0" cellspacing="0" style="width:92%;max-width:720px;margin:0 auto;">
                   <tr>
-                    <td class="pad" style="padding:30px 0 22px 0;">
-                      <h1 class="hero-title fallback-font" style="margin:0;color:#ffffff;font-family:'Crimson Pro', Georgia, 'Times New Roman', serif;font-weight:800;font-size:34px;line-height:40px;">
-                        {text_variations['title_text']}{title_suffix}
-                      </h1>
-                      <table role="presentation" cellpadding="0" cellspacing="0" style="margin-top:8px;">
+                    <td class="pad" style="padding:30px 0 18px 0;">
+                      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #e1e4eb;border-radius:18px;background:#ffffff;">
                         <tr>
-                          <td style="background:#ffffff;color:#041e42;border-radius:4px;padding:6px 10px;font-family:'Red Hat Text', Arial, Helvetica, sans-serif;font-weight:700;font-size:13px;">
-                            {date_range}
+                          <td style="padding:28px 32px 24px 32px;">
+                            <img src="{KDS_PRIMARY_LOGO_URL}" alt="Kent Denver School" width="140" style="display:block;margin-bottom:12px;" border="0" />
+                            <div style="font-size:11px;letter-spacing:.28em;color:#0066ff;text-transform:uppercase;margin-bottom:6px;">Weekly Update</div>
+                            <h1 class="hero-title fallback-font" style="margin:0 0 10px 0;color:#041e42;font-weight:700;">
+                              {text_variations['title_text']}{title_suffix}
+                            </h1>
+                            <p style="margin:0;color:#4b5563;font-size:15px;line-height:24px;">
+                              {text_variations['hero_text'].format(sport_count=sport_count)}
+                            </p>
+                            <div style="margin-top:18px;">
+                              <span style="display:inline-block;padding:8px 14px;border-radius:999px;background:#f2b900;color:#041e42;font-size:12px;font-weight:600;letter-spacing:.2em;text-transform:uppercase;">
+                                {date_range}
+                              </span>
+                            </div>
                           </td>
                         </tr>
                       </table>
-                      <p style="margin:12px 0 0 0;color:#d7e3ff;font-family:'Red Hat Text', Arial, Helvetica, sans-serif;font-size:16px;line-height:24px;">
-                        {text_variations['hero_text'].format(sport_count=sport_count)}
-                      </p>
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+          </table>
+
+          <!-- SNAPSHOT -->
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f5f5f5;">
+            <tr>
+              <td>
+                <table role="presentation" class="inner" align="center" width="720" cellpadding="0" cellspacing="0" style="width:92%;max-width:720px;margin:0 auto;">
+                  <tr>
+                    <td class="pad" style="padding:0 0 22px 0;">
+                      <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+                        <tr>
+{summary_cells}
+                        </tr>
+                      </table>
                     </td>
                   </tr>
                 </table>
@@ -1292,18 +1253,24 @@ def generate_html_email(games_by_date: Dict[str, List[Game]], date_range: str,
           </table>
 
           <!-- INTRO TEXT -->
-          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#ffffff;">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f5f5f5;">
             <tr>
               <td>
-                <table role="presentation" class="inner" align="center" width="1000" cellpadding="0" cellspacing="0" style="width:94%;max-width:1000px;margin:0 auto;">
+                <table role="presentation" class="inner" align="center" width="720" cellpadding="0" cellspacing="0" style="width:92%;max-width:720px;margin:0 auto;">
                   <tr>
-                    <td class="pad" style="padding:22px 0 10px 0;">
-                      <h2 style="margin:0 0 6px 0;color:#041e42;font-family:'Crimson Pro', Georgia, 'Times New Roman', serif;font-weight:700;font-size:22px;line-height:28px;">
-                        This week's schedule
-                      </h2>
-                      <p style="margin:0;color:#373737;font-family:'Red Hat Text', Arial, Helvetica, sans-serif;font-size:14px;line-height:22px;">
-                        {text_variations['intro_text']}
-                      </p>
+                    <td class="pad" style="padding:0 0 26px 0;">
+                      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #e1e4eb;border-radius:14px;background:#ffffff;">
+                        <tr>
+                          <td style="padding:20px 24px;">
+                            <h2 style="margin:0 0 6px 0;color:#041e42;font-family:'Crimson Pro', Georgia, 'Times New Roman', serif;font-weight:600;font-size:22px;line-height:26px;">
+                              This week at a glance
+                            </h2>
+                            <p style="margin:0;color:#4b5563;font-size:14px;line-height:22px;">
+                              {text_variations['intro_text']}
+                            </p>
+                          </td>
+                        </tr>
+                      </table>
                     </td>
                   </tr>
                 </table>
@@ -1337,18 +1304,15 @@ def generate_html_email(games_by_date: Dict[str, List[Game]], date_range: str,
         date_obj = datetime.strptime(date_str, '%b %d %Y')
         formatted_date = date_obj.strftime('%A, %B %d')
 
-        # Add day separator if not first day
+        # Add subtle spacing between days
         if i > 0:
             html += '''
-          <!-- DAY SEPARATOR -->
-          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f8f8f8;">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f5f5f5;">
             <tr>
               <td>
-                <table role="presentation" class="inner" align="center" width="1000" cellpadding="0" cellspacing="0" style="width:94%;max-width:1000px;margin:0 auto;">
+                <table role="presentation" class="inner" align="center" width="720" cellpadding="0" cellspacing="0" style="width:92%;max-width:720px;margin:0 auto;">
                   <tr>
-                    <td style="padding:12px 0;">
-                      <div style="height:3px;background:linear-gradient(90deg, #041e42 0%, #a11919 50%, #041e42 100%);border-radius:2px;opacity:0.3;"></div>
-                    </td>
+                    <td style="padding:8px 0;"></td>
                   </tr>
                 </table>
               </td>
@@ -1356,94 +1320,73 @@ def generate_html_email(games_by_date: Dict[str, List[Game]], date_range: str,
           </table>
 '''
 
-        # Day header
         html += f'''
-          <!-- {formatted_date.upper()} GAMES -->
-          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f8f8f8;">
+          <!-- {formatted_date.upper()} -->
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f5f5f5;">
             <tr>
               <td>
-                <table role="presentation" class="inner" align="center" width="1000" cellpadding="0" cellspacing="0" style="width:94%;max-width:1000px;margin:0 auto;">
+                <table role="presentation" class="inner" align="center" width="720" cellpadding="0" cellspacing="0" style="width:92%;max-width:720px;margin:0 auto;">
                   <tr>
-                    <td class="pad" style="padding:18px 0 8px 0;">
-                      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:12px;">
+                    <td class="pad" style="padding:6px 0 0 0;">
+                      <div style="font-size:12px;letter-spacing:.22em;color:#9297a3;text-transform:uppercase;">{date_obj.strftime('%A')}</div>
+                      <h3 class="day-title" style="margin:4px 0 14px 0;color:#041e42;font-family:'Crimson Pro', Georgia, 'Times New Roman', serif;font-weight:600;font-size:20px;line-height:24px;">
+                        {formatted_date}
+                      </h3>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td class="pad" style="padding:0 0 26px 0;">
+                      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #e1e4eb;border-radius:14px;background:#ffffff;">
                         <tr>
-                          <td style="width:36px;vertical-align:middle;">
-                            <span style="font-size:24px;">📅</span>
-                          </td>
-                          <td style="vertical-align:middle;">
-                            <h3 class="day-title" style="margin:0;color:#041e42;font-family:'Crimson Pro', Georgia, 'Times New Roman', serif;font-weight:800;font-size:22px;line-height:26px;">
-                              {formatted_date}
-                            </h3>
+                          <td style="padding:18px 22px;">
+                            <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+'''
+
+        if not has_games:
+            html += '''
+                              <tr>
+                                <td>
+                                  <p style="margin:4px 0;color:#6b7280;font-size:14px;line-height:20px;">No events scheduled.</p>
+                                </td>
+                              </tr>
+'''
+        else:
+            if featured_games:
+                html += '''
+                              <tr>
+                                <td style="padding-bottom:8px;">
+                                  <div style="font-size:12px;letter-spacing:.28em;color:#a11919;text-transform:uppercase;">Spotlight</div>
+                                </td>
+                              </tr>
+'''
+                for item in featured_games:
+                    if isinstance(item, Event):
+                        html += generate_featured_event_card_html(item)
+                    else:
+                        html += generate_featured_game_card_html(item)
+
+            if other_games:
+                label = "Schedule" if not featured_games else "Also on the schedule"
+                html += f'''
+                              <tr>
+                                <td style="padding:{'14px' if featured_games else '0'} 0 6px 0;">
+                                  <div style="font-size:12px;letter-spacing:.22em;color:#9297a3;text-transform:uppercase;">{label}</div>
+                                </td>
+                              </tr>
+'''
+                for item in other_games:
+                    if isinstance(item, Event):
+                        html += generate_other_event_list_item_html(item)
+                    else:
+                        html += generate_other_game_list_item_html(item)
+
+        html += '''                            </table>
                           </td>
                         </tr>
                       </table>
                     </td>
                   </tr>
-'''
-
-        # Handle days with no games
-        if not has_games:
-            html += '''
-                  <tr>
-                    <td class="pad" style="padding:0 0 16px 0;">
-                      <div style="text-align:center;padding:24px;border-radius:8px;background:#f9fafb;border:1px solid #e5e7eb;">
-                        <span style="font-size:18px;margin-right:8px;">🗓️</span>
-                        <span style="color:#6b7280;font-family:'Red Hat Text', Arial, Helvetica, sans-serif;font-size:15px;line-height:20px;">No games scheduled</span>
-                      </div>
-                    </td>
-                  </tr>
-'''
-
-        # Featured Games/Events Section (no header for more compact design)
-        if featured_games:
-
-            # Generate featured cards in rows of 2
-            for j in range(0, len(featured_games), 2):
-                html += '                  <tr>\n'
-
-                # First featured item in row
-                item = featured_games[j]
-                if isinstance(item, Event):
-                    html += generate_featured_event_card_html(item)
-                else:
-                    html += generate_featured_game_card_html(item)
-
-                # Second featured item in row (or spacer if odd number)
-                if j + 1 < len(featured_games):
-                    item2 = featured_games[j + 1]
-                    if isinstance(item2, Event):
-                        html += generate_featured_event_card_html(item2)
-                    else:
-                        html += generate_featured_game_card_html(item2)
-                else:
-                    html += '                    <td class="stack" width="50%" valign="top" style="padding:10px 12px;"></td>'
-
-                html += '\n                  </tr>\n'
-
-        # Other Games/Events Section (no header for more compact design)
-        if other_games:
-            # Add spacing only if there are featured games above
-            spacing_style = "padding:16px 0 8px 0;" if featured_games else "padding:0 0 8px 0;"
-            html += f'''
-                  <tr>
-                    <td colspan="2" style="{spacing_style}">
-                      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-radius:8px;border:1px solid #e6eaf2;background:#ffffff;">
-'''
-
-            # Generate other games/events as list items
-            for item in other_games:
-                if isinstance(item, Event):
-                    html += generate_other_event_list_item_html(item)
-                else:
-                    html += generate_other_game_list_item_html(item)
-
-            html += '''
-                      </table>
-                    </td>
-                  </tr>
-'''
-
-        html += '''                </table>
+                </table>
               </td>
             </tr>
           </table>
@@ -1453,27 +1396,20 @@ def generate_html_email(games_by_date: Dict[str, List[Game]], date_range: str,
     html += f'''
 
           <!-- CALL TO ACTION -->
-          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#ffffff;">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f5f5f5;">
             <tr>
               <td>
-                <table role="presentation" class="inner" align="center" width="1000" cellpadding="0" cellspacing="0" style="width:94%;max-width:1000px;margin:0 auto;">
+                <table role="presentation" class="inner" align="center" width="720" cellpadding="0" cellspacing="0" style="width:92%;max-width:720px;margin:0 auto;">
                   <tr>
-                    <td class="pad" style="padding:22px 0 18px 0;">
-                      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-radius:18px;border:1px solid #e6eaf2;background:#ffffff;">
-                        <tr><td style="height:14px;background:#13cf97;border-top-left-radius:18px;border-top-right-radius:18px;"></td></tr>
+                    <td class="pad" style="padding:0 0 28px 0;">
+                      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-radius:14px;border:1px solid #e1e4eb;background:#ffffff;">
                         <tr>
-                          <td style="padding:20px 22px 18px 22px;">
-                            <table role="presentation" cellpadding="0" cellspacing="0">
-                              <tr>
-                                <td style="padding:6px 10px;border-radius:4px;background:#e7fff6;color:#041e42;font-family:'Red Hat Text', Arial, Helvetica, sans-serif;font-weight:700;font-size:12px;letter-spacing:.3px;text-transform:uppercase;">
-                                  {text_variations['cta_button_text']}
-                                </td>
-                              </tr>
-                            </table>
-                            <div style="margin-top:10px;color:#041e42;font-family:'Crimson Pro', Georgia, 'Times New Roman', serif;font-weight:800;font-size:24px;line-height:28px;">
+                          <td style="padding:20px 24px;">
+                            <div style="font-size:12px;letter-spacing:.22em;color:#13cf97;text-transform:uppercase;">{text_variations['cta_button_text']}</div>
+                            <div style="margin:10px 0 6px 0;color:#041e42;font-family:'Crimson Pro', Georgia, 'Times New Roman', serif;font-weight:600;font-size:22px;line-height:26px;">
                               {text_variations['cta_header_text']}
                             </div>
-                            <p style="margin:10px 0 0 0;color:#373737;font-family:'Red Hat Text', Arial, Helvetica, sans-serif;font-size:15px;line-height:24px;">
+                            <p style="margin:0;color:#4b5563;font-size:14px;line-height:22px;">
                               {text_variations['cta_text']}
                             </p>
                           </td>
@@ -1487,29 +1423,18 @@ def generate_html_email(games_by_date: Dict[str, List[Game]], date_range: str,
           </table>
 
           <!-- SIGN-OFF -->
-          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#041e42;">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f5f5f5;">
             <tr>
               <td>
-                <table role="presentation" class="inner" align="center" width="1000" cellpadding="0" cellspacing="0" style="width:94%;max-width:1000px;margin:0 auto;">
+                <table role="presentation" class="inner" align="center" width="720" cellpadding="0" cellspacing="0" style="width:92%;max-width:720px;margin:0 auto;">
                   <tr>
-                    <td class="pad" style="padding:18px 0 26px 0;">
-                      <p style="margin:0 0 8px 0;color:#ffffff;font-family:'Red Hat Text', Arial, Helvetica, sans-serif;font-size:14px;line-height:20px;">
-                        For complete schedules, directions, and updates, <a href="https://www.kentdenver.org/athletics-wellness/schedules-and-scores" style="color:#d7e3ff;text-decoration:underline;">visit our athletics page</a>.
+                    <td class="pad" style="padding:0 0 40px 0;">
+                      <p style="margin:0 0 8px 0;color:#4b5563;font-size:13px;line-height:20px;">
+                        For complete schedules, directions, and updates, <a href="https://www.kentdenver.org/athletics-wellness/schedules-and-scores" style="color:#041e42;text-decoration:underline;">visit our athletics page</a>.
                       </p>
-                      <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
-                        <tr>
-                          <td style="text-align:left;">
-                            <p style="margin:0;color:#d1d7e6;font-family:'Red Hat Text', Arial, Helvetica, sans-serif;font-size:13px;line-height:19px;">
-                              — Student Leadership Media Team
-                            </p>
-                          </td>
-                          <td style="text-align:right;">
-                            <p style="margin:0;color:#a1a8b8;font-family:'Red Hat Text', Arial, Helvetica, sans-serif;font-size:11px;line-height:16px;">
-                              Designed by <a href="https://jacobbarkin.com" style="color:#a1a8b8;text-decoration:underline;">Jacob Barkin</a>
-                            </p>
-                          </td>
-                        </tr>
-                      </table>
+                      <p style="margin:0;color:#9aa1ab;font-size:12px;line-height:18px;">
+                        — Student Leadership Media Team
+                      </p>
                     </td>
                   </tr>
                 </table>

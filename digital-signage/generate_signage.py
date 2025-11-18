@@ -30,9 +30,10 @@ from icalendar import Calendar
 # Add parent directory to path to import from sports-emails
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'sports-emails'))
 from generate_games import (
-    Game, Event, SPORT_CONFIG, ARTS_CONFIG,
+    Game, Event,
     scrape_athletics_schedule, fetch_arts_events,
-    is_varsity_game, is_middle_school_game
+    is_varsity_game,
+    build_icon_html, KDS_PRIMARY_LOGO_URL
 )
 
 def get_date_range(date_str=None):
@@ -231,15 +232,22 @@ def get_layout_config(total_events: int) -> dict:
 def generate_event_card_html(event: Union[Game, Event], is_featured: bool = False, layout_config: dict = None) -> str:
     """Generate HTML for a single event card with dynamic sizing"""
     config = event.get_sport_config()
+    accent_color = config.get('accent_color', config.get('border_color', '#041e42'))
 
     if event.event_type == 'arts':
         badge_style = event.get_home_away_style()
         title = event.title
-        subtitle = f"📍 {event.location}"
+        subtitle_primary = event.location or "On Campus"
+        subtitle_secondary = event.category.title()
+        icon_label = event.category
     else:
         badge_style = event.get_home_away_style()
         title = event.team
-        subtitle = f"vs. {event.opponent} • 📍 {event.location}"
+        opponent = event.opponent or "TBA"
+        location = event.location or "Location TBA"
+        subtitle_primary = f"vs. {opponent}"
+        subtitle_secondary = location
+        icon_label = event.sport
 
     # Use layout config
     emoji_size = layout_config["emoji_size"]
@@ -252,25 +260,33 @@ def generate_event_card_html(event: Union[Game, Event], is_featured: bool = Fals
     border_width = layout_config["border_width"]
     margin = layout_config["margin"]
 
-    card_style = f"border: {border_width} solid {config['border_color']}; box-shadow: 0 8px 24px rgba(0,0,0,0.15);"
+    card_style = f"border: {border_width} solid {config['border_color']}; box-shadow: 0 18px 35px rgba(4,30,66,0.16); background: linear-gradient(165deg, rgba(255,255,255,0.98) 0%, rgba(248,249,251,0.98) 100%);"
+
+    icon_numeric = int(float(emoji_size.replace('px', '').strip()))
+    icon_display_size = max(36, int(icon_numeric * 0.65))
+    icon_html = build_icon_html(config.get('icon'), icon_label.title(), size=icon_display_size)
 
     return f'''
-    <div class="event-card" style="background: white; border-radius: 20px; {card_style} overflow: hidden; margin: {margin}; display: flex; flex-direction: column; height: 100%;">
-      <div style="height: {top_accent}; background: {config['color']}; flex-shrink: 0;"></div>
+    <div class="event-card" style="border-radius: 26px; {card_style} overflow: hidden; margin: {margin}; display: flex; flex-direction: column; height: 100%;">
+      <div style="height: {top_accent}; background: {accent_color}; flex-shrink: 0;"></div>
       <div style="padding: {padding}; display: flex; flex-direction: column; flex: 1; justify-content: space-between;">
-        <div style="display: flex; align-items: flex-start; flex: 1;">
-          <span style="font-size: {emoji_size}; margin-right: 16px; line-height: 1;">{config['emoji']}</span>
-          <div style="flex: 1; display: flex; flex-direction: column; justify-content: center;">
-            <div style="color: #041e42; font-family: 'Crimson Pro', Georgia, serif; font-weight: 700; font-size: {title_size}; line-height: 1.2; margin-bottom: 12px;">{title}</div>
-            <div style="color: #374151; font-family: 'Red Hat Text', Arial, sans-serif; font-size: {subtitle_size}; line-height: 1.4; font-weight: 500;">{subtitle}</div>
+        <div style="display: flex; align-items: center; flex: 1; gap: 24px;">
+          <div style="width: {emoji_size}; height: {emoji_size}; min-width: {emoji_size}; border-radius: 20px; background: rgba(4,30,66,0.06); display: flex; align-items: center; justify-content: center;">
+            {icon_html}
+          </div>
+          <div style="flex: 1; display: flex; flex-direction: column; gap: 10px;">
+            <div style="color: #041e42; font-family: 'Crimson Pro', Georgia, serif; font-weight: 700; font-size: {title_size}; line-height: 1.15;">{title}</div>
+            <div style="color: #0c3a6b; font-family: 'Red Hat Text', Arial, sans-serif; font-size: {subtitle_size}; line-height: 1.3; font-weight: 600;">{subtitle_primary}</div>
+            <div style="color: #5b6473; font-family: 'Red Hat Text', Arial, sans-serif; font-size: calc({subtitle_size} - 8px); line-height: 1.4; font-weight: 500;">{subtitle_secondary}</div>
           </div>
         </div>
-        <div style="display: flex; align-items: center; justify-content: space-between; margin-top: 30px; flex-shrink: 0;">
-          <div style="background: {badge_style['background']}; color: {badge_style['color']}; padding: 12px 24px; border-radius: 10px; font-family: 'Red Hat Text', Arial, sans-serif; font-weight: 700; font-size: {badge_size};">
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-top: 30px; flex-shrink: 0; gap: 30px;">
+          <div style="background: {badge_style['background']}; color: {badge_style['color']}; padding: 12px 28px; border-radius: 999px; font-family: 'Red Hat Text', Arial, sans-serif; font-weight: 700; font-size: {badge_size}; letter-spacing: .2em; text-transform: uppercase;">
             {badge_style['text']}
           </div>
-          <div style="color: #041e42; font-family: 'Red Hat Text', Arial, sans-serif; font-weight: 700; font-size: {time_size};">
-            🕐 {event.time}
+          <div style="color: #041e42; font-family: 'Red Hat Text', Arial, sans-serif; font-weight: 700; font-size: {time_size}; text-align: right;">
+            <div style="font-size: calc({time_size} - 14px); letter-spacing: .15em; text-transform: uppercase; color: #8a92a3;">Start</div>
+            <div>{event.time}</div>
           </div>
         </div>
       </div>
@@ -288,16 +304,19 @@ def generate_signage_html(events: List[Union[Game, Event]], target_date: datetim
         target_date = datetime.now()
     date_display = target_date.strftime('%A, %B %d, %Y')
 
-    # Kent Denver logo URL
-    logo_url = "https://cdn-assets-cloud.frontify.com/s3/frontify-cloud-files-us/eyJwYXRoIjoiZnJvbnRpZnlcL2FjY291bnRzXC9iNFwvNzU3NDlcL3Byb2plY3RzXC8xMDUwNjZcL2Fzc2V0c1wvYTNcLzY3NDA0OTZcLzlmYTY2NGYzZjhiOGI3YjY2ZDEwZDBkZGI5NjcxNmJmLTE2NTY4ODQyNjYucG5nIn0:frontify:0G-jY-31l0MCBnvlONY7KuK6-sTagdCay7zorKYJ6_o?width=1464&format=webp&quality=100"
+    logo_url = KDS_PRIMARY_LOGO_URL
 
     if not events:
         # No events today
         content_html = '''
-        <div style="text-align: center; padding: 150px 60px;">
-          <div style="font-size: 120px; margin-bottom: 40px;">📅</div>
-          <h2 style="color: #041e42; font-family: 'Crimson Pro', Georgia, serif; font-size: 64px; margin: 0 0 30px 0; font-weight: 700;">No Events Today</h2>
-          <p style="color: #6b7280; font-family: 'Red Hat Text', Arial, sans-serif; font-size: 36px; margin: 0; font-weight: 500;">Check back tomorrow for upcoming games and performances!</p>
+        <div style="flex:1;display:flex;align-items:center;justify-content:center;padding:40px 70px;">
+          <div style="width:70%;max-width:1400px;border:4px solid rgba(4,30,66,0.15);border-radius:36px;padding:80px;background:linear-gradient(165deg, rgba(255,255,255,0.96) 0%, rgba(245,247,251,0.96) 100%);box-shadow:0 25px 60px rgba(4,30,66,0.18);text-align:center;">
+            <div style="display:inline-flex;align-items:center;justify-content:center;width:140px;height:140px;border-radius:30px;background:rgba(4,30,66,0.08);margin-bottom:30px;">
+              <span style="font-size:80px;">📅</span>
+            </div>
+            <h2 style="color:#041e42;font-family:'Crimson Pro', Georgia, serif;font-size:72px;margin:0 0 20px 0;font-weight:700;">No Events Today</h2>
+            <p style="color:#5f6674;font-family:'Red Hat Text', Arial, sans-serif;font-size:36px;margin:0;font-weight:500;">Check back tomorrow for the latest games and performances.</p>
+          </div>
         </div>
         '''
     else:
@@ -506,4 +525,3 @@ Examples:
 
 if __name__ == '__main__':
     main()
-

@@ -90,7 +90,7 @@ def build_icon_html(icon_name: Optional[str], alt_text: str, size: int = 20) -> 
         icon_url = f"{ICON_CDN_BASE}/{icon_name}.svg"
         return (
             f'<img src="{icon_url}" width="{size}" height="{size}" alt="{alt_text}" '
-            'style="display:block;" border="0" />'
+            'style="display:inline-block;vertical-align:middle;" border="0" />'
         )
 
     fallback_letter = (alt_text[:1] if alt_text else "?").upper()
@@ -524,21 +524,27 @@ def generate_featured_event_card_html(event: Event) -> str:
     '''Generate HTML for a featured arts event card'''
     event_config = event.get_sport_config()
     category_label = event.category.title()
-    icon_html = build_icon_html(event_config.get('icon'), f"{category_label} icon")
+    icon_html = build_icon_html(event_config.get('icon'), f"{category_label} icon", size=22)
 
     return f'''
                               <tr>
                                 <td style="padding:6px 0;">
-                                  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #e3e7ef;border-left:4px solid {event_config['border_color']};border-radius:12px;background:#fbfbfb;">
+                                  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" class="card-bg" style="border:1px solid #e5e7eb;border-radius:10px;background:#ffffff;overflow:hidden;">
                                     <tr>
-                                      <td style="padding:16px 18px;">
+                                      <td style="height:6px;background:{event_config['border_color']};font-size:1px;line-height:1px;">&nbsp;</td>
+                                    </tr>
+                                    <tr>
+                                      <td style="padding:16px;">
                                         <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
                                           <tr>
-                                            <td style="width:28px;vertical-align:top;">{icon_html}</td>
-                                            <td style="padding-left:10px;">
-                                              <div style="font-size:12px;letter-spacing:.18em;color:#6b7280;text-transform:uppercase;">{category_label} • {event.time}</div>
-                                              <div style="margin:6px 0 4px 0;color:#041e42;font-family:'Crimson Pro', Georgia, 'Times New Roman', serif;font-size:18px;line-height:22px;font-weight:600;">{event.title}</div>
-                                              <p style="margin:0;color:#4b5563;font-size:14px;line-height:20px;">{event.location}</p>
+                                            <td style="width:36px;vertical-align:top;">
+                                              <div style="width:36px;height:36px;border-radius:50%;background:#f3f4f6;text-align:center;line-height:36px;">{icon_html}</div>
+                                            </td>
+                                            <td style="padding-left:12px;">
+                                              <span style="display:inline-block;padding:3px 10px;border-radius:4px;background:#e0e7ff;color:#3730a3;font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;font-family:'Red Hat Text',Arial,sans-serif;">Event</span>
+                                              <div class="text-primary" style="margin:8px 0 4px 0;color:#041e42;font-family:'Crimson Pro',Georgia,'Times New Roman',serif;font-size:18px;line-height:22px;font-weight:700;">{event.title}</div>
+                                              <p class="text-secondary" style="margin:0;color:#4b5563;font-size:14px;line-height:20px;font-family:'Red Hat Text',Arial,sans-serif;">{category_label}</p>
+                                              <p style="margin:6px 0 0 0;color:#6b7280;font-size:13px;line-height:18px;font-family:'Red Hat Text',Arial,sans-serif;">{event.time} &middot; {event.location}</p>
                                             </td>
                                           </tr>
                                         </table>
@@ -551,26 +557,41 @@ def generate_featured_event_card_html(event: Event) -> str:
 def generate_featured_game_card_html(game: Game) -> str:
     '''Generate HTML for a featured game card (single column)'''
     sport_config = game.get_sport_config()
-    icon_html = build_icon_html(sport_config.get('icon'), f"{game.sport.title()} icon")
-    detail_parts = [game.time, "Home" if game.is_home else "Away"]
-    if is_varsity_game(game.team):
-        detail_parts.append("Varsity")
-    time_line = " • ".join(detail_parts)
+    icon_html = build_icon_html(sport_config.get('icon'), f"{game.sport.title()} icon", size=22)
+    is_varsity = is_varsity_game(game.team)
+
+    # Home/Away badge
+    if game.is_home:
+        badge_bg, badge_color, badge_text = '#dcfce7', '#166534', 'Home'
+    else:
+        badge_bg, badge_color, badge_text = '#fef3c7', '#92400e', 'Away'
+
+    # Varsity badge (conditional)
+    varsity_badge = ''
+    if is_varsity:
+        varsity_badge = '<span style="display:inline-block;margin-left:8px;padding:3px 10px;border-radius:4px;background:#eff6ff;color:#1e40af;font-family:\'Red Hat Text\',Arial,sans-serif;font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;">Varsity</span>'
 
     return f'''
                               <tr>
                                 <td style="padding:6px 0;">
-                                  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #e3e7ef;border-left:4px solid {sport_config['border_color']};border-radius:12px;background:#fbfbfb;">
+                                  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" class="card-bg" style="border:1px solid #e5e7eb;border-radius:10px;background:#ffffff;overflow:hidden;">
                                     <tr>
-                                      <td style="padding:16px 18px;">
+                                      <td style="height:6px;background:{sport_config['border_color']};font-size:1px;line-height:1px;">&nbsp;</td>
+                                    </tr>
+                                    <tr>
+                                      <td style="padding:16px;">
                                         <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
                                           <tr>
-                                            <td style="width:28px;vertical-align:top;">{icon_html}</td>
-                                            <td style="padding-left:10px;">
-                                              <div style="font-size:12px;letter-spacing:.18em;color:#6b7280;text-transform:uppercase;">{time_line}</div>
-                                              <div style="margin:6px 0 4px 0;color:#041e42;font-family:'Crimson Pro', Georgia, 'Times New Roman', serif;font-size:18px;line-height:22px;font-weight:600;">{game.team}</div>
-                                              <p style="margin:0;color:#4b5563;font-size:14px;line-height:20px;">vs. {game.opponent}</p>
-                                              <p style="margin:6px 0 0 0;color:#6b7280;font-size:13px;line-height:18px;">{game.location}</p>
+                                            <td style="width:36px;vertical-align:top;">
+                                              <div style="width:36px;height:36px;border-radius:50%;background:#f3f4f6;text-align:center;line-height:36px;">{icon_html}</div>
+                                            </td>
+                                            <td style="padding-left:12px;">
+                                              <table role="presentation" cellpadding="0" cellspacing="0"><tr><td>
+                                                <span style="display:inline-block;padding:3px 10px;border-radius:4px;background:{badge_bg};color:{badge_color};font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;font-family:'Red Hat Text',Arial,sans-serif;">{badge_text}</span>{varsity_badge}
+                                              </td></tr></table>
+                                              <div class="text-primary" style="margin:8px 0 4px 0;color:#041e42;font-family:'Crimson Pro',Georgia,'Times New Roman',serif;font-size:18px;line-height:22px;font-weight:700;">{game.team}</div>
+                                              <p class="text-secondary" style="margin:0;color:#4b5563;font-size:14px;line-height:20px;font-family:'Red Hat Text',Arial,sans-serif;">vs. {game.opponent}</p>
+                                              <p style="margin:6px 0 0 0;color:#6b7280;font-size:13px;line-height:18px;font-family:'Red Hat Text',Arial,sans-serif;">{game.time} &middot; {game.location}</p>
                                             </td>
                                           </tr>
                                         </table>
@@ -582,21 +603,24 @@ def generate_featured_game_card_html(game: Game) -> str:
 
 def generate_other_event_list_item_html(event: Event) -> str:
     '''Generate HTML for an arts event in the compact list format'''
+    event_config = event.get_sport_config()
     category_label = event.category.title()
-    icon_html = build_icon_html(event.get_sport_config().get('icon'), f"{category_label} icon")
 
     return f'''
                               <tr>
-                                <td style="padding:12px 0;border-top:1px solid #edf0f5;">
+                                <td class="touch-target" style="padding:16px 0;border-top:1px solid #f3f4f6;">
                                   <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
                                     <tr>
-                                      <td style="width:28px;vertical-align:top;">{icon_html}</td>
-                                      <td style="font-family:'Crimson Pro', Georgia, 'Times New Roman', serif;font-weight:600;font-size:16px;line-height:20px;color:#041e42;padding-left:10px;">{event.title}</td>
-                                      <td style="text-align:right;color:#6b7280;font-size:12px;letter-spacing:.18em;text-transform:uppercase;">{event.time}</td>
-                                    </tr>
-                                    <tr>
-                                      <td></td>
-                                      <td colspan="2" style="padding-top:4px;color:#4b5563;font-size:13px;line-height:18px;">{category_label} • {event.location}</td>
+                                      <td style="width:16px;vertical-align:top;padding-top:4px;">
+                                        <div style="width:8px;height:8px;border-radius:50%;background:{event_config['border_color']};margin:0 auto;" role="img" aria-label="{category_label}"></div>
+                                      </td>
+                                      <td style="padding-left:8px;vertical-align:top;">
+                                        <div class="text-primary" style="color:#041e42;font-family:'Crimson Pro',Georgia,'Times New Roman',serif;font-weight:600;font-size:15px;line-height:20px;">{event.title}</div>
+                                        <div class="text-secondary" style="margin-top:2px;color:#6b7280;font-size:13px;line-height:18px;font-family:'Red Hat Text',Arial,sans-serif;">{category_label} &middot; {event.location}</div>
+                                      </td>
+                                      <td style="text-align:right;vertical-align:top;white-space:nowrap;padding-left:12px;">
+                                        <span class="text-primary" style="color:#041e42;font-size:13px;font-weight:600;font-family:'Red Hat Text',Arial,sans-serif;">{event.time}</span>
+                                      </td>
                                     </tr>
                                   </table>
                                 </td>
@@ -604,22 +628,24 @@ def generate_other_event_list_item_html(event: Event) -> str:
 
 def generate_other_game_list_item_html(game: Game) -> str:
     '''Generate HTML for a game in the compact list format'''
-    detail_parts = [f"vs. {game.opponent}", "Home" if game.is_home else "Away"]
-    detail_line = " • ".join(detail_parts)
-    icon_html = build_icon_html(game.get_sport_config().get('icon'), f"{game.sport.title()} icon")
+    sport_config = game.get_sport_config()
+    home_away = "Home" if game.is_home else "Away"
 
     return f'''
                               <tr>
-                                <td style="padding:12px 0;border-top:1px solid #edf0f5;">
+                                <td class="touch-target" style="padding:16px 0;border-top:1px solid #f3f4f6;">
                                   <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
                                     <tr>
-                                      <td style="width:28px;vertical-align:top;">{icon_html}</td>
-                                      <td style="font-family:'Crimson Pro', Georgia, 'Times New Roman', serif;font-weight:600;font-size:16px;line-height:20px;color:#041e42;padding-left:10px;">{game.team}</td>
-                                      <td style="text-align:right;color:#6b7280;font-size:12px;letter-spacing:.18em;text-transform:uppercase;">{game.time}</td>
-                                    </tr>
-                                    <tr>
-                                      <td></td>
-                                      <td colspan="2" style="padding-top:4px;color:#4b5563;font-size:13px;line-height:18px;">{detail_line} • {game.location}</td>
+                                      <td style="width:16px;vertical-align:top;padding-top:4px;">
+                                        <div style="width:8px;height:8px;border-radius:50%;background:{sport_config['border_color']};margin:0 auto;" role="img" aria-label="{game.sport.title()}"></div>
+                                      </td>
+                                      <td style="padding-left:8px;vertical-align:top;">
+                                        <div class="text-primary" style="color:#041e42;font-family:'Crimson Pro',Georgia,'Times New Roman',serif;font-weight:600;font-size:15px;line-height:20px;">{game.team}</div>
+                                        <div class="text-secondary" style="margin-top:2px;color:#6b7280;font-size:13px;line-height:18px;font-family:'Red Hat Text',Arial,sans-serif;">vs. {game.opponent} &middot; {home_away} &middot; {game.location}</div>
+                                      </td>
+                                      <td style="text-align:right;vertical-align:top;white-space:nowrap;padding-left:12px;">
+                                        <span class="text-primary" style="color:#041e42;font-size:13px;font-weight:600;font-family:'Red Hat Text',Arial,sans-serif;">{game.time}</span>
+                                      </td>
                                     </tr>
                                   </table>
                                 </td>
@@ -1111,22 +1137,22 @@ def generate_html_email(games_by_date: Dict[str, List[Game]], date_range: str,
     if arts_events_count:
         summary_metrics.append({'label': 'Performances', 'value': arts_events_count, 'color': '#0066ff'})
 
-    metric_width = max(25, int(100 / len(summary_metrics))) if summary_metrics else 25
     summary_cells = ''.join(
         f'''
-                <td class="stack" width="{metric_width}%" valign="top" style="padding:8px;">
-                  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" height="140" style="height:140px;border:1px solid #e1e4eb;border-radius:12px;background:#ffffff;">
+                <td class="metric-badge" style="display:inline-block;padding:4px;">
+                  <table role="presentation" cellpadding="0" cellspacing="0" class="card-bg" style="border:1px solid #e5e7eb;border-radius:8px;background:#ffffff;">
                     <tr>
-                      <td height="140" style="height:140px;padding:16px 14px;text-align:left;">
-                        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="height:100%;">
+                      <td style="padding:10px 14px;white-space:nowrap;">
+                        <table role="presentation" cellpadding="0" cellspacing="0">
                           <tr>
-                            <td style="font-size:12px;letter-spacing:.18em;color:{metric['color']};text-transform:uppercase;font-family:'Red Hat Text', Arial, Helvetica, sans-serif;font-weight:600;">
-                              {metric['label']}
+                            <td style="width:8px;vertical-align:middle;">
+                              <div style="width:8px;height:8px;border-radius:50%;background:{metric['color']};"></div>
                             </td>
-                          </tr>
-                          <tr>
-                            <td style="padding-top:10px;color:#041e42;font-family:'Crimson Pro', Georgia, 'Times New Roman', serif;font-size:24px;line-height:28px;font-weight:600;">
-                              {metric['value']}
+                            <td style="padding-left:8px;vertical-align:middle;">
+                              <span style="color:#6b7280;font-size:11px;letter-spacing:.1em;text-transform:uppercase;font-family:'Red Hat Text',Arial,sans-serif;font-weight:500;">{metric['label']}</span>
+                            </td>
+                            <td style="padding-left:10px;vertical-align:middle;">
+                              <span style="color:#041e42;font-size:18px;font-weight:700;font-family:'Crimson Pro',Georgia,serif;">{metric['value']}</span>
                             </td>
                           </tr>
                         </table>
@@ -1143,19 +1169,21 @@ def generate_html_email(games_by_date: Dict[str, List[Game]], date_range: str,
     title_type = "Games and Performances This Week" if has_arts_events else "Games This Week"
 
     html = f'''<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
-<html xmlns="http://www.w3.org/1999/xhtml" lang="en" style="margin:0;padding:0;">
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en" style="margin:0;padding:0;">
   <head>
     <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="x-apple-disable-message-reformatting" />
     <meta name="format-detection" content="telephone=no,address=no,email=no,date=no,url=no" />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="supported-color-schemes" content="light dark" />
     <meta name="has-arts-events" content="{str(has_arts_events).lower()}" />
     <title>Kent Denver — {title_type} ({date_range}){title_suffix}</title>
     <!--[if !mso]><!-->
-    <link href="https://fonts.googleapis.com/css2?family=Crimson+Pro:wght@700;800&family=Red+Hat+Text:wght@400;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Crimson+Pro:wght@400;600;700&family=Red+Hat+Text:wght@400;500;600;700&display=swap" rel="stylesheet">
     <!--<![endif]-->
     <style>
-      @import url('https://fonts.googleapis.com/css2?family=Crimson+Pro:wght@600;700&family=Red+Hat+Text:wght@400;500;600&display=swap');
+      @import url('https://fonts.googleapis.com/css2?family=Crimson+Pro:wght@400;600;700&family=Red+Hat+Text:wght@400;500;600;700&display=swap');
 
       body, table, td, a {{ -webkit-text-size-adjust: 100%; -ms-text-size-adjust: 100%; }}
       table, td {{ mso-table-lspace: 0pt; mso-table-rspace: 0pt; }}
@@ -1163,11 +1191,13 @@ def generate_html_email(games_by_date: Dict[str, List[Game]], date_range: str,
       table {{ border-collapse: collapse !important; }}
       body {{ margin: 0 !important; padding: 0 !important; background-color: #f5f5f5; color: #1f2933; font-family: 'Red Hat Text', 'Helvetica Neue', Arial, sans-serif; }}
 
-      .hero-title {{ font-family: 'Crimson Pro', Georgia, 'Times New Roman', serif; font-size: 30px; line-height: 34px; }}
+      .hero-title {{ font-family: 'Crimson Pro', Georgia, 'Times New Roman', serif; font-size: 30px; line-height: 36px; }}
       .day-title {{ font-family: 'Crimson Pro', Georgia, 'Times New Roman', serif; }}
+      .day-heading {{ font-size: 20px; line-height: 26px; }}
       .inner {{ width: 92%; max-width: 720px; margin: 0 auto; }}
       .stack {{ display: table-cell; vertical-align: top; }}
       .pad {{ padding: 28px 0; }}
+      .metric-badge {{ display: inline-block; vertical-align: top; }}
       a {{ color: #041e42; text-decoration: underline; }}
 
       #outlook a {{ padding: 0; }}
@@ -1180,7 +1210,20 @@ def generate_html_email(games_by_date: Dict[str, List[Game]], date_range: str,
         .stack {{ display: block !important; width: 100% !important; }}
         .pad {{ padding: 18px 0 !important; }}
         .inner {{ width: 94% !important; max-width: 94% !important; }}
-        .hero-title {{ font-size: 26px !important; line-height: 32px !important; }}
+        .hero-title {{ font-size: 24px !important; line-height: 30px !important; }}
+        .day-heading {{ font-size: 18px !important; line-height: 24px !important; }}
+        .metric-badge {{ display: inline-block !important; width: 48% !important; margin-bottom: 8px !important; }}
+        .touch-target {{ min-height: 44px !important; }}
+        .cta-button {{ display: block !important; text-align: center !important; }}
+      }}
+
+      @media (prefers-color-scheme: dark) {{
+        .body-bg {{ background-color: #1a1a2e !important; }}
+        .card-bg {{ background-color: #16213e !important; border-color: #2a2a4a !important; }}
+        .text-primary {{ color: #e2e8f0 !important; }}
+        .text-secondary {{ color: #94a3b8 !important; }}
+        .hero-bg {{ background-color: #0a1628 !important; }}
+        .footer-bg {{ background-color: #0a1628 !important; }}
       }}
     </style>
     <!--[if mso]>
@@ -1189,43 +1232,37 @@ def generate_html_email(games_by_date: Dict[str, List[Game]], date_range: str,
     </style>
     <![endif]-->
   </head>
-  <body style="margin:0;padding:0;background:#f5f5f5;">
+  <body dir="ltr" style="margin:0;padding:0;background:#f5f5f5;">
     <!-- Preheader (hidden) -->
     <div style="display:none;visibility:hidden;opacity:0;color:transparent;height:0;width:0;overflow:hidden;mso-hide:all;font-size:1px;line-height:1px;max-height:0px;max-width:0px;">
-      {school_level + " " if school_level else ""}Games this week {date_range} — {sports_list}. Thanks for supporting our students.
+      {school_level + " " if school_level else ""}Weekly update for {date_range} — {total_events} events including {sports_list}.&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;
     </div>
 
     <!-- Full-bleed outer wrapper -->
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f5f5f5;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" class="body-bg" style="background:#f5f5f5;">
       <tr>
         <td align="center">
 
           <!-- HERO -->
-          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f5f5f5;">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" class="hero-bg" style="background:#041e42;">
             <tr>
               <td>
                 <table role="presentation" class="inner" align="center" width="720" cellpadding="0" cellspacing="0" style="width:92%;max-width:720px;margin:0 auto;">
                   <tr>
-                    <td class="pad" style="padding:30px 0 18px 0;">
-                      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #e1e4eb;border-radius:18px;background:#ffffff;">
-                        <tr>
-                          <td style="padding:28px 32px 24px 32px;">
-                            <img src="{KDS_PRIMARY_LOGO_URL}" alt="Kent Denver School" width="140" style="display:block;margin-bottom:12px;" border="0" />
-                            <div style="font-size:11px;letter-spacing:.28em;color:#0066ff;text-transform:uppercase;margin-bottom:6px;">Weekly Update</div>
-                            <h1 class="hero-title fallback-font" style="margin:0 0 10px 0;color:#041e42;font-weight:700;">
-                              {text_variations['title_text']}{title_suffix}
-                            </h1>
-                            <p style="margin:0;color:#4b5563;font-size:15px;line-height:24px;">
-                              {text_variations['hero_text'].format(sport_count=sport_count)}
-                            </p>
-                            <div style="margin-top:18px;">
-                              <span style="display:inline-block;padding:8px 14px;border-radius:999px;background:#f2b900;color:#041e42;font-size:12px;font-weight:600;letter-spacing:.2em;text-transform:uppercase;">
-                                {date_range}
-                              </span>
-                            </div>
-                          </td>
-                        </tr>
-                      </table>
+                    <td class="pad" style="padding:32px 0 28px 0;">
+                      <img src="{KDS_PRIMARY_LOGO_URL}" alt="Kent Denver School logo" width="160" style="display:block;margin-bottom:16px;" border="0" />
+                      <div style="font-size:11px;letter-spacing:.28em;color:#f2b900;text-transform:uppercase;margin-bottom:8px;font-family:'Red Hat Text',Arial,sans-serif;font-weight:600;">Weekly Update</div>
+                      <h1 class="hero-title fallback-font" style="margin:0 0 12px 0;color:#ffffff;font-weight:700;">
+                        {text_variations['title_text']}{title_suffix}
+                      </h1>
+                      <p style="margin:0;color:#cbd5e1;font-size:15px;line-height:24px;font-family:'Red Hat Text',Arial,sans-serif;">
+                        {text_variations['hero_text'].format(sport_count=total_events)}
+                      </p>
+                      <div style="margin-top:20px;">
+                        <span style="display:inline-block;padding:8px 16px;border-radius:999px;background:#f2b900;color:#041e42;font-size:12px;font-weight:700;letter-spacing:.2em;text-transform:uppercase;font-family:'Red Hat Text',Arial,sans-serif;">
+                          {date_range}
+                        </span>
+                      </div>
                     </td>
                   </tr>
                 </table>
@@ -1234,13 +1271,13 @@ def generate_html_email(games_by_date: Dict[str, List[Game]], date_range: str,
           </table>
 
           <!-- SNAPSHOT -->
-          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f5f5f5;">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" class="body-bg" style="background:#f5f5f5;">
             <tr>
               <td>
                 <table role="presentation" class="inner" align="center" width="720" cellpadding="0" cellspacing="0" style="width:92%;max-width:720px;margin:0 auto;">
                   <tr>
-                    <td class="pad" style="padding:0 0 22px 0;">
-                      <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+                    <td style="padding:16px 0 12px 0;text-align:center;">
+                      <table role="presentation" align="center" cellpadding="0" cellspacing="0" style="margin:0 auto;">
                         <tr>
 {summary_cells}
                         </tr>
@@ -1253,19 +1290,19 @@ def generate_html_email(games_by_date: Dict[str, List[Game]], date_range: str,
           </table>
 
           <!-- INTRO TEXT -->
-          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f5f5f5;">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" class="body-bg" style="background:#f5f5f5;">
             <tr>
               <td>
                 <table role="presentation" class="inner" align="center" width="720" cellpadding="0" cellspacing="0" style="width:92%;max-width:720px;margin:0 auto;">
                   <tr>
                     <td class="pad" style="padding:0 0 26px 0;">
-                      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #e1e4eb;border-radius:14px;background:#ffffff;">
+                      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" class="card-bg" style="border:1px solid #e5e7eb;border-radius:10px;background:#ffffff;">
                         <tr>
-                          <td style="padding:20px 24px;">
-                            <h2 style="margin:0 0 6px 0;color:#041e42;font-family:'Crimson Pro', Georgia, 'Times New Roman', serif;font-weight:600;font-size:22px;line-height:26px;">
+                          <td style="padding:24px 28px;">
+                            <h2 class="text-primary" style="margin:0 0 8px 0;color:#041e42;font-family:'Crimson Pro', Georgia, 'Times New Roman', serif;font-weight:700;font-size:22px;line-height:28px;">
                               This week at a glance
                             </h2>
-                            <p style="margin:0;color:#4b5563;font-size:14px;line-height:22px;">
+                            <p class="text-secondary" style="margin:0;color:#4b5563;font-size:14px;line-height:22px;font-family:'Red Hat Text',Arial,sans-serif;">
                               {text_variations['intro_text']}
                             </p>
                           </td>
@@ -1307,12 +1344,12 @@ def generate_html_email(games_by_date: Dict[str, List[Game]], date_range: str,
         # Add subtle spacing between days
         if i > 0:
             html += '''
-          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f5f5f5;">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" class="body-bg" style="background:#f5f5f5;">
             <tr>
               <td>
                 <table role="presentation" class="inner" align="center" width="720" cellpadding="0" cellspacing="0" style="width:92%;max-width:720px;margin:0 auto;">
                   <tr>
-                    <td style="padding:8px 0;"></td>
+                    <td style="padding:6px 0;"></td>
                   </tr>
                 </table>
               </td>
@@ -1322,31 +1359,32 @@ def generate_html_email(games_by_date: Dict[str, List[Game]], date_range: str,
 
         html += f'''
           <!-- {formatted_date.upper()} -->
-          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f5f5f5;">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" class="body-bg" style="background:#f5f5f5;">
             <tr>
               <td>
                 <table role="presentation" class="inner" align="center" width="720" cellpadding="0" cellspacing="0" style="width:92%;max-width:720px;margin:0 auto;">
                   <tr>
-                    <td class="pad" style="padding:6px 0 0 0;">
-                      <div style="font-size:12px;letter-spacing:.22em;color:#9297a3;text-transform:uppercase;">{date_obj.strftime('%A')}</div>
-                      <h3 class="day-title" style="margin:4px 0 14px 0;color:#041e42;font-family:'Crimson Pro', Georgia, 'Times New Roman', serif;font-weight:600;font-size:20px;line-height:24px;">
+                    <td style="padding:16px 0 0 0;">
+                      <h3 class="day-title day-heading text-primary" style="margin:0 0 12px 0;color:#041e42;font-family:'Crimson Pro',Georgia,'Times New Roman',serif;font-weight:700;font-size:20px;line-height:26px;">
                         {formatted_date}
                       </h3>
                     </td>
                   </tr>
                   <tr>
-                    <td class="pad" style="padding:0 0 26px 0;">
-                      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #e1e4eb;border-radius:14px;background:#ffffff;">
+                    <td style="padding:0 0 24px 0;">
+                      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" class="card-bg" style="border:1px solid #e5e7eb;border-radius:10px;background:#ffffff;">
                         <tr>
-                          <td style="padding:18px 22px;">
+                          <td style="padding:18px 20px;">
                             <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
 '''
 
         if not has_games:
-            html += '''
+            html += f'''
                               <tr>
-                                <td>
-                                  <p style="margin:4px 0;color:#6b7280;font-size:14px;line-height:20px;">No events scheduled.</p>
+                                <td style="padding:12px 0;text-align:center;">
+                                  <div style="color:#9ca3af;font-size:14px;line-height:20px;font-family:'Red Hat Text',Arial,sans-serif;">
+                                    No events scheduled for {date_obj.strftime('%A')}.
+                                  </div>
                                 </td>
                               </tr>
 '''
@@ -1355,7 +1393,7 @@ def generate_html_email(games_by_date: Dict[str, List[Game]], date_range: str,
                 html += '''
                               <tr>
                                 <td style="padding-bottom:8px;">
-                                  <div style="font-size:12px;letter-spacing:.28em;color:#a11919;text-transform:uppercase;">Spotlight</div>
+                                  <div style="font-size:11px;letter-spacing:.28em;color:#a11919;text-transform:uppercase;font-family:'Red Hat Text',Arial,sans-serif;font-weight:600;">Spotlight</div>
                                 </td>
                               </tr>
 '''
@@ -1370,7 +1408,7 @@ def generate_html_email(games_by_date: Dict[str, List[Game]], date_range: str,
                 html += f'''
                               <tr>
                                 <td style="padding:{'14px' if featured_games else '0'} 0 6px 0;">
-                                  <div style="font-size:12px;letter-spacing:.22em;color:#9297a3;text-transform:uppercase;">{label}</div>
+                                  <div style="font-size:11px;letter-spacing:.22em;color:#6b7280;text-transform:uppercase;font-family:'Red Hat Text',Arial,sans-serif;font-weight:500;">{label}</div>
                                 </td>
                               </tr>
 '''
@@ -1396,22 +1434,32 @@ def generate_html_email(games_by_date: Dict[str, List[Game]], date_range: str,
     html += f'''
 
           <!-- CALL TO ACTION -->
-          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f5f5f5;">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" class="body-bg" style="background:#f5f5f5;">
             <tr>
               <td>
                 <table role="presentation" class="inner" align="center" width="720" cellpadding="0" cellspacing="0" style="width:92%;max-width:720px;margin:0 auto;">
                   <tr>
-                    <td class="pad" style="padding:0 0 28px 0;">
-                      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-radius:14px;border:1px solid #e1e4eb;background:#ffffff;">
+                    <td style="padding:8px 0 28px 0;">
+                      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" class="card-bg" style="border-radius:10px;border:1px solid #e5e7eb;background:#ffffff;overflow:hidden;">
                         <tr>
-                          <td style="padding:20px 24px;">
-                            <div style="font-size:12px;letter-spacing:.22em;color:#13cf97;text-transform:uppercase;">{text_variations['cta_button_text']}</div>
-                            <div style="margin:10px 0 6px 0;color:#041e42;font-family:'Crimson Pro', Georgia, 'Times New Roman', serif;font-weight:600;font-size:22px;line-height:26px;">
+                          <td style="height:4px;background:#13cf97;font-size:1px;line-height:1px;">&nbsp;</td>
+                        </tr>
+                        <tr>
+                          <td style="padding:24px 28px;">
+                            <div style="font-size:11px;letter-spacing:.22em;color:#13cf97;text-transform:uppercase;font-family:'Red Hat Text',Arial,sans-serif;font-weight:600;">{text_variations['cta_button_text']}</div>
+                            <div class="text-primary" style="margin:10px 0 8px 0;color:#041e42;font-family:'Crimson Pro',Georgia,'Times New Roman',serif;font-weight:700;font-size:22px;line-height:28px;">
                               {text_variations['cta_header_text']}
                             </div>
-                            <p style="margin:0;color:#4b5563;font-size:14px;line-height:22px;">
+                            <p class="text-secondary" style="margin:0 0 16px 0;color:#4b5563;font-size:14px;line-height:22px;font-family:'Red Hat Text',Arial,sans-serif;">
                               {text_variations['cta_text']}
                             </p>
+                            <table role="presentation" cellpadding="0" cellspacing="0">
+                              <tr>
+                                <td class="cta-button" style="border-radius:6px;background:#041e42;">
+                                  <a href="https://www.kentdenver.org/athletics-wellness/schedules-and-scores" style="display:inline-block;padding:12px 24px;color:#ffffff;font-size:14px;font-weight:600;text-decoration:none;font-family:'Red Hat Text',Arial,sans-serif;" aria-label="View full schedules and scores on Kent Denver athletics page">View Full Schedule</a>
+                                </td>
+                              </tr>
+                            </table>
                           </td>
                         </tr>
                       </table>
@@ -1422,17 +1470,17 @@ def generate_html_email(games_by_date: Dict[str, List[Game]], date_range: str,
             </tr>
           </table>
 
-          <!-- SIGN-OFF -->
-          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f5f5f5;">
+          <!-- FOOTER -->
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" class="footer-bg" style="background:#041e42;">
             <tr>
               <td>
                 <table role="presentation" class="inner" align="center" width="720" cellpadding="0" cellspacing="0" style="width:92%;max-width:720px;margin:0 auto;">
                   <tr>
-                    <td class="pad" style="padding:0 0 40px 0;">
-                      <p style="margin:0 0 8px 0;color:#4b5563;font-size:13px;line-height:20px;">
-                        For complete schedules, directions, and updates, <a href="https://www.kentdenver.org/athletics-wellness/schedules-and-scores" style="color:#041e42;text-decoration:underline;">visit our athletics page</a>.
+                    <td style="padding:24px 0 32px 0;">
+                      <p style="margin:0 0 10px 0;color:#e2e8f0;font-size:13px;line-height:20px;font-family:'Red Hat Text',Arial,sans-serif;">
+                        For complete schedules, directions, and updates, <a href="https://www.kentdenver.org/athletics-wellness/schedules-and-scores" style="color:#93c5fd;text-decoration:underline;" aria-label="Visit Kent Denver athletics page for schedules and scores">visit our athletics page</a>.
                       </p>
-                      <p style="margin:0;color:#9aa1ab;font-size:12px;line-height:18px;">
+                      <p style="margin:0;color:#9ca3af;font-size:12px;line-height:18px;font-family:'Red Hat Text',Arial,sans-serif;">
                         — Student Leadership Media Team
                       </p>
                     </td>

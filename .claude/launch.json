@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "instagram-poster",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": ["/Users/jbarkin28/sl-emails/instagram-poster/app.py"],
+      "port": 5050
+    }
+  ]
+}

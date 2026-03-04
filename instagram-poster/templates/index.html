@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Kent Denver Instagram Carousel Generator</title>
+  <link rel="icon" href="/static/kd-logo.png" type="image/png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Crimson+Pro:wght@500;600;700&family=Red+Hat+Text:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>{{ poster_css|safe }}</style>
+  <link rel="stylesheet" href="/static/app.css" />
+</head>
+<body>
+  <main class="app-shell">
+    <section class="controls">
+      <header class="controls-header">
+        <h1>Instagram Daily Carousel</h1>
+        <p>Generate one post-worthy 1080x1350 slide per day. Fetch athletics + arts, add custom events, then export all daily slides.</p>
+      </header>
+
+      <div class="panel">
+        <h2>Week</h2>
+        <div class="field-row field-row-3">
+          <label>
+            Mode
+            <select id="week-mode">
+              <option value="next" selected>Next Week</option>
+              <option value="this">This Week</option>
+              <option value="custom">Custom Range</option>
+            </select>
+          </label>
+          <label>
+            Start
+            <input id="start-date" type="date" value="{{ default_start }}" />
+          </label>
+          <label>
+            End
+            <input id="end-date" type="date" value="{{ default_end }}" />
+          </label>
+        </div>
+        <div class="field-row field-row-2">
+          <label>
+            Carousel Heading
+            <input id="poster-heading" type="text" value="This Week at Kent Denver" maxlength="60" />
+          </label>
+          <div class="button-stack">
+            <button id="fetch-events" class="btn btn-primary">Fetch Source Events</button>
+            <button id="render-poster" class="btn">Refresh Carousel</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel panel-events">
+        <div class="panel-header-row">
+          <h2>Events</h2>
+          <button id="add-custom" class="btn btn-secondary">Add Custom Event</button>
+        </div>
+        <p class="hint">Each event is assigned to its day slide automatically. Add custom events for robotics, speech & debate, admissions nights, and more.</p>
+        <div class="events-table-wrap">
+          <table id="events-table">
+            <thead>
+              <tr>
+                <th>Source</th>
+                <th>Date</th>
+                <th>Time</th>
+                <th>Title</th>
+                <th>Subtitle</th>
+                <th>Location</th>
+                <th>Badge</th>
+                <th>Priority</th>
+                <th>Color</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="events-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="panel panel-actions">
+        <div id="status" class="status">Ready.</div>
+        <div class="action-row">
+          <button id="download-png" class="btn btn-primary">Download Current Slide</button>
+          <button id="download-all-png" class="btn btn-primary">Download All Slides</button>
+          <button id="download-json" class="btn">Download Events JSON</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="preview">
+      <div class="preview-header">
+        <div>
+          <h2>Carousel Preview</h2>
+          <p>Final output size per slide: <strong>1080 × 1350</strong></p>
+        </div>
+        <div class="carousel-controls">
+          <button id="prev-slide" class="btn">Prev</button>
+          <span id="slide-indicator" class="slide-indicator">Slide 1 / {{ initial_slide_count }}</span>
+          <button id="next-slide" class="btn">Next</button>
+        </div>
+      </div>
+      <div class="preview-stage" id="preview-stage">
+        <div class="poster-frame" id="poster-frame">
+          {{ initial_poster_html|safe }}
+        </div>
+      </div>
+      <div id="slide-event-summary" class="slide-event-summary">No events yet.</div>
+    </section>
+  </main>
+
+  <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+  <script>
+    window.__POSTER_DEFAULTS__ = {
+      startDate: "{{ default_start }}",
+      endDate: "{{ default_end }}",
+      mode: "{{ default_mode }}",
+      slideCount: {{ initial_slide_count }}
+    };
+  </script>
+  <script src="/static/app.js"></script>
+</body>
+</html>

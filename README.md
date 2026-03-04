@@ -17,6 +17,12 @@ sl-emails/
 │   ├── index.html                      # Auto-updated daily display
 │   └── README.md                       # Digital signage documentation
 │
+├── instagram-poster/                   # Instagram daily carousel generator (NEW!)
+│   ├── app.py                          # Local web app (fetch + custom events + export)
+│   ├── generate_instagram_poster.py    # CLI daily carousel generator script
+│   ├── poster_generator.py             # Shared carousel layout/data logic
+│   └── README.md                       # Instagram carousel documentation
+│
 ├── homecoming-week/                    # Homecoming event emails
 │   ├── homecoming-ms.html              # Middle school homecoming email
 │   ├── homecoming-us.html              # Upper school homecoming email
@@ -67,6 +73,16 @@ sl-emails/
 
 **Setup:** See [digital-signage/README.md](digital-signage/README.md)
 
+## 📱 Instagram Daily Carousel (NEW!)
+
+**Daily carousel generation** for Instagram feed posts (4:5 portrait, `1080x1350` per slide):
+- Pulls events from the same athletics + arts sources used by sports emails
+- Supports custom added events (robotics, admissions, speech & debate, etc.)
+- Generates one day-focused slide per day in the selected week/range
+- Exports current slide or all slides from a local web GUI
+
+**Setup:** See [instagram-poster/README.md](instagram-poster/README.md)
+
 ## 📧 Manual Generation
 
 ### Sports Emails
@@ -81,6 +97,12 @@ python generate_games.py --start-date 2025-10-06 --end-date 2025-10-12
 ```bash
 cd digital-signage
 python3 generate_signage.py                 # Generate today's display
+```
+
+### Instagram Carousel
+```bash
+cd instagram-poster
+python3 app.py                              # Launch carousel GUI at http://127.0.0.1:5050
 ```
 
 ### Homecoming Emails

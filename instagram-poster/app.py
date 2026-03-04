@@ -18,6 +18,7 @@ from poster_generator import (
     poster_css,
     poster_event_from_dict,
     render_poster_fragment,
+    render_poster_fragment_v2,
 )
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -75,6 +76,8 @@ def render() -> Any:
     start_raw = str(payload.get("start_date", "")).strip()
     end_raw = str(payload.get("end_date", "")).strip()
     heading = str(payload.get("heading", "This Week at Kent Denver")).strip() or "This Week at Kent Denver"
+    style = str(payload.get("style", "v1")).strip()
+    render_fn = render_poster_fragment_v2 if style == "v2" else render_poster_fragment
 
     base_payload = payload.get("base_events", [])
     custom_payload = payload.get("custom_events", [])
@@ -111,7 +114,7 @@ def render() -> Any:
                     "day": model["day_name"],
                     "events_total": model["events_total"],
                     "overflow_count": model["overflow_count"],
-                    "poster_html": render_poster_fragment(model, poster_id=f"instagram-poster-{idx}"),
+                    "poster_html": render_fn(model, poster_id=f"instagram-poster-{idx}"),
                 }
             )
 

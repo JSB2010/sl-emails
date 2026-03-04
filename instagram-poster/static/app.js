@@ -6,6 +6,7 @@
     startDate: defaults.startDate || '',
     endDate: defaults.endDate || '',
     heading: 'This Week at Kent Denver',
+    posterStyle: 'v1',
     events: [],
     slides: [],
     currentSlideIndex: 0,
@@ -30,6 +31,8 @@
     nextBtn: document.getElementById('next-slide'),
     slideIndicator: document.getElementById('slide-indicator'),
     slideSummary: document.getElementById('slide-event-summary'),
+    styleV1Btn: document.getElementById('style-v1'),
+    styleV2Btn: document.getElementById('style-v2'),
   };
 
   let renderTimer = null;
@@ -229,6 +232,7 @@
           start_date: state.startDate,
           end_date: state.endDate,
           heading: state.heading,
+          style: state.posterStyle,
           base_events: baseEvents,
           custom_events: customEvents,
         }),
@@ -282,6 +286,21 @@
         height: 1350,
         scale: 1,
         backgroundColor: null,
+        onclone: (doc) => {
+          let clonedPoster = null;
+
+          if (poster.id) {
+            clonedPoster = doc.getElementById(poster.id);
+          }
+
+          if (!clonedPoster) {
+            clonedPoster = doc.querySelector('.poster');
+          }
+
+          if (clonedPoster) {
+            clonedPoster.classList.add('poster-export');
+          }
+        },
       });
 
       const link = document.createElement('a');
@@ -439,6 +458,19 @@
     els.tbody.addEventListener('change', onTableInput);
     els.tbody.addEventListener('click', onTableClick);
     window.addEventListener('resize', scalePoster);
+
+    els.styleV1Btn.addEventListener('click', () => {
+      state.posterStyle = 'v1';
+      els.styleV1Btn.classList.add('btn-active');
+      els.styleV2Btn.classList.remove('btn-active');
+      renderCarousel();
+    });
+    els.styleV2Btn.addEventListener('click', () => {
+      state.posterStyle = 'v2';
+      els.styleV2Btn.classList.add('btn-active');
+      els.styleV1Btn.classList.remove('btn-active');
+      renderCarousel();
+    });
   }
 
   function init() {

@@ -310,6 +310,17 @@ def _format_day_long(value: date) -> str:
     return value.strftime("%A, %B %-d") if sys.platform != "win32" else value.strftime("%A, %B %d").replace(" 0", " ")
 
 
+def _v2_density(total: int) -> str:
+    """Return density class name for v2 editorial panel style."""
+    if total <= 1:
+        return "spacious"
+    if total <= 5:
+        return "balanced"
+    if total <= 10:
+        return "compact"
+    return "dense"
+
+
 def _layout_limits_day(total: int) -> tuple[int, int, str, int]:
     """Return cards, rows, density, and columns for one day slide."""
     if total <= 1:
@@ -532,6 +543,102 @@ def render_poster_fragment(model: dict[str, Any], *, poster_id: str = "instagram
     )
 
 
+def _panel_event_html(event: PosterEvent) -> str:
+    """Render one event as an editorial panel row for v2 style."""
+    title = escape(event.title)
+    accent = escape(event.accent)
+
+    meta_parts: list[str] = []
+    if event.badge:
+        meta_parts.append(escape(event.badge))
+    if event.time:
+        meta_parts.append(escape(event.time))
+    meta_str = " · ".join(meta_parts)
+
+    sub_parts: list[str] = []
+    if event.subtitle:
+        sub_parts.append(escape(event.subtitle))
+    if event.location:
+        sub_parts.append(escape(event.location))
+    sub_str = " · ".join(sub_parts)
+    sub_part = f'<p class="pv2-event-sub">{sub_str}</p>' if sub_str else ""
+
+    return (
+        f'<div class="pv2-event" style="--event-accent:{accent};">'
+        '<div class="pv2-event-bar"></div>'
+        '<div class="pv2-event-content">'
+        f'<p class="pv2-event-meta">{meta_str}</p>'
+        f'<h3 class="pv2-event-title">{title}</h3>'
+        f"{sub_part}"
+        "</div>"
+        "</div>"
+    )
+
+
+def render_poster_fragment_v2(model: dict[str, Any], *, poster_id: str = "instagram-poster") -> str:
+    """Render one daily slide in the v2 Editorial Panel style."""
+    logo_src = escape(model.get("logo_src", "/static/kd-logo.png"))
+    total_events = model["events_total"]
+    v2_density = _v2_density(total_events)
+
+    # Combine all available events and sort chronologically by time
+    all_events: list[PosterEvent] = list(model["featured_cards"]) + list(model["list_rows"])
+    sorted_events = sorted(
+        all_events,
+        key=lambda e: (_time_for_sort(e.time), -e.priority, e.title.lower()),
+    )
+
+    # Cap at 14; remaining are overflow
+    max_show = 14
+    shown = sorted_events[:max_show]
+    overflow = total_events - len(shown)
+
+    if total_events == 0:
+        events_body = (
+            '<div class="pv2-empty">'
+            "<h3>No Events Today</h3>"
+            "<p>Check back tomorrow!</p>"
+            "</div>"
+        )
+    else:
+        events_html = "".join(_panel_event_html(e) for e in shown)
+        overflow_part = ""
+        if overflow > 0:
+            overflow_part = f'<p class="pv2-overflow">+{overflow} more event{"s" if overflow != 1 else ""}</p>'
+        events_body = f'<div class="pv2-events">{events_html}</div>{overflow_part}'
+
+    return (
+        f'<section class="poster poster-v2 poster-v2--{v2_density}" id="{escape(poster_id)}">'
+        '<div class="pv2-panel">'
+        '<div class="pv2-stripe"></div>'
+        '<div class="pv2-inner">'
+        # Header
+        '<div class="pv2-header">'
+        f'<div class="pv2-logo-wrap"><img src="{logo_src}" alt="Kent Denver" class="pv2-logo" /></div>'
+        f'<p class="pv2-kicker">{escape(model["heading"])}</p>'
+        f'<h1 class="pv2-day">{escape(model["day_name"].upper())}</h1>'
+        f'<p class="pv2-date">{escape(model["day_long"])}</p>'
+        "</div>"
+        # Divider
+        '<div class="pv2-divider">'
+        '<div class="pv2-divider-line"></div>'
+        '<div class="pv2-divider-dot"></div>'
+        '<div class="pv2-divider-line"></div>'
+        "</div>"
+        # Events
+        f'<div class="pv2-events-wrap">{events_body}</div>'
+        # Footer
+        '<div class="pv2-footer">'
+        "<span>@kentdenver</span>"
+        f'<span class="pv2-slide-num">SLIDE {model["slide_number"]}/{model["total_slides"]}</span>'
+        "<span>Student Leadership</span>"
+        "</div>"
+        "</div>"
+        "</div>"
+        "</section>"
+    )
+
+
 def poster_css() -> str:
     """Shared CSS for GUI preview and static export."""
     return """
@@ -559,6 +666,10 @@ body { font-family: 'Red Hat Text', Arial, sans-serif; background: #b8c8de; }
   overflow: hidden;
   position: relative;
   box-shadow: 0 32px 80px rgba(4,30,66,.4);
+}
+/* Export mode: remove shadows that html2canvas can rasterize as dark overlays. */
+.poster-export {
+  box-shadow: none !important;
 }
 
 /* ── Header ── */
@@ -680,6 +791,9 @@ body { font-family: 'Red Hat Text', Arial, sans-serif; background: #b8c8de; }
   display: flex;
   flex-direction: column;
   box-shadow: 0 4px 16px rgba(4,30,66,.1), 0 1px 4px rgba(4,30,66,.07);
+}
+.poster-export .poster-card {
+  box-shadow: none !important;
 }
 .poster-card-top-bar { height: 10px; flex-shrink: 0; }
 .poster-card-body {
@@ -910,6 +1024,229 @@ body { font-family: 'Red Hat Text', Arial, sans-serif; background: #b8c8de; }
 .poster--dense .poster-row-time { font-size: 12px; }
 .poster--dense .poster-row-location { font-size: 11px; }
 .poster--dense .poster-row-cat { font-size: 10px; }
+
+/* ═══════════════════════════════════════════
+   V2 EDITORIAL PANEL STYLE
+   ═══════════════════════════════════════════ */
+
+/* ── Poster canvas (v2 overrides) ── */
+.poster-v2 {
+  background-color: #041E42;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='80' height='56'%3E%3Cpath d='M0 56L40 8L80 56' fill='none' stroke='white' stroke-opacity='.045' stroke-width='1.5'/%3E%3C/svg%3E");
+  background-size: 80px 56px;
+  padding: 50px 110px;
+  align-items: stretch;
+  justify-content: unset;
+  box-shadow: none;
+}
+
+/* ── Floating Panel ── */
+.pv2-panel {
+  flex: 1;
+  background: #FAF8F4;
+  border-radius: 6px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 24px 80px rgba(0,0,0,.55), 0 4px 20px rgba(0,0,0,.35);
+}
+.poster-export .pv2-panel {
+  box-shadow: none !important;
+}
+.pv2-stripe {
+  height: 8px;
+  background: linear-gradient(90deg, #7a1010 0%, #A11919 30%, #cc2929 70%, #A11919 100%);
+  flex-shrink: 0;
+}
+.pv2-inner {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  padding: 28px 52px 20px;
+  min-height: 0;
+}
+
+/* ── Panel Header ── */
+.pv2-header {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  flex-shrink: 0;
+}
+.pv2-logo-wrap {
+  width: 60px;
+  height: 60px;
+  margin-bottom: 10px;
+}
+.pv2-logo { width: 100%; height: auto; }
+.pv2-kicker {
+  font-size: 11px; font-weight: 800;
+  letter-spacing: .22em; text-transform: uppercase;
+  color: rgba(4,30,66,.38);
+  margin-bottom: 2px;
+}
+.pv2-day {
+  font-family: 'Crimson Pro', Georgia, serif;
+  font-size: 108px; line-height: .95;
+  letter-spacing: -.025em;
+  color: #041E42;
+  text-transform: uppercase;
+  text-align: center;
+}
+.pv2-date {
+  font-size: 17px; font-weight: 600;
+  color: rgba(4,30,66,.48);
+  margin-top: 6px;
+}
+
+/* ── Divider ── */
+.pv2-divider {
+  display: flex; align-items: center;
+  gap: 10px;
+  margin: 16px 0;
+  flex-shrink: 0;
+}
+.pv2-divider-line {
+  flex: 1; height: 1px;
+  background: rgba(161,25,25,.28);
+}
+.pv2-divider-dot {
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  background: #A11919;
+  flex-shrink: 0;
+}
+
+/* ── Events wrap: flows from top ── */
+.pv2-events-wrap {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  min-height: 0;
+  overflow: hidden;
+  padding-top: 2px;
+}
+.pv2-events {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* ── Single event row ── */
+.pv2-event {
+  display: flex;
+  align-items: stretch;
+  gap: 14px;
+}
+.pv2-event-bar {
+  width: 4px;
+  border-radius: 2px;
+  background: var(--event-accent, #0C3A6B);
+  flex-shrink: 0;
+}
+.pv2-event-content { flex: 1; min-width: 0; }
+.pv2-event-meta {
+  font-size: 10px; font-weight: 800;
+  letter-spacing: .14em; text-transform: uppercase;
+  color: rgba(4,30,66,.4);
+  margin-bottom: 1px;
+}
+.pv2-event-title {
+  font-family: 'Crimson Pro', Georgia, serif;
+  font-size: 32px; line-height: 1.1;
+  color: #041E42;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.pv2-event-sub {
+  font-size: 14px; font-weight: 600;
+  color: rgba(4,30,66,.48);
+  margin-top: 2px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
+/* ── Overflow / Empty / Footer ── */
+.pv2-overflow {
+  text-align: center;
+  font-size: 12px; font-weight: 700;
+  letter-spacing: .06em; text-transform: uppercase;
+  color: rgba(4,30,66,.35);
+  margin-top: 8px;
+  flex-shrink: 0;
+}
+.pv2-empty { text-align: center; padding: 24px 0; }
+.pv2-empty h3 {
+  font-family: 'Crimson Pro', Georgia, serif;
+  font-size: 52px; color: rgba(4,30,66,.22);
+}
+.pv2-empty p { font-size: 20px; color: rgba(4,30,66,.28); margin-top: 10px; }
+.pv2-footer {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 12px 0 4px;
+  border-top: 1px solid rgba(4,30,66,.1);
+  flex-shrink: 0; margin-top: 12px;
+}
+.pv2-footer span {
+  font-size: 11px; font-weight: 700;
+  letter-spacing: .12em; text-transform: uppercase;
+  color: rgba(4,30,66,.32);
+}
+.pv2-slide-num {
+  background: #A11919;
+  color: #fff !important;
+  padding: 4px 12px; border-radius: 3px;
+}
+
+/* ── V2 Density: spacious (1 event) ── */
+.poster-v2--spacious .pv2-inner { padding: 32px 52px 24px; }
+.poster-v2--spacious .pv2-logo-wrap { width: 70px; height: 70px; margin-bottom: 14px; }
+.poster-v2--spacious .pv2-day { font-size: 120px; }
+.poster-v2--spacious .pv2-date { font-size: 20px; margin-top: 8px; }
+.poster-v2--spacious .pv2-divider { margin: 22px 0; }
+.poster-v2--spacious .pv2-events { gap: 0; }
+.poster-v2--spacious .pv2-events-wrap { justify-content: center; }
+.poster-v2--spacious .pv2-event-bar { width: 6px; height: unset; min-height: 80px; }
+.poster-v2--spacious .pv2-event-content { padding: 8px 0; }
+.poster-v2--spacious .pv2-event-title { font-size: 58px; line-height: 1.05; -webkit-line-clamp: 3; }
+.poster-v2--spacious .pv2-event-meta { font-size: 14px; margin-bottom: 4px; }
+.poster-v2--spacious .pv2-event-sub { font-size: 24px; margin-top: 6px; }
+
+/* ── V2 Density: balanced (2–5 events) ── */
+.poster-v2--balanced .pv2-day { font-size: 108px; }
+.poster-v2--balanced .pv2-divider { margin: 18px 0; }
+.poster-v2--balanced .pv2-events { gap: 20px; }
+.poster-v2--balanced .pv2-event-bar { width: 5px; }
+.poster-v2--balanced .pv2-event-title { font-size: 40px; }
+.poster-v2--balanced .pv2-event-meta { font-size: 12px; margin-bottom: 2px; }
+.poster-v2--balanced .pv2-event-sub { font-size: 18px; }
+
+/* ── V2 Density: compact (6–10 events) ── */
+.poster-v2--compact .pv2-inner { padding: 22px 52px 16px; }
+.poster-v2--compact .pv2-logo-wrap { width: 52px; height: 52px; margin-bottom: 8px; }
+.poster-v2--compact .pv2-day { font-size: 88px; }
+.poster-v2--compact .pv2-date { font-size: 15px; margin-top: 4px; }
+.poster-v2--compact .pv2-divider { margin: 12px 0; }
+.poster-v2--compact .pv2-events { gap: 14px; }
+.poster-v2--compact .pv2-event-title { font-size: 28px; }
+.poster-v2--compact .pv2-event-meta { font-size: 10px; margin-bottom: 2px; }
+.poster-v2--compact .pv2-event-sub { font-size: 14px; }
+
+/* ── V2 Density: dense (11+ events) ── */
+.poster-v2--dense .pv2-inner { padding: 16px 48px 12px; }
+.poster-v2--dense .pv2-logo-wrap { width: 46px; height: 46px; margin-bottom: 6px; }
+.poster-v2--dense .pv2-day { font-size: 70px; }
+.poster-v2--dense .pv2-kicker { font-size: 10px; }
+.poster-v2--dense .pv2-date { font-size: 14px; margin-top: 3px; }
+.poster-v2--dense .pv2-divider { margin: 10px 0; }
+.poster-v2--dense .pv2-events { gap: 8px; }
+.poster-v2--dense .pv2-event-title { font-size: 22px; }
+.poster-v2--dense .pv2-event-meta { font-size: 9px; }
+.poster-v2--dense .pv2-event-sub { font-size: 12px; }
+.poster-v2--dense .pv2-footer { margin-top: 8px; padding: 8px 0 2px; }
 """
 
 

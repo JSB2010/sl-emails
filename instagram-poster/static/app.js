@@ -31,8 +31,10 @@
     nextBtn: document.getElementById('next-slide'),
     slideIndicator: document.getElementById('slide-indicator'),
     slideSummary: document.getElementById('slide-event-summary'),
+    slideDots: document.getElementById('slide-dots'),
     styleV1Btn: document.getElementById('style-v1'),
     styleV2Btn: document.getElementById('style-v2'),
+    eventCount: document.getElementById('event-count'),
   };
 
   let renderTimer = null;
@@ -45,7 +47,23 @@
 
   function setStatus(message, isError = false) {
     els.status.textContent = message;
-    els.status.style.color = isError ? '#7f1515' : '#4e6078';
+    els.status.classList.toggle('status-error', isError);
+  }
+
+  function updateEventCount() {
+    if (!els.eventCount) return;
+
+    const total = state.events.length;
+    const customCount = state.events.filter((event) => event.source === 'custom').length;
+    const sourceCount = total - customCount;
+
+    if (!total) {
+      els.eventCount.textContent = '0 events';
+      return;
+    }
+
+    const noun = total === 1 ? 'event' : 'events';
+    els.eventCount.textContent = `${total} ${noun} (${sourceCount} source, ${customCount} custom)`;
   }
 
   function escapeHtml(value) {
@@ -88,6 +106,8 @@
   }
 
   function renderEventRows() {
+    updateEventCount();
+
     if (!state.events.length) {
       els.tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;color:#4e6078;">No events loaded yet. Fetch events or add custom events.</td></tr>';
       return;
@@ -164,6 +184,7 @@
     els.posterFrame.innerHTML = state.slides[clamped].poster_html;
     scalePoster();
     updateSlideUi();
+    updateSlideDots();
   }
 
   async function fetchSourceEvents() {
@@ -244,6 +265,7 @@
       }
 
       state.slides = data.slides || [];
+      buildSlideDots();
       const nextIndex = Number.isFinite(data.current_index) ? data.current_index : state.currentSlideIndex;
       showSlide(nextIndex);
 
@@ -438,6 +460,20 @@
     queueRender();
   }
 
+  function buildSlideDots() {
+    if (!els.slideDots) return;
+    els.slideDots.innerHTML = state.slides
+      .map((_, i) => `<button class="slide-dot${i === state.currentSlideIndex ? ' active' : ''}" data-dot="${i}" aria-label="Slide ${i + 1}"></button>`)
+      .join('');
+  }
+
+  function updateSlideDots() {
+    if (!els.slideDots) return;
+    els.slideDots.querySelectorAll('.slide-dot').forEach((dot, i) => {
+      dot.classList.toggle('active', i === state.currentSlideIndex);
+    });
+  }
+
   function bind() {
     els.mode.addEventListener('change', () => {
       onModeChange();
@@ -458,6 +494,13 @@
     els.tbody.addEventListener('change', onTableInput);
     els.tbody.addEventListener('click', onTableClick);
     window.addEventListener('resize', scalePoster);
+
+    if (els.slideDots) {
+      els.slideDots.addEventListener('click', (e) => {
+        const dot = e.target.closest('[data-dot]');
+        if (dot) showSlide(Number(dot.dataset.dot));
+      });
+    }
 
     els.styleV1Btn.addEventListener('click', () => {
       state.posterStyle = 'v1';

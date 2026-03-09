@@ -47,10 +47,7 @@ import time
 
 ICON_CDN_BASE = "https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.5.2/svgs/solid"
 KDS_PRIMARY_LOGO_URL = (
-    "https://cdn-assets-cloud.frontify.com/s3/frontify-cloud-files-us/"
-    "eyJwYXRoIjoiZnJvbnRpZnlcL2FjY291bnRzXC9iNFwvNzU3NDlcL3Byb2plY3RzXC8xMDUwNjZc"
-    "L2Fzc2V0c1wvYTNcLzY3NDA0OTZcLzlmYTY2NGYzZjhiOGI3YjY2ZDEwZDBkZGI5NjcxNmJmLTE2"
-    "NTY4ODQyNjYucG5nIn0:frontify:0G-jY-31l0MCBnvlONY7KuK6-sTagdCay7zorKYJ6_o?width=600&format=png"
+    "https://askthekidz.smmall.cloud/_next/image?url=https%3A%2F%2Fnational.smmallcdn.net%2Faskthekidz%2F1773077145056%2FWhiteOutlineKD-Clear.png&w=3840&q=75"
 )
 
 # Sport icon and color mappings

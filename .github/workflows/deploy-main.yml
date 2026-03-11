@@ -1,0 +1,190 @@
+name: Deploy Production
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-production-main
+  cancel-in-progress: false
+
+# Required GitHub secret:
+# - FIREBASE_SERVICE_ACCOUNT_JSON: deploy-capable Google service-account key.
+#   It must be able to run Cloud Build, deploy Cloud Run, act as the runtime
+#   service account, and deploy Firebase Hosting.
+# Optional repository variables (defaults match current production):
+# - GCP_PROJECT_ID (default: student-leadership-media)
+# - GCP_REGION (default: us-central1)
+# - CLOUD_RUN_SERVICE (default: sl-emails)
+# - CLOUD_RUN_RUNTIME_SERVICE_ACCOUNT
+#   (default: sl-emails-runtime@student-leadership-media.iam.gserviceaccount.com)
+# - ARTIFACT_REGISTRY_REPOSITORY (default: sl-emails)
+# - FIRESTORE_COLLECTION (default: emailWeeks)
+# - FIREBASE_HOSTING_URL (default smoke target: https://<project-id>.web.app)
+
+env:
+  PYTHON_VERSION: "3.11"
+  GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID || 'student-leadership-media' }}
+  GCP_REGION: ${{ vars.GCP_REGION || 'us-central1' }}
+  CLOUD_RUN_SERVICE: ${{ vars.CLOUD_RUN_SERVICE || 'sl-emails' }}
+  CLOUD_RUN_RUNTIME_SERVICE_ACCOUNT: ${{ vars.CLOUD_RUN_RUNTIME_SERVICE_ACCOUNT || 'sl-emails-runtime@student-leadership-media.iam.gserviceaccount.com' }}
+  ARTIFACT_REGISTRY_REPOSITORY: ${{ vars.ARTIFACT_REGISTRY_REPOSITORY || 'sl-emails' }}
+  FIRESTORE_COLLECTION: ${{ vars.FIRESTORE_COLLECTION || 'emailWeeks' }}
+  FIREBASE_HOSTING_URL: ${{ vars.FIREBASE_HOSTING_URL || '' }}
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Cache Python dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-deploy-${{ hashFiles('sports-emails/requirements.txt', 'instagram-poster/requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-deploy-
+            ${{ runner.os }}-pip-
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r sports-emails/requirements.txt -r instagram-poster/requirements.txt
+
+      - name: Run focused runtime checks
+        run: PYTHONPATH=src python -m unittest tests.test_public_healthcheck tests.test_wsgi_entrypoint
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v3
+        with:
+          credentials_json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+          create_credentials_file: true
+          export_environment_variables: true
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ env.GCP_PROJECT_ID }}
+
+      - name: Install Firebase CLI
+        run: npm install --global firebase-tools
+
+      - name: Compute deploy metadata
+        id: meta
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG="$(date -u +%Y%m%d-%H%M%S)-${GITHUB_SHA::7}"
+          IMAGE="${GCP_REGION}-docker.pkg.dev/${GCP_PROJECT_ID}/${ARTIFACT_REGISTRY_REPOSITORY}/${CLOUD_RUN_SERVICE}:${TAG}"
+
+          if [ -n "${FIREBASE_HOSTING_URL}" ]; then
+            HOSTING_URL="${FIREBASE_HOSTING_URL%/}"
+          else
+            HOSTING_URL="https://${GCP_PROJECT_ID}.web.app"
+          fi
+
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "image=${IMAGE}" >> "$GITHUB_OUTPUT"
+          echo "hosting_url=${HOSTING_URL}" >> "$GITHUB_OUTPUT"
+
+      - name: Build and publish image
+        run: >
+          gcloud builds submit
+          --tag "${{ steps.meta.outputs.image }}"
+          --project "${GCP_PROJECT_ID}"
+          --ignore-file=.dockerignore
+          .
+
+      - name: Deploy Cloud Run
+        id: cloud-run
+        shell: bash
+        run: |
+          set -euo pipefail
+          CLOUD_RUN_URL="$(
+            gcloud run deploy "${CLOUD_RUN_SERVICE}" \
+              --image "${{ steps.meta.outputs.image }}" \
+              --project "${GCP_PROJECT_ID}" \
+              --region "${GCP_REGION}" \
+              --service-account "${CLOUD_RUN_RUNTIME_SERVICE_ACCOUNT}" \
+              --allow-unauthenticated \
+              --set-env-vars "FIREBASE_PROJECT_ID=${GCP_PROJECT_ID},FIRESTORE_COLLECTION=${FIRESTORE_COLLECTION}" \
+              --format='value(status.url)' \
+              --quiet
+          )"
+
+          echo "url=${CLOUD_RUN_URL}" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy Firebase Hosting
+        run: firebase deploy --only hosting --project "${GCP_PROJECT_ID}" --non-interactive
+
+      - name: Smoke-check deployed URLs
+        shell: bash
+        env:
+          CLOUD_RUN_URL: ${{ steps.cloud-run.outputs.url }}
+          HOSTING_URL: ${{ steps.meta.outputs.hosting_url }}
+        run: |
+          set -euo pipefail
+
+          check_path() {
+            local base_url="$1"
+            local path="$2"
+            local label="$3"
+            local expected_fragment="${4:-}"
+            local url="${base_url%/}${path}"
+
+            for attempt in 1 2 3 4 5; do
+              if body="$(curl --silent --show-error --fail --location "$url")"; then
+                if [ -n "$expected_fragment" ] && ! grep -Fq "$expected_fragment" <<<"$body"; then
+                  echo "Expected '${expected_fragment}' in ${label} ${path}, got different body" >&2
+                else
+                  echo "✅ ${label} ${path}"
+                  return 0
+                fi
+              fi
+
+              echo "Retry ${attempt}/5 for ${label} ${path}..."
+              sleep 5
+            done
+
+            echo "Smoke check failed for ${label} ${path} (${url})" >&2
+            return 1
+          }
+
+          smoke_target() {
+            local base_url="$1"
+            local label="$2"
+
+            check_path "$base_url" "/_health" "$label" '"ok"'
+            check_path "$base_url" "/" "$label"
+            check_path "$base_url" "/emails" "$label"
+          }
+
+          smoke_target "$CLOUD_RUN_URL" "Cloud Run"
+          smoke_target "$HOSTING_URL" "Firebase Hosting"
+
+          {
+            echo "## Main deploy complete"
+            echo ""
+            echo "- Cloud Run URL: ${CLOUD_RUN_URL}"
+            echo "- Firebase Hosting URL: ${HOSTING_URL}"
+            echo "- Image: ${{ steps.meta.outputs.image }}"
+          } >> "$GITHUB_STEP_SUMMARY"

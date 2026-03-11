@@ -90,6 +90,7 @@ PYTHONPATH=src python3 -m sl_emails.poster.carousel --next-week
 
 - **Daily**: `.github/workflows/update-signage.yml` refreshes `digital-signage/index.html`.
 - **Sunday 3:00 PM MT**: `.github/workflows/generate-sports-emails.yml` writes the next week's Firestore draft.
+- **On push to `main`**: `.github/workflows/deploy-main.yml` builds the container, deploys Cloud Run + Firebase Hosting together, then smoke-checks `/_health`, `/`, and `/emails` on both the direct Cloud Run URL and the Hosting front door.
 - **Before Sunday 4:00 PM MT**: operator reviews the draft at `/emails` and clicks **Approve Week**.
 - **Sunday 4:00 PM MT**: Google Apps Script fetches approved output and sends both audience emails.
 
@@ -98,13 +99,26 @@ PYTHONPATH=src python3 -m sl_emails.poster.carousel --next-week
 ### Secret inventory
 
 - **GitHub Actions secret:** `FIREBASE_SERVICE_ACCOUNT_JSON`
-  - Full JSON key used by `.github/workflows/generate-sports-emails.yml` for Firestore draft publish auth.
+  - Full JSON key used by `.github/workflows/generate-sports-emails.yml` for Firestore draft publish auth and by `.github/workflows/deploy-main.yml` for Cloud Build, Cloud Run deploy, and Firebase Hosting deploy.
+  - The service account behind this key must be able to run Cloud Build, deploy Cloud Run, act as the runtime service account, and deploy Firebase Hosting.
 - **GitHub Actions variable:** `FIREBASE_SERVICE_ACCOUNT_EMAIL`
   - Email for the same service account used during GitHub Actions auth.
+- **GitHub Actions variable:** `GCP_PROJECT_ID`
+  - Optional override for `.github/workflows/deploy-main.yml`; defaults to `student-leadership-media`.
+- **GitHub Actions variable:** `GCP_REGION`
+  - Optional override for `.github/workflows/deploy-main.yml`; defaults to `us-central1`.
+- **GitHub Actions variable:** `CLOUD_RUN_SERVICE`
+  - Optional override for `.github/workflows/deploy-main.yml`; defaults to `sl-emails`.
+- **GitHub Actions variable:** `CLOUD_RUN_RUNTIME_SERVICE_ACCOUNT`
+  - Optional override for `.github/workflows/deploy-main.yml`; defaults to `sl-emails-runtime@student-leadership-media.iam.gserviceaccount.com`.
+- **GitHub Actions variable:** `ARTIFACT_REGISTRY_REPOSITORY`
+  - Optional override for `.github/workflows/deploy-main.yml`; defaults to `sl-emails`.
 - **GitHub Actions variable:** `FIRESTORE_DATABASE_ID`
   - Keep set to `(default)` for the current runtime/backend implementation.
 - **GitHub Actions variable:** `FIRESTORE_COLLECTION`
-  - Set to `emailWeeks` unless you intentionally change the collection name everywhere.
+  - Set to `emailWeeks` unless you intentionally change the collection name everywhere; reused by both ingest and deploy workflows.
+- **GitHub Actions variable:** `FIREBASE_HOSTING_URL`
+  - Optional smoke-test override for `.github/workflows/deploy-main.yml`; defaults to `https://<project-id>.web.app`.
 - **Cloud Run env var:** `FIREBASE_PROJECT_ID`
   - Firebase project ID used by the runtime.
 - **Cloud Run secret/env var:** `FIREBASE_SERVICE_ACCOUNT_JSON`
@@ -128,16 +142,29 @@ PYTHONPATH=src python3 -m sl_emails.poster.carousel --next-week
 
 ### GitHub Actions secrets and vars
 
-Configure these in the GitHub repository settings used by `.github/workflows/generate-sports-emails.yml`. These are the ingest-owned values consumed by `sl_emails.ingest.generate_games` through `FirestoreDraftPublishConfig`:
+Configure these in the GitHub repository settings used by `.github/workflows/generate-sports-emails.yml` and `.github/workflows/deploy-main.yml`.
 
 - **Secret:** `FIREBASE_SERVICE_ACCOUNT_JSON`
   - Full JSON key for the Firebase/Google service account.
+  - Reused by the main deploy workflow, so the same service account also needs deploy permissions for Cloud Build, Cloud Run, `iam.serviceAccounts.actAs` on the runtime service account, and Firebase Hosting.
 - **Variable:** `FIREBASE_SERVICE_ACCOUNT_EMAIL`
-  - Email address of the same service account.
+  - Email address of the same service account; currently required by the Sunday ingest workflow.
+- **Variable:** `GCP_PROJECT_ID`
+  - Optional override for the main deploy workflow; default is `student-leadership-media`.
+- **Variable:** `GCP_REGION`
+  - Optional override for the main deploy workflow; default is `us-central1`.
+- **Variable:** `CLOUD_RUN_SERVICE`
+  - Optional override for the main deploy workflow; default is `sl-emails`.
+- **Variable:** `CLOUD_RUN_RUNTIME_SERVICE_ACCOUNT`
+  - Optional override for the main deploy workflow; default is `sl-emails-runtime@student-leadership-media.iam.gserviceaccount.com`.
+- **Variable:** `ARTIFACT_REGISTRY_REPOSITORY`
+  - Optional override for the main deploy workflow; default is `sl-emails`.
 - **Variable:** `FIRESTORE_DATABASE_ID`
   - Set to `(default)` for the current runtime/backend implementation.
 - **Variable:** `FIRESTORE_COLLECTION`
   - Set to `emailWeeks` unless you intentionally want a different collection.
+- **Variable:** `FIREBASE_HOSTING_URL`
+  - Optional override for smoke checks after deploy; default target is `https://<project-id>.web.app`.
 
 ### Runtime environment variables
 

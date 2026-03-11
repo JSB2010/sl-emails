@@ -22,6 +22,15 @@ Production deployment is explicitly **Cloud Run for Python compute**, **Firebase
 - **GitHub Actions** — Sunday ingest and daily signage refresh automation.
 - **Google Apps Script** — approved-send Gmail integration only after operator approval.
 
+## Deployment Artifacts
+
+- `Dockerfile` — builds the Cloud Run image for the existing Flask runtime.
+- `.dockerignore` — keeps git metadata, tests, local Firebase JSON files, and `deploy/` out of the image build context.
+- `deploy/cloudrun/service.template.yaml` — Cloud Run service template with placeholders for `PROJECT_ID`, `REGION`, `TAG`, and the runtime service account.
+- `.firebaserc` — sets the default Firebase project to `student-leadership-media`.
+- `firebase.json` — configures Firebase Hosting to rewrite all routes to Cloud Run service `sl-emails` in `us-central1`.
+- `firebase-hosting/404.html` — placeholder Hosting public directory content required by Firebase Hosting.
+
 ## Supported Commands
 
 Install the current dependency manifests from the repo root:
@@ -76,6 +85,13 @@ PYTHONPATH=src python3 -m sl_emails.poster.carousel \
 
 ```text
 sl-emails/
+├── Dockerfile                     # Cloud Run image build for the Flask runtime
+├── .dockerignore                  # Excludes local secrets/tests from the image build context
+├── deploy/cloudrun/service.template.yaml
+│                                  # Cloud Run service template with runtime/env placeholders
+├── .firebaserc                    # Default Firebase project mapping (`student-leadership-media`)
+├── firebase.json                  # Firebase Hosting rewrite to Cloud Run service `sl-emails`
+├── firebase-hosting/404.html      # Placeholder public asset required by Firebase Hosting
 ├── src/sl_emails/                  # Canonical runtime, ingest, signage, poster, and shared services
 ├── src/sl_emails/web/templates/    # Canonical Flask templates for the /emails admin workflow
 ├── src/sl_emails/web/static/       # Canonical Flask static assets and shared runtime logo
@@ -119,6 +135,8 @@ sl-emails/
 - **[README.md](README.md)** — architecture, supported commands, and repo navigation
 - **[SETUP.md](SETUP.md)** — deployment cutover, secrets inventory, operator-vs-agent ownership, and weekly runbook
 - **[google-apps-script/sports-email-sender.gs](google-apps-script/sports-email-sender.gs)** — Gmail sender configuration and approved-send flow
+- **`Dockerfile` + `deploy/cloudrun/service.template.yaml`** — repo-owned Cloud Run deployment artifacts
+- **`.firebaserc` + `firebase.json`** — repo-owned Firebase Hosting front-door configuration
 
 ## Technologies
 

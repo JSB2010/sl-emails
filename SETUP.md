@@ -29,6 +29,21 @@ If any step below suggests Cloudflare Pages or another static host as the primar
 - Add/update custom-domain records in Cloudflare DNS.
 - Update Apps Script config values and enable production triggers.
 
+## Repo-Owned Deployment Artifacts
+
+- `Dockerfile`
+  - Builds the production Cloud Run container for `sl_emails.web:create_app`.
+- `.dockerignore`
+  - Excludes git metadata, tests, local Firebase JSON files, and `deploy/` from the image build context.
+- `deploy/cloudrun/service.template.yaml`
+  - Cloud Run service template with placeholders for `PROJECT_ID`, `REGION`, `TAG`, and `serviceAccountName`.
+- `.firebaserc`
+  - Sets the default Firebase project to `student-leadership-media`.
+- `firebase.json`
+  - Rewrites every Hosting route (`"**"`) to Cloud Run service `sl-emails` in region `us-central1`.
+- `firebase-hosting/404.html`
+  - Minimal placeholder public directory content required by Firebase Hosting.
+
 ## System of Record
 
 - **Firestore** stores weekly drafts, approval status, and sent-state.
@@ -144,17 +159,34 @@ Configure these on the deployed Python runtime that serves the Flask app created
 These steps require the user's cloud credentials. The agent can prepare repo-owned deployment artifacts, but the user must perform the live deploy.
 
 1. Select the production GCP project and region for the live service.
-2. Deploy the Flask app from this repo to **Cloud Run** so the service starts `sl_emails.web:create_app`.
-3. Set runtime config on the Cloud Run service:
+2. Build and publish the container image from the repo root `Dockerfile`:
+
+```bash
+gcloud builds submit --tag us-central1-docker.pkg.dev/student-leadership-media/sl-emails/sl-emails:TAG
+```
+
+3. Open `deploy/cloudrun/service.template.yaml` and replace these placeholders before deploy:
+   - `PROJECT_ID` → your real GCP project ID (currently expected: `student-leadership-media`)
+   - `REGION` → your Cloud Run / Artifact Registry region (currently expected: `us-central1`)
+   - `TAG` → the image tag you built
+   - `serviceAccountName` → the runtime service account email that should access Firestore
+4. Deploy the rendered Cloud Run service template:
+
+```bash
+gcloud run services replace deploy/cloudrun/service.template.yaml --region us-central1 --project student-leadership-media
+```
+
+5. Set runtime config on the Cloud Run service:
    - `FIREBASE_PROJECT_ID=<your-firebase-project-id>`
    - `FIRESTORE_COLLECTION=emailWeeks` (or your chosen non-default collection if changed everywhere)
    - `FIREBASE_SERVICE_ACCOUNT_JSON` via Secret Manager or equivalent Cloud Run secret wiring
-4. Do **not** set `FIRESTORE_EMULATOR_HOST` in production.
-5. Confirm the deployed revision can read bundled repo assets needed by the app:
+   - Or prefer the attached Cloud Run service account / ADC path already noted in `deploy/cloudrun/service.template.yaml`
+6. Do **not** set `FIRESTORE_EMULATOR_HOST` in production.
+7. Confirm the deployed revision can read bundled repo assets needed by the app:
    - `digital-signage/index.html`
    - `src/sl_emails/web/templates/`
    - `src/sl_emails/web/static/`
-6. Capture the default `run.app` URL and smoke-test it before involving Firebase Hosting:
+8. Capture the default `run.app` URL and smoke-test it before involving Firebase Hosting:
    - `GET /healthz`
    - `GET /`
    - `GET /emails`
@@ -163,14 +195,23 @@ These steps require the user's cloud credentials. The agent can prepare repo-own
 
 These steps also require user-owned Firebase credentials.
 
-1. Link the repo's committed Firebase Hosting config to the same Firebase project used by Cloud Run.
-2. Deploy **Firebase Hosting** as the public front door in front of the Cloud Run service.
-3. Verify the generated Hosting URL works before changing DNS:
+1. Confirm `.firebaserc` points at the intended Firebase project (`student-leadership-media` by default).
+2. Confirm `firebase.json` still matches the live Cloud Run target:
+   - `hosting.public` = `firebase-hosting`
+   - rewrite target `serviceId` = `sl-emails`
+   - rewrite target `region` = `us-central1`
+3. Deploy **Firebase Hosting** as the public front door in front of the Cloud Run service:
+
+```bash
+firebase deploy --only hosting --project student-leadership-media
+```
+
+4. Verify the generated Hosting URL works before changing DNS:
    - `/healthz`
    - `/`
    - `/emails`
-4. Start the Firebase Hosting custom-domain flow for the final school-facing hostname.
-5. Keep Firebase Hosting — not Cloud Run directly — as the public host that Apps Script and users will hit after cutover.
+5. Start the Firebase Hosting custom-domain flow for the final school-facing hostname.
+6. Keep Firebase Hosting — not Cloud Run directly — as the public host that Apps Script and users will hit after cutover.
 
 ## Cloudflare DNS Manual Steps
 
@@ -247,9 +288,11 @@ Update `google-apps-script/sports-email-sender.gs` before testing or enabling tr
    - Cloud Run runtime env vars/secrets configured.
    - Apps Script config values identified but triggers still disabled.
 2. **Deploy and verify Cloud Run directly**
+   - Build from `Dockerfile` and deploy the rendered `deploy/cloudrun/service.template.yaml`.
    - Smoke-test the Cloud Run service URL for `/healthz`, `/`, and `/emails`.
    - Stop here if any route is broken.
 3. **Deploy and verify Firebase Hosting**
+   - Deploy `firebase.json` / `.firebaserc` with `firebase deploy --only hosting --project student-leadership-media`.
    - Confirm the Hosting-proxied/default URL works before touching Cloudflare.
 4. **Update Apps Script for the new base URL**
    - First test against the Hosting URL.

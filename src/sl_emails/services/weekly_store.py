@@ -20,6 +20,7 @@ from ..domain.weekly import (
     DEFAULT_STATUS,
     WeeklyDraftRecord,
     WeeklyEventRecord,
+    default_sent_state,
     default_approval_state,
     infer_audiences,
     normalize_sent_state,
@@ -38,6 +39,8 @@ class WeeklyEmailStore(Protocol):
     def claim_week_send(self, week_id: str, sending_by: str = "open-access") -> WeeklyDraftRecord: ...
 
     def mark_week_sent(self, week_id: str, sent_by: str = "open-access") -> WeeklyDraftRecord: ...
+
+    def reset_week_send(self, week_id: str) -> WeeklyDraftRecord: ...
 
 
 def normalize_event_payload(
@@ -224,6 +227,18 @@ class MemoryWeeklyEmailStore:
         self._weeks[week_id] = week
         return self.get_week(week_id)  # type: ignore[return-value]
 
+    def reset_week_send(self, week_id: str) -> WeeklyDraftRecord:
+        week = self._weeks.get(week_id)
+        if week is None:
+            raise KeyError(week_id)
+        sent_state = normalize_sent_state(week.sent)
+        if not sent_state.get("sent") and not sent_state.get("sending"):
+            return self.get_week(week_id)  # type: ignore[return-value]
+        week.sent = default_sent_state()
+        week.updated_at = utc_now_iso()
+        self._weeks[week_id] = week
+        return self.get_week(week_id)  # type: ignore[return-value]
+
 
 class FirestoreWeeklyEmailStore:
     def __init__(
@@ -349,4 +364,15 @@ class FirestoreWeeklyEmailStore:
         timestamp = utc_now_iso()
         sent = {"sent": True, "sent_at": timestamp, "sent_by": sent_by, "sending": False, "sending_at": "", "sending_by": ""}
         self._week_ref(week_id).set({"sent": sent, "updated_at": timestamp}, merge=True)
+        return self.get_week(week_id)  # type: ignore[return-value]
+
+    def reset_week_send(self, week_id: str) -> WeeklyDraftRecord:
+        week = self.get_week(week_id)
+        if week is None:
+            raise KeyError(week_id)
+        sent_state = normalize_sent_state(week.sent)
+        if not sent_state.get("sent") and not sent_state.get("sending"):
+            return week
+        timestamp = utc_now_iso()
+        self._week_ref(week_id).set({"sent": default_sent_state(), "updated_at": timestamp}, merge=True)
         return self.get_week(week_id)  # type: ignore[return-value]

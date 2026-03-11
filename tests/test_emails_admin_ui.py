@@ -19,6 +19,19 @@ class EmailsAdminUiTests(unittest.TestCase):
         self.assertIn('id="event-source-filter"', body)
         self.assertIn('id="event-visibility-filter"', body)
         self.assertIn("Actions", body)
+        self.assertIn('id="mark-unsent"', body)
+        self.assertIn("Mark Unsent", body)
+
+    def test_emails_script_includes_mark_unsent_ui_state_handling(self):
+        response = self.client.get("/static/emails.js")
+
+        self.assertEqual(response.status_code, 200)
+        body = response.get_data(as_text=True)
+        self.assertIn("markUnsentBtn", body)
+        self.assertIn("state: 'unsent'", body)
+        self.assertIn("els.markUnsentBtn.hidden = !isSendLocked;", body)
+        self.assertIn("const isSendLocked = isSent || isSending;", body)
+        self.assertIn("window.confirm", body)
 
     def test_hidden_events_are_excluded_from_preview_outputs(self):
         self.client.put(

@@ -26,6 +26,7 @@
     saveBtn: document.getElementById('save-week'),
     previewBtn: document.getElementById('preview-week'),
     approveBtn: document.getElementById('approve-week'),
+    markUnsentBtn: document.getElementById('mark-unsent'),
     addBtn: document.getElementById('add-custom'),
     heading: document.getElementById('week-heading'),
     notes: document.getElementById('week-notes'),
@@ -194,7 +195,7 @@
       heading: 'This Week at Kent Denver',
       status: 'draft',
       approval: { approved: false, approved_at: '', approved_by: '' },
-      sent: { sent: false, sent_at: '', sent_by: '' },
+      sent: { sent: false, sent_at: '', sent_by: '', sending: false, sending_at: '', sending_by: '' },
       notes: '',
       events: [],
     };
@@ -276,7 +277,8 @@
     const custom = events.filter((event) => event.source === 'custom').length;
     const unsaved = state.dirty ? ' · unsaved changes' : '';
     const approved = week.approval?.approved;
-    const sent = week.sent?.sent;
+    const sent = Boolean(week.sent?.sent);
+    const sending = Boolean(week.sent?.sending);
 
     els.weekSummary.textContent = `${week.start_date} → ${week.end_date}`;
     els.eventCount.textContent = `${events.length} events (${visible} visible, ${custom} custom)`;
@@ -284,8 +286,13 @@
     if (sent) {
       els.stateBanner.className = 'state-banner state-sent';
       els.stateTitle.textContent = 'Already sent';
-      els.stateDetail.textContent = 'This week has already been marked sent. Review-only mode is safest.';
+      els.stateDetail.textContent = 'This week has already been marked sent. Use “Mark Unsent” to reopen it for edits or resend prep.';
       els.stateMeta.textContent = `Sent by ${week.sent.sent_by || 'sender'} at ${week.sent.sent_at || 'an unknown time'}${unsaved}`;
+    } else if (sending) {
+      els.stateBanner.className = 'state-banner state-sent';
+      els.stateTitle.textContent = 'Send in progress';
+      els.stateDetail.textContent = 'This week is currently marked sending. Use “Mark Unsent” to clear the send lock before editing or retrying.';
+      els.stateMeta.textContent = `Claimed by ${week.sent.sending_by || 'sender'} at ${week.sent.sending_at || 'an unknown time'}${unsaved}`;
     } else if (approved) {
       els.stateBanner.className = 'state-banner state-approved';
       els.stateTitle.textContent = 'Approved';
@@ -434,10 +441,14 @@
     renderPreview();
 
     const isSent = Boolean(state.week?.sent?.sent);
-    els.addBtn.disabled = !state.week || isSent;
-    els.saveBtn.disabled = !state.week || isSent;
+    const isSending = Boolean(state.week?.sent?.sending);
+    const isSendLocked = isSent || isSending;
+    els.addBtn.disabled = !state.week || isSendLocked;
+    els.saveBtn.disabled = !state.week || isSendLocked;
     els.previewBtn.disabled = !state.week;
-    els.approveBtn.disabled = !state.week || isSent;
+    els.approveBtn.disabled = !state.week || isSendLocked;
+    els.markUnsentBtn.hidden = !isSendLocked;
+    els.markUnsentBtn.disabled = !state.week || !isSendLocked;
   }
 
   function currentWeekId() {
@@ -644,6 +655,35 @@
     }
   }
 
+  async function markWeekUnsent() {
+    if (!state.week) return;
+    const isSending = Boolean(state.week.sent?.sending);
+    const confirmed = typeof window.confirm !== 'function'
+      || window.confirm(
+        isSending
+          ? 'Clear the current sending lock and mark this week unsent? This will make the draft editable again.'
+          : 'Mark this week unsent so it can be edited or resent again?'
+      );
+    if (!confirmed) return;
+
+    setButtonBusy(els.markUnsentBtn, true);
+
+    try {
+      const data = await fetchJson(`/api/emails/weeks/${state.week.week_id}/sent`, {
+        method: 'POST',
+        headers: { 'X-Email-Actor': 'admin-ui' },
+        body: JSON.stringify({ state: 'unsent' }),
+      });
+
+      applyWeek(data.week);
+      setFlash(isSending ? 'Sending lock cleared. The week can be edited or resent again.' : 'Week marked unsent. The normal review workflow is available again.');
+    } catch (error) {
+      setFlash(error.message || 'Unable to clear the send state.', true);
+    } finally {
+      setButtonBusy(els.markUnsentBtn, false);
+    }
+  }
+
   function addCustomEvent() {
     if (!state.week) {
       setFlash('Load or create a week first.', true);
@@ -761,6 +801,7 @@
     els.saveBtn.addEventListener('click', () => saveWeek());
     els.previewBtn.addEventListener('click', () => previewWeek());
     els.approveBtn.addEventListener('click', approveWeek);
+    els.markUnsentBtn.addEventListener('click', markWeekUnsent);
     els.addBtn.addEventListener('click', addCustomEvent);
     els.heading.addEventListener('input', onHeadingInput);
     els.notes.addEventListener('input', onHeadingInput);

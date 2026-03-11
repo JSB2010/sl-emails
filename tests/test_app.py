@@ -290,6 +290,80 @@ class AppApiTests(unittest.TestCase):
         assert payload is not None
         self.assertIn("approved", payload["error"].lower())
 
+    def test_mark_unsent_clears_sent_state_and_preserves_approval(self):
+        self.client.put(
+            "/api/emails/weeks/2026-03-09",
+            json={"start_date": "2026-03-09", "end_date": "2026-03-15", "events": []},
+        )
+        self.client.post("/api/emails/weeks/2026-03-09/approve", headers={"X-Email-Actor": "reviewer"})
+        self.client.post(
+            "/api/emails/weeks/2026-03-09/sent",
+            json={"state": "sent"},
+            headers={"X-Email-Actor": "sender-bot"},
+        )
+
+        response = self.client.post(
+            "/api/emails/weeks/2026-03-09/sent",
+            json={"state": "unsent"},
+            headers={"X-Email-Actor": "admin-ui"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        assert payload is not None
+        self.assertFalse(payload["sent"]["sent"])
+        self.assertFalse(payload["sent"]["sending"])
+        self.assertEqual(payload["sent"]["sent_by"], "")
+        self.assertEqual(payload["sent"]["sending_by"], "")
+        self.assertTrue(payload["week"]["approval"]["approved"])
+
+    def test_mark_unsent_clears_sending_lock_and_save_still_resets_approval(self):
+        self.client.put(
+            "/api/emails/weeks/2026-03-09",
+            json={
+                "start_date": "2026-03-09",
+                "end_date": "2026-03-15",
+                "heading": "Original Heading",
+                "events": [],
+            },
+        )
+        self.client.post("/api/emails/weeks/2026-03-09/approve", headers={"X-Email-Actor": "reviewer"})
+        self.client.post(
+            "/api/emails/weeks/2026-03-09/sent",
+            json={"state": "sending"},
+            headers={"X-Email-Actor": "sender-bot"},
+        )
+
+        reset_response = self.client.post(
+            "/api/emails/weeks/2026-03-09/sent",
+            json={"state": "unsent"},
+            headers={"X-Email-Actor": "admin-ui"},
+        )
+
+        self.assertEqual(reset_response.status_code, 200)
+        reset_payload = reset_response.get_json()
+        assert reset_payload is not None
+        self.assertFalse(reset_payload["sent"]["sent"])
+        self.assertFalse(reset_payload["sent"]["sending"])
+        self.assertTrue(reset_payload["week"]["approval"]["approved"])
+
+        save_response = self.client.put(
+            "/api/emails/weeks/2026-03-09",
+            json={
+                "start_date": "2026-03-09",
+                "end_date": "2026-03-15",
+                "heading": "Updated Heading",
+                "events": [],
+            },
+        )
+
+        self.assertEqual(save_response.status_code, 200)
+        save_payload = save_response.get_json()
+        assert save_payload is not None
+        self.assertFalse(save_payload["week"]["approval"]["approved"])
+        self.assertFalse(save_payload["week"]["sent"]["sent"])
+        self.assertFalse(save_payload["week"]["sent"]["sending"])
+
     def test_create_custom_event_resets_approval(self):
         self.client.put(
             "/api/emails/weeks/2026-03-09",

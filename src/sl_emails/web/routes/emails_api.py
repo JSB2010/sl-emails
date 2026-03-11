@@ -92,12 +92,14 @@ def mark_week_sent(week_id: str) -> Any:
     actor = str(request.headers.get("X-Email-Actor", "open-access")).strip() or "open-access"
     payload = request.get_json(silent=True) or {}
     requested_state = str(payload.get("state") or "sent").strip().lower() or "sent"
-    if requested_state not in {"sending", "sent"}:
-        return json_error("state must be one of: sending, sent", status=400)
+    if requested_state not in {"sending", "sent", "unsent"}:
+        return json_error("state must be one of: sending, sent, unsent", status=400)
 
     try:
         if requested_state == "sending":
             week = get_emails_store().claim_week_send(week_id, sending_by=actor)
+        elif requested_state == "unsent":
+            week = get_emails_store().reset_week_send(week_id)
         else:
             week = get_emails_store().mark_week_sent(week_id, sent_by=actor)
     except KeyError:

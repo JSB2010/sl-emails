@@ -12,8 +12,7 @@ COPY instagram-poster/requirements.txt instagram-poster/requirements.txt
 RUN python -m pip install --no-cache-dir --upgrade pip \
     && python -m pip install --no-cache-dir \
         -r sports-emails/requirements.txt \
-        -r instagram-poster/requirements.txt \
-        firebase-admin
+        -r instagram-poster/requirements.txt
 
 COPY digital-signage digital-signage
 COPY src src
@@ -22,4 +21,4 @@ ENV PORT=8080
 
 EXPOSE 8080
 
-CMD ["sh", "-c", "exec python -m flask --app sl_emails.web:create_app run --host=0.0.0.0 --port=${PORT:-8080}"]
+CMD ["sh", "-c", "exec gunicorn --bind 0.0.0.0:${PORT:-8080} --workers=1 --threads=8 --timeout=0 sl_emails.web.wsgi:app"]

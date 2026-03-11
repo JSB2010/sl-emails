@@ -32,7 +32,7 @@ If any step below suggests Cloudflare Pages or another static host as the primar
 ## Repo-Owned Deployment Artifacts
 
 - `Dockerfile`
-  - Builds the production Cloud Run container for `sl_emails.web:create_app`.
+  - Builds the production Cloud Run container for `sl_emails.web:create_app` and starts it with Gunicorn via `sl_emails.web.wsgi:app`.
 - `.dockerignore`
   - Excludes git metadata, tests, local Firebase JSON files, and `deploy/` from the image build context.
 - `deploy/cloudrun/service.template.yaml`
@@ -148,6 +148,8 @@ Configure these on the deployed Python runtime that serves the Flask app created
 - `FIRESTORE_COLLECTION=emailWeeks` *(optional if you use the default; required if GitHub Actions uses a custom collection name)*
 - `FIRESTORE_EMULATOR_HOST=host:port` *(optional; local development/testing only)*
 
+`instagram-poster/requirements.txt` owns the deployed runtime dependencies (`flask`, `gunicorn`, and `firebase-admin`), so install guidance and container builds should come from that manifest rather than an ad hoc extra pip package.
+
 ### Current config-only constraint
 
 - The runtime currently reads from the **default Firestore database only**.
@@ -234,6 +236,7 @@ After cutover, the primary school-facing hostname must reach Firebase Hosting fi
   - `python3 -m pip install -r sports-emails/requirements.txt`
   - `python3 -m pip install -r instagram-poster/requirements.txt`
 - Serve the Flask app exported by `sl_emails.web:create_app`.
+- The production Cloud Run container now starts the app through Gunicorn (`sl_emails.web.wsgi:app`) from the repo `Dockerfile`.
 - For basic live/local testing, the supported start command is:
 
 ```bash
@@ -274,12 +277,12 @@ Update `google-apps-script/sports-email-sender.gs` before testing or enabling tr
 ### Apps Script test sequence
 
 1. Create or update the Apps Script project with `google-apps-script/sports-email-sender.gs`.
-2. Optionally add `google-apps-script/troubleshooting-functions.gs` for debug helpers.
-3. Run `testApprovedApiAccess()`.
+2. Optionally add `google-apps-script/troubleshooting-functions.gs` for debug helpers such as `sendTestEmail()`.
+3. Run `testApprovedApiAccess()` from `sports-email-sender.gs`.
 4. Confirm the logs show the expected week ID, approval state, and both audience payloads.
-5. Run `sendTestEmail()`.
+5. If you installed `google-apps-script/troubleshooting-functions.gs`, run `sendTestEmail()` from that file.
 6. Confirm subject/body render correctly in a real inbox.
-7. Run `setupTriggers()` only after the final Hosting/custom domain is stable and verified.
+7. Run `setupTriggers()` from `sports-email-sender.gs` only after the final Hosting/custom domain is stable and verified.
 
 ## Cutover Order
 
@@ -296,7 +299,7 @@ Update `google-apps-script/sports-email-sender.gs` before testing or enabling tr
    - Confirm the Hosting-proxied/default URL works before touching Cloudflare.
 4. **Update Apps Script for the new base URL**
    - First test against the Hosting URL.
-   - Run `testApprovedApiAccess()` and `sendTestEmail()` before enabling triggers.
+   - Run `testApprovedApiAccess()` first; run `sendTestEmail()` only if `google-apps-script/troubleshooting-functions.gs` is installed.
 5. **Perform Cloudflare DNS cutover**
    - Apply the Firebase-requested DNS records.
    - Wait for Firebase domain verification and certificate readiness.
@@ -358,6 +361,6 @@ Use this checklist after deployment changes or secret rotation:
 - If the direct Cloud Run URL fails, stop and fix Cloud Run before Firebase Hosting or DNS cutover.
 - If Cloud Run works but Firebase Hosting does not, leave Cloudflare unchanged and keep testing on the Cloud Run/Hosting-generated URLs only.
 - If custom-domain cutover fails, revert Cloudflare records to the previous known-good state or leave the prior production host in place.
-- If Apps Script tests fail, keep triggers disabled and do not send production mail until `testApprovedApiAccess()` and `sendTestEmail()` both pass.
+- If Apps Script tests fail, keep triggers disabled and do not send production mail until `testApprovedApiAccess()` passes, plus `sendTestEmail()` if you installed the optional troubleshooting helpers.
 - Root signage can still fall back to the committed `digital-signage/index.html` artifact if the runtime host has issues.
 - The old static signage deployment should be treated as a rollback-only/manual path, not the default operating model.

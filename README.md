@@ -24,7 +24,7 @@ Production deployment is explicitly **Cloud Run for Python compute**, **Firebase
 
 ## Deployment Artifacts
 
-- `Dockerfile` — builds the Cloud Run image for the existing Flask runtime.
+- `Dockerfile` — builds the Cloud Run image for the existing Flask runtime and starts it with Gunicorn.
 - `.dockerignore` — keeps git metadata, tests, local Firebase JSON files, and `deploy/` out of the image build context.
 - `deploy/cloudrun/service.template.yaml` — Cloud Run service template with placeholders for `PROJECT_ID`, `REGION`, `TAG`, and the runtime service account.
 - `.firebaserc` — sets the default Firebase project to `student-leadership-media`.
@@ -39,6 +39,8 @@ Install the current dependency manifests from the repo root:
 python3 -m pip install -r sports-emails/requirements.txt
 python3 -m pip install -r instagram-poster/requirements.txt
 ```
+
+`instagram-poster/requirements.txt` owns the deployed runtime stack (`flask`, `gunicorn`, and `firebase-admin`).
 
 ### Runtime app
 
@@ -128,13 +130,14 @@ sl-emails/
   - `FIRESTORE_COLLECTION`
 - Dependency ownership remains split:
   - `sports-emails/requirements.txt` owns the shared scrape/render stack used by ingest, signage, and source-backed preview tooling.
-  - `instagram-poster/requirements.txt` adds the Flask runtime dependency used by the web app.
+  - `instagram-poster/requirements.txt` owns the deployed web runtime stack: Flask, Gunicorn, and the Firebase Admin SDK used by Firestore-backed runtime reads/writes.
 
 ## Documentation
 
 - **[README.md](README.md)** — architecture, supported commands, and repo navigation
 - **[SETUP.md](SETUP.md)** — deployment cutover, secrets inventory, operator-vs-agent ownership, and weekly runbook
-- **[google-apps-script/sports-email-sender.gs](google-apps-script/sports-email-sender.gs)** — Gmail sender configuration and approved-send flow
+- **[google-apps-script/sports-email-sender.gs](google-apps-script/sports-email-sender.gs)** — Gmail sender configuration, `testApprovedApiAccess()`, and `setupTriggers()`
+- **[google-apps-script/troubleshooting-functions.gs](google-apps-script/troubleshooting-functions.gs)** — optional debug helpers such as `sendTestEmail()`
 - **`Dockerfile` + `deploy/cloudrun/service.template.yaml`** — repo-owned Cloud Run deployment artifacts
 - **`.firebaserc` + `firebase.json`** — repo-owned Firebase Hosting front-door configuration
 

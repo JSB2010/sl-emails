@@ -1,135 +1,320 @@
-# 🏈 Sports Email Automation Setup Guide
+# Weekly Email Deployment & Operator Runbook
 
-Complete automation system that generates and sends sports emails every Sunday.
+This document is the live deployment/runbook for the Firestore-backed weekly email workflow and the canonical `sl_emails` operational entrypoints.
 
-## 📋 Overview
+## Selected Production Architecture
 
-**Sunday 3:00 PM (Mountain Time)**: GitHub Actions generates HTML files and commits them  
-**Sunday 4:00 PM (Mountain Time)**: Google Apps Script fetches files and sends emails
+- **Cloud Run** hosts the Flask app exported by `sl_emails.web:create_app`.
+- **Firebase Hosting** is the public front door and custom-domain layer in front of Cloud Run.
+- **Cloudflare** remains DNS/registrar only.
+- **Firestore** stores weekly drafts, approval state, and sent-state.
+- **GitHub Actions** runs Sunday ingest and daily signage generation.
+- **Google Apps Script** sends only approved payloads.
 
-## 📅 How Week Selection Works
+If any step below suggests Cloudflare Pages or another static host as the primary runtime, treat that as historical fallback guidance only. The active architecture is **Cloud Run + Firebase Hosting + Cloudflare DNS**.
 
-The system generates emails for the **next occurring Monday**:
-- **Sep 29 (Mon) - Oct 5 (Sun)**: Generates emails for week of Oct 6
-- **Oct 6 (Mon)**: Still generates for Oct 6 (gives flexibility for manual reruns)
-- **Oct 7 (Tue) - Oct 12 (Sun)**: Generates emails for week of Oct 13
+## What the Agent Can Do vs. What the User Must Do
 
-## 🚀 Quick Start (25 minutes total)
+### Agent can do in the repo
 
-### Step 1: Enable GitHub Actions & Test (5 min)
-1. Go to your repository → **Settings** → **Actions** → **General**
-2. Under **Workflow permissions**, select **"Read and write permissions"**
-3. Click **Save**
-4. Go to **Actions** tab → **"Generate Sports Emails"** workflow
-5. Click **"Run workflow"** → **"Run workflow"** (green button)
-6. Wait for green checkmark
-7. Verify new HTML files in `sports-emails/` folder
+- Commit deployment/runbook docs, workflow config, and repo-owned deployment artifacts.
+- Name every required secret, env var, and config value.
+- Run local doc-consistency checks and targeted smoke checks that do not require cloud credentials.
 
-### Step 2: Set Up Google Apps Script (10 min)
-1. Go to [script.google.com](https://script.google.com)
-2. Click **"New Project"** → Name it "Kent Denver Sports Email Sender"
-3. Delete default code
-4. Copy entire contents of `google-apps-script/sports-email-sender.gs`
-5. Paste into Code.gs and **Save** (Ctrl+S)
-6. **Email recipients are already configured:**
-   - Middle School: `allmiddleschoolstudents@kentdenver.org`
-   - Upper School: `allupperschoolstudents@kentdenver.org`
-   - Emails are sent as BCC to protect privacy
-   - From name: "Student Leadership"
+### User/operator must do manually
 
-### Step 3: Test & Enable Automation (5 min)
-1. Select `testGitHubAccess` from function dropdown → **Run** (authorize when prompted)
-2. Check logs - should find both HTML files with correct subjects
-3. Select `sendTestEmail` → **Run** (check your inbox - emojis should display correctly!)
-4. **IMPORTANT**: Select `setupTriggers` → **Run** (enables Sunday 4:00 PM automation)
+- Confirm the production GCP/Firebase project, billing, region, and org-owned credentials.
+- Create/rotate service-account keys and store them in GitHub secrets and Cloud Run/Secret Manager.
+- Deploy Cloud Run and Firebase Hosting with real cloud credentials.
+- Add/update custom-domain records in Cloudflare DNS.
+- Update Apps Script config values and enable production triggers.
 
-### Step 4: Done! ✅
-- ✅ GitHub Actions cron job: Already configured (Sundays 3:00 PM MT)
-- ✅ Google Apps Script trigger: Set up when you ran `setupTriggers()`
-- ✅ Email recipients: Configured for all students
-- ✅ Subject line: Auto-generated with date range
-- ✅ From name: "Student Leadership"
+## System of Record
 
-The system will now run automatically every Sunday!
+- **Firestore** stores weekly drafts, approval status, and sent-state.
+- **`/emails`** is the weekly admin workflow used to review, edit, preview, and approve.
+- **GitHub Actions** ingests source events into Firestore and refreshes signage output.
+- **Google Apps Script** sends only payloads that the backend reports as approved.
+- **`sports-emails/<week>/...html` folders are not the operational source of truth.** They remain optional preview/archive output only.
 
-## ⚙️ Configuration Options
+## Supported Operational Entrypoints
 
-### Timezone Adjustment
-The GitHub Actions workflow is set for **Mountain Time**. If you're in a different timezone:
+All supported launch commands are root-scoped module execution from the repo root.
 
-1. Edit `.github/workflows/generate-sports-emails.yml`
-2. Change the cron schedule:
-   - Current: `'0 22 * * 0'` (3:00 PM Mountain = 10:00 PM UTC)
-   - For Eastern Time: `'0 20 * * 0'` (3:00 PM Eastern = 8:00 PM UTC)
-   - For Pacific Time: `'0 23 * * 0'` (3:00 PM Pacific = 11:00 PM UTC)
+### Runtime
 
-### Email Configuration
-Current settings:
-- **Subject line**: Auto-generated as "Games This Week: {date range}" from HTML title
-- **From name**: "Student Leadership" (configured in CONFIG)
-- **Recipients**:
-  - Middle School: `allmiddleschoolstudents@kentdenver.org`
-  - Upper School: `allupperschoolstudents@kentdenver.org`
-- **BCC**: Can add additional recipients in `EMAIL_RECIPIENTS.bcc` array
-- **Reply-to**: `noreply@kentdenver.org`
+```bash
+PYTHONPATH=src python3 -m flask --app sl_emails.web:create_app run --port 5050
+```
 
-## 🔍 Monitoring & Troubleshooting
+### Sunday ingest
 
-### GitHub Actions Monitoring
-1. Go to **Actions** tab in your repository
-2. Click on any workflow run to see details
-3. Green checkmark = success, red X = failure
-4. Click on failed runs to see error details
+```bash
+PYTHONPATH=src python3 -m sl_emails.ingest.generate_games --firestore-draft --skip-html
+```
 
-### Google Apps Script Monitoring
-1. In Apps Script editor, go to **Executions** (left sidebar)
-2. See all recent runs and their status
-3. Click on any execution to see detailed logs
+### Manual HTML preview / export
 
-### Common Issues & Solutions
+```bash
+PYTHONPATH=src python3 -m sl_emails.ingest.generate_games
+```
 
-**GitHub Actions Issues:**
-- **No games found**: Check if Kent Denver athletics website is accessible
-- **Permission denied**: Make sure repository has Actions enabled and write permissions
-- **Python errors**: Check if `requirements.txt` has all needed packages
+### Daily signage generation
 
-**Google Apps Script Issues:**
-- **File not found**: GitHub Actions might not have run yet, or files weren't generated
-- **Gmail quota exceeded**: You can send 100 emails/day (consumer) or 1,500/day (Workspace)
-- **Authorization errors**: Re-run the authorization process
-- **Emojis showing as ������**: FIXED! The script now uses `MailApp` with UTF-8 encoding
+```bash
+PYTHONPATH=src python3 -m sl_emails.signage.generate_signage
+```
 
-### Emoji Fix Details
-The emoji corruption issue was caused by character encoding problems. The fix:
-- Changed from `GmailApp.sendEmail()` to `MailApp.sendEmail()`
-- Added explicit `charset: 'UTF-8'` parameter
-- Fetch GitHub files with UTF-8 encoding: `response.getContentText('UTF-8')`
+### Poster / carousel generation
 
-## 📊 Optional: Email Activity Logging
+```bash
+PYTHONPATH=src python3 -m sl_emails.poster.carousel --next-week
+```
 
-To track email sending history:
+## Weekly Timeline
 
-1. Create a new Google Sheet
-2. Add headers: Date, Status, Message, Week Folder
-3. Copy the sheet ID from the URL
-4. In the Apps Script, uncomment the logging section in `logEmailActivity()`
-5. Replace `YOUR_SPREADSHEET_ID_HERE` with your sheet ID
+- **Daily**: `.github/workflows/update-signage.yml` refreshes `digital-signage/index.html`.
+- **Sunday 3:00 PM MT**: `.github/workflows/generate-sports-emails.yml` writes the next week's Firestore draft.
+- **Before Sunday 4:00 PM MT**: operator reviews the draft at `/emails` and clicks **Approve Week**.
+- **Sunday 4:00 PM MT**: Google Apps Script fetches approved output and sends both audience emails.
 
-## 🚨 Error Notifications
+## Secrets & Platform Inputs
 
-The system will email you if something goes wrong. The admin email is already set to `jbarkin28@kentdenver.org`.
+### Secret inventory
 
-## 🛠️ Manual Override
+- **GitHub Actions secret:** `FIREBASE_SERVICE_ACCOUNT_JSON`
+  - Full JSON key used by `.github/workflows/generate-sports-emails.yml` for Firestore draft publish auth.
+- **GitHub Actions variable:** `FIREBASE_SERVICE_ACCOUNT_EMAIL`
+  - Email for the same service account used during GitHub Actions auth.
+- **GitHub Actions variable:** `FIRESTORE_DATABASE_ID`
+  - Keep set to `(default)` for the current runtime/backend implementation.
+- **GitHub Actions variable:** `FIRESTORE_COLLECTION`
+  - Set to `emailWeeks` unless you intentionally change the collection name everywhere.
+- **Cloud Run env var:** `FIREBASE_PROJECT_ID`
+  - Firebase project ID used by the runtime.
+- **Cloud Run secret/env var:** `FIREBASE_SERVICE_ACCOUNT_JSON`
+  - Same credential material as GitHub Actions, stored as a platform-managed secret rather than a repo file.
+- **Cloud Run env var:** `FIRESTORE_COLLECTION`
+  - Usually `emailWeeks`.
+- **Cloud Run env var:** `FIRESTORE_EMULATOR_HOST`
+  - Local/dev only; do not set in production.
+- **Apps Script config values:** `CONFIG.API_BASE_URL`, `CONFIG.ADMIN_EMAIL`, `CONFIG.EMAIL_RECIPIENTS`, `CONFIG.EMAIL_FROM_NAME`
+  - Must be updated manually in the Apps Script project before live sends.
 
-If you need to send emails manually:
-1. Go to your Apps Script project
-2. Select `sendSportsEmailsManual` function
-3. Click **Run**
+> Do **not** use a committed JSON credential file as production runtime input. If the repo-root Firebase service-account JSON still exists, treat it as a migration artifact and rotate/store the real credential in platform-managed secrets before go-live.
 
-If you need to generate files manually:
-1. Go to GitHub Actions
-2. Click "Run workflow" on the "Generate Sports Emails" workflow
+## Required Firebase / Firestore Configuration
 
----
+### Firebase project
 
-**Need help?** Check the execution logs in both GitHub Actions and Google Apps Script for detailed error messages.
+1. Use a Firebase project with **Cloud Firestore in Native mode**.
+2. Keep the live email workflow in the **default Firestore database** (`(default)`).
+3. Create a service account with permission to read/write the weekly draft collection.
+
+### GitHub Actions secrets and vars
+
+Configure these in the GitHub repository settings used by `.github/workflows/generate-sports-emails.yml`. These are the ingest-owned values consumed by `sl_emails.ingest.generate_games` through `FirestoreDraftPublishConfig`:
+
+- **Secret:** `FIREBASE_SERVICE_ACCOUNT_JSON`
+  - Full JSON key for the Firebase/Google service account.
+- **Variable:** `FIREBASE_SERVICE_ACCOUNT_EMAIL`
+  - Email address of the same service account.
+- **Variable:** `FIRESTORE_DATABASE_ID`
+  - Set to `(default)` for the current runtime/backend implementation.
+- **Variable:** `FIRESTORE_COLLECTION`
+  - Set to `emailWeeks` unless you intentionally want a different collection.
+
+### Runtime environment variables
+
+Configure these on the deployed Python runtime that serves the Flask app created by `sl_emails.web:create_app`. These are the runtime-owned values consumed by `RuntimeFirestoreConfig`:
+
+- `FIREBASE_PROJECT_ID=<your-firebase-project-id>`
+- `FIREBASE_SERVICE_ACCOUNT_JSON=<same JSON used in GitHub Actions, single-line or platform secret>`
+- `FIRESTORE_COLLECTION=emailWeeks` *(optional if you use the default; required if GitHub Actions uses a custom collection name)*
+- `FIRESTORE_EMULATOR_HOST=host:port` *(optional; local development/testing only)*
+
+### Current config-only constraint
+
+- The runtime currently reads from the **default Firestore database only**.
+- Keep `FIRESTORE_DATABASE_ID=(default)` in GitHub Actions so ingest and `/emails` stay aligned.
+- If you need a non-default Firestore database later, that is a follow-up deployment task, not part of the current cutover.
+
+## Cloud Run Manual Setup
+
+These steps require the user's cloud credentials. The agent can prepare repo-owned deployment artifacts, but the user must perform the live deploy.
+
+1. Select the production GCP project and region for the live service.
+2. Deploy the Flask app from this repo to **Cloud Run** so the service starts `sl_emails.web:create_app`.
+3. Set runtime config on the Cloud Run service:
+   - `FIREBASE_PROJECT_ID=<your-firebase-project-id>`
+   - `FIRESTORE_COLLECTION=emailWeeks` (or your chosen non-default collection if changed everywhere)
+   - `FIREBASE_SERVICE_ACCOUNT_JSON` via Secret Manager or equivalent Cloud Run secret wiring
+4. Do **not** set `FIRESTORE_EMULATOR_HOST` in production.
+5. Confirm the deployed revision can read bundled repo assets needed by the app:
+   - `digital-signage/index.html`
+   - `src/sl_emails/web/templates/`
+   - `src/sl_emails/web/static/`
+6. Capture the default `run.app` URL and smoke-test it before involving Firebase Hosting:
+   - `GET /healthz`
+   - `GET /`
+   - `GET /emails`
+
+## Firebase Hosting Manual Setup
+
+These steps also require user-owned Firebase credentials.
+
+1. Link the repo's committed Firebase Hosting config to the same Firebase project used by Cloud Run.
+2. Deploy **Firebase Hosting** as the public front door in front of the Cloud Run service.
+3. Verify the generated Hosting URL works before changing DNS:
+   - `/healthz`
+   - `/`
+   - `/emails`
+4. Start the Firebase Hosting custom-domain flow for the final school-facing hostname.
+5. Keep Firebase Hosting — not Cloud Run directly — as the public host that Apps Script and users will hit after cutover.
+
+## Cloudflare DNS Manual Steps
+
+Cloudflare remains DNS only. The user must make these DNS changes manually.
+
+1. In the Firebase Hosting custom-domain wizard, enter the production hostname.
+2. Wait for Firebase to show the exact verification and routing records required for that hostname.
+3. In Cloudflare DNS, remove or demote any conflicting old Pages/static records for the same host.
+4. Create the exact TXT/A/AAAA/CNAME records that Firebase Hosting requests.
+5. Do **not** point the production hostname directly at Cloud Run; Firebase Hosting is the supported public front door.
+6. Wait until Firebase marks the domain connected and the managed certificate is active before calling cutover complete.
+
+## Required Runtime / Hosting Configuration
+
+After cutover, the primary school-facing hostname must reach Firebase Hosting first and then the Cloud Run-backed Flask runtime, rather than a static Pages-only build of `digital-signage/`.
+
+### Runtime expectations
+
+- Install both current dependency manifests:
+  - `python3 -m pip install -r sports-emails/requirements.txt`
+  - `python3 -m pip install -r instagram-poster/requirements.txt`
+- Serve the Flask app exported by `sl_emails.web:create_app`.
+- For basic live/local testing, the supported start command is:
+
+```bash
+PYTHONPATH=src python3 -m flask --app sl_emails.web:create_app run --port 5050
+```
+
+- The deployed app must have repository access to `digital-signage/index.html`, because `/` reads that file directly.
+- The deployed app must also have repository access to `src/sl_emails/web/templates/` and `src/sl_emails/web/static/`, because the runtime serves `/emails` and shared preview/static assets from those canonical package paths.
+
+### Routes that must exist on the live host
+
+- `/` → signage HTML
+- `/emails` → weekly admin UI
+- `/api/emails/weeks/<week-id>` and related subroutes → weekly draft APIs
+- `/healthz` → health check
+
+### Cloudflare-specific cutover note
+
+- The previous **Cloudflare Pages build output = `digital-signage`** setup is now a **legacy signage-only fallback**.
+- If you keep that old static-only deployment as the primary host, `/emails` will not exist.
+- For live cutover, point the school-facing route/domain at **Firebase Hosting**, which then fronts the `sl_emails.web:create_app` runtime on Cloud Run.
+
+## Required Google Apps Script Configuration
+
+Update `google-apps-script/sports-email-sender.gs` before testing or enabling triggers:
+
+- `CONFIG.API_BASE_URL`
+  - Set to the Firebase Hosting URL or final custom domain that serves `/emails`, for example `https://studentleader.kentdenver.org`
+  - Do **not** include a trailing slash.
+  - Use the Cloud Run `run.app` URL only for pre-cutover testing; once Hosting is live, Apps Script should target Hosting/custom-domain URLs.
+- `CONFIG.ADMIN_EMAIL`
+  - Address that should receive send-failure notifications.
+- `CONFIG.EMAIL_RECIPIENTS.MIDDLE_SCHOOL` / `UPPER_SCHOOL`
+  - Confirm `to` and `bcc` values for the real recipient lists.
+- `CONFIG.EMAIL_FROM_NAME`
+  - Leave as desired sender display name.
+
+### Apps Script test sequence
+
+1. Create or update the Apps Script project with `google-apps-script/sports-email-sender.gs`.
+2. Optionally add `google-apps-script/troubleshooting-functions.gs` for debug helpers.
+3. Run `testApprovedApiAccess()`.
+4. Confirm the logs show the expected week ID, approval state, and both audience payloads.
+5. Run `sendTestEmail()`.
+6. Confirm subject/body render correctly in a real inbox.
+7. Run `setupTriggers()` only after the final Hosting/custom domain is stable and verified.
+
+## Cutover Order
+
+1. **Prepare secrets first**
+   - GitHub Actions secret/vars configured.
+   - Cloud Run runtime env vars/secrets configured.
+   - Apps Script config values identified but triggers still disabled.
+2. **Deploy and verify Cloud Run directly**
+   - Smoke-test the Cloud Run service URL for `/healthz`, `/`, and `/emails`.
+   - Stop here if any route is broken.
+3. **Deploy and verify Firebase Hosting**
+   - Confirm the Hosting-proxied/default URL works before touching Cloudflare.
+4. **Update Apps Script for the new base URL**
+   - First test against the Hosting URL.
+   - Run `testApprovedApiAccess()` and `sendTestEmail()` before enabling triggers.
+5. **Perform Cloudflare DNS cutover**
+   - Apply the Firebase-requested DNS records.
+   - Wait for Firebase domain verification and certificate readiness.
+6. **Switch Apps Script to the final custom domain**
+   - Re-run `testApprovedApiAccess()` after DNS and certificate issuance complete.
+7. **Enable production sending**
+   - Send to test recipients first.
+   - Only then enable or restore time-based triggers.
+
+## Weekly Operator Runbook
+
+### 1. Confirm Sunday ingest completed
+
+In GitHub Actions, open **Generate Sports Emails** and verify:
+
+- the run succeeded
+- the summary lists the expected draft week key
+- the draft review status is `draft` or `pending`
+
+### 2. Review the week in `/emails`
+
+1. Open the deployed Hosting/custom-domain `/emails` page.
+2. Confirm the Monday date is correct.
+3. Click **Load Draft**.
+4. If no draft exists yet, click **Create from Source Events**.
+5. Review imported rows, hide anything that should not send, and add any custom school events.
+6. Click **Refresh Preview** and check both audiences.
+7. Click **Approve Week** only when both previews are correct.
+
+### 3. Send path behavior
+
+- The sender fetches only `/api/emails/weeks/<week-id>/sender-output` from approved weeks.
+- The sender claims the week as `sending` before Gmail delivery.
+- A successful run finalizes the week as `sent`.
+
+### 4. If the sender reports `sending`
+
+- Treat this as a possible partial-send state.
+- Check Apps Script execution logs before rerunning.
+- Confirm whether either audience email already delivered.
+- Clear or repair sent-state only after you understand whether a partial delivery happened.
+
+## Focused Regression Checklist
+
+Use this checklist after deployment changes or secret rotation:
+
+1. `GET /healthz` returns `{"ok": true}` on the direct Cloud Run URL before front-door cutover.
+2. `GET /healthz` also returns `{"ok": true}` through Firebase Hosting/custom domain after cutover.
+3. `GET /` still shows the signage HTML.
+4. `GET /emails` loads the weekly review UI.
+5. Load an existing draft week from Firestore.
+6. Refresh preview and verify both middle-school and upper-school outputs.
+7. Approve the week.
+8. Run `testApprovedApiAccess()` in Apps Script.
+9. Confirm the sender refuses unapproved weeks and does not resend already-sent weeks.
+
+## Rollback / Legacy Fallback
+
+- If the direct Cloud Run URL fails, stop and fix Cloud Run before Firebase Hosting or DNS cutover.
+- If Cloud Run works but Firebase Hosting does not, leave Cloudflare unchanged and keep testing on the Cloud Run/Hosting-generated URLs only.
+- If custom-domain cutover fails, revert Cloudflare records to the previous known-good state or leave the prior production host in place.
+- If Apps Script tests fail, keep triggers disabled and do not send production mail until `testApprovedApiAccess()` and `sendTestEmail()` both pass.
+- Root signage can still fall back to the committed `digital-signage/index.html` artifact if the runtime host has issues.
+- The old static signage deployment should be treated as a rollback-only/manual path, not the default operating model.

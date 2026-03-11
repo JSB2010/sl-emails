@@ -1,159 +1,141 @@
 # Kent Denver Student Leadership Emails
 
-Automated email generation and distribution system for Kent Denver School athletics and events.
+Kent Denver's weekly email workflow runs from the canonical `src/sl_emails` package: Sunday ingest writes Firestore drafts, staff review and approve at `/emails`, Google Apps Script sends only approved payloads, and the same runtime serves the root signage page from `digital-signage/index.html`.
 
-## 📁 Repository Structure
+Production deployment is explicitly **Cloud Run for Python compute**, **Firebase Hosting as the public front door**, and **Cloudflare as DNS/registrar only**.
 
+## Live Workflow
+
+1. **Sunday ingest**: GitHub Actions scrapes athletics + arts sources and writes the next week's draft to Firestore.
+2. **Admin review**: Staff open `/emails`, edit events, preview both audiences, and approve the week.
+3. **Approved send**: Google Apps Script fetches `/api/emails/.../sender-output` and sends only approved payloads.
+4. **Daily signage**: The deployed runtime serves `/` from the committed `digital-signage/index.html` artifact.
+
+> **Operational source of truth:** Firestore weekly drafts plus approval/sent-state metadata. Historical HTML week folders under `sports-emails/` are optional preview/archive output, not production runtime state.
+
+## Production Platform Roles
+
+- **Cloud Run** — runs the Flask app exported by `sl_emails.web:create_app` and must serve `/`, `/emails`, `/api/emails/...`, and `/healthz`.
+- **Firebase Hosting** — public web front door in front of Cloud Run, including the final school-facing hostname.
+- **Cloudflare** — DNS/registrar layer only; not the compute runtime for this deployment.
+- **Firebase Firestore** — weekly draft, approval, and sent-state system of record.
+- **GitHub Actions** — Sunday ingest and daily signage refresh automation.
+- **Google Apps Script** — approved-send Gmail integration only after operator approval.
+
+## Supported Commands
+
+Install the current dependency manifests from the repo root:
+
+```bash
+python3 -m pip install -r sports-emails/requirements.txt
+python3 -m pip install -r instagram-poster/requirements.txt
 ```
+
+### Runtime app
+
+```bash
+PYTHONPATH=src python3 -m flask --app sl_emails.web:create_app run --port 5050
+```
+
+### Weekly ingest
+
+```bash
+PYTHONPATH=src python3 -m sl_emails.ingest.generate_games --firestore-draft --skip-html
+PYTHONPATH=src python3 -m sl_emails.ingest.generate_games
+```
+
+- The first command matches the production-style Firestore draft publish.
+- The second command is the supported local/manual HTML preview path.
+
+### Digital signage generation
+
+```bash
+PYTHONPATH=src python3 -m sl_emails.signage.generate_signage
+```
+
+This updates the live signage artifact at `digital-signage/index.html`.
+
+### Poster / carousel generation
+
+```bash
+PYTHONPATH=src python3 -m sl_emails.poster.carousel --next-week
+```
+
+Example custom range:
+
+```bash
+PYTHONPATH=src python3 -m sl_emails.poster.carousel \
+  --start-date 2026-03-09 \
+  --end-date 2026-03-15 \
+  --custom-events custom-events.json \
+  --heading "This Week at Kent Denver" \
+  --output-html instagram-poster/carousel.html
+```
+
+## Repository Structure
+
+```text
 sl-emails/
-├── sports-emails/                      # Sports email automation
-│   ├── generate_games.py               # Python script to scrape and generate emails
-│   ├── requirements.txt                # Python dependencies
-│   ├── README.md                       # Sports email documentation
-│   └── [week folders]/                 # Generated HTML files (e.g., sep29/, sep22/)
-│
-├── digital-signage/                    # Digital signage automation (NEW!)
-│   ├── generate_signage.py             # Daily signage generator
-│   ├── index.html                      # Auto-updated daily display
-│   └── README.md                       # Digital signage documentation
-│
-├── instagram-poster/                   # Instagram daily carousel generator (NEW!)
-│   ├── app.py                          # Local web app (fetch + custom events + export)
-│   ├── generate_instagram_poster.py    # CLI daily carousel generator script
-│   ├── poster_generator.py             # Shared carousel layout/data logic
-│   └── README.md                       # Instagram carousel documentation
-│
-├── homecoming-week/                    # Homecoming event emails
-│   ├── homecoming-ms.html              # Middle school homecoming email
-│   ├── homecoming-us.html              # Upper school homecoming email
-│   └── pep-rally.html                  # Pep rally email
-│
-├── google-apps-script/                 # Google Apps Script for email sending
-│   ├── sports-email-sender.gs          # Main automation script
-│   └── troubleshooting-functions.gs    # Debug utilities
-│
-├── .github/workflows/                  # GitHub Actions automation
-│   ├── generate-sports-emails.yml      # Weekly email generation (Sundays 3PM)
-│   └── update-signage.yml              # Daily signage updates (Midnight MT)
-│
-├── README.md                           # This file
-└── SETUP.md                            # Complete setup instructions
-
+├── src/sl_emails/                  # Canonical runtime, ingest, signage, poster, and shared services
+├── src/sl_emails/web/templates/    # Canonical Flask templates for the /emails admin workflow
+├── src/sl_emails/web/static/       # Canonical Flask static assets and shared runtime logo
+├── google-apps-script/             # Approved-send Gmail integration and troubleshooting helpers
+├── digital-signage/index.html      # Generated signage artifact served at /
+├── instagram-poster/               # Poster export artifact location + runtime requirements manifest
+├── sports-emails/                  # Optional generated HTML previews + shared requirements manifest
+├── .github/workflows/              # Sunday ingest and daily signage automation
+├── README.md                       # Architecture and supported commands
+└── SETUP.md                        # Deployment/runbook and operator checklist
 ```
 
-## 🏈 Sports Email Automation
+## Key Routes
 
-**Automated weekly sports emails** sent every Sunday:
-- **3:00 PM MT**: GitHub Actions generates HTML files from athletics website
-- **4:00 PM MT**: Google Apps Script sends emails to recipients
+- `/` — signage page sourced from `digital-signage/index.html`
+- `/emails` — weekly admin workflow for review, preview, approval, and custom events
+- `/api/emails/weeks/<week-id>` — Firestore-backed weekly draft APIs
+- `/healthz` — runtime health check
 
-**Features:**
-- Automatic game scraping from Kent Denver athletics website
-- Prioritized display (home games, varsity games)
-- Sport-specific styling and emojis (UTF-8 encoded)
-- Mobile-responsive design
-- Separate emails for Middle School and Upper School
-- Auto-generated subject lines with date ranges
-- BCC delivery to protect student privacy
+## Config & Dependency Ownership
 
-**Setup:** See [SETUP.md](SETUP.md)
+- Shared repo paths and Firestore env names live in `src/sl_emails/config.py`.
+- Production secrets belong in GitHub secrets/vars, Cloud Run secrets/env vars, and Apps Script config values — **not** in committed repo files.
+- The repo-root Firebase service-account JSON should be treated as a migration artifact, not a production credential source.
+- Runtime Firestore config ownership:
+  - `FIREBASE_PROJECT_ID`
+  - `FIREBASE_SERVICE_ACCOUNT_JSON`
+  - `FIRESTORE_COLLECTION`
+  - `FIRESTORE_EMULATOR_HOST` *(local/dev only)*
+- GitHub Actions ingest ownership:
+  - `FIRESTORE_ACCESS_TOKEN`
+  - `FIRESTORE_PROJECT_ID`
+  - `FIRESTORE_DATABASE_ID`
+  - `FIRESTORE_COLLECTION`
+- Dependency ownership remains split:
+  - `sports-emails/requirements.txt` owns the shared scrape/render stack used by ingest, signage, and source-backed preview tooling.
+  - `instagram-poster/requirements.txt` adds the Flask runtime dependency used by the web app.
 
-## 🖥️ Digital Signage (NEW!)
+## Documentation
 
-**Automated daily digital signage** for displays around school:
-- **Midnight MT**: GitHub Actions generates today's events display
-- **Auto-deploy**: Cloudflare Pages serves updated HTML automatically
+- **[README.md](README.md)** — architecture, supported commands, and repo navigation
+- **[SETUP.md](SETUP.md)** — deployment cutover, secrets inventory, operator-vs-agent ownership, and weekly runbook
+- **[google-apps-script/sports-email-sender.gs](google-apps-script/sports-email-sender.gs)** — Gmail sender configuration and approved-send flow
 
-**Features:**
-- Shows today's sports games and arts events
-- Card-based design similar to email styling
-- Optimized for 2500x1650px displays
-- Featured events (varsity games, arts events) highlighted
-- Updates automatically every day at midnight Denver time
+## Technologies
 
-**Setup:** See [digital-signage/README.md](digital-signage/README.md)
+- **Python 3.11+** — scraping, rendering, signage generation, poster tooling, and Flask runtime
+- **Flask** — deployed app serving `/`, `/emails`, and email APIs
+- **Google Cloud Run** — production Python compute/runtime target
+- **Firebase Hosting** — public hosting layer and custom-domain front door
+- **Firebase Firestore** — weekly draft, approval, and sent-state storage
+- **GitHub Actions** — scheduled Sunday ingest and daily signage regeneration
+- **Google Apps Script** — Gmail delivery for approved payloads only
+- **Cloudflare DNS** — registrar/DNS management for the production hostname
 
-## 📱 Instagram Daily Carousel (NEW!)
-
-**Daily carousel generation** for Instagram feed posts (4:5 portrait, `1080x1350` per slide):
-- Pulls events from the same athletics + arts sources used by sports emails
-- Supports custom added events (robotics, admissions, speech & debate, etc.)
-- Generates one day-focused slide per day in the selected week/range
-- Exports current slide or all slides from a local web GUI
-
-**Setup:** See [instagram-poster/README.md](instagram-poster/README.md)
-
-## 📧 Manual Generation
-
-### Sports Emails
-```bash
-cd sports-emails
-python generate_games.py                    # Next week
-python generate_games.py --this-week        # Current week
-python generate_games.py --start-date 2025-10-06 --end-date 2025-10-12
-```
-
-### Digital Signage
-```bash
-cd digital-signage
-python3 generate_signage.py                 # Generate today's display
-```
-
-### Instagram Carousel
-```bash
-cd instagram-poster
-python3 app.py                              # Launch carousel GUI at http://127.0.0.1:5050
-```
-
-### Homecoming Emails
-Pre-generated HTML files in `homecoming-week/` - ready to copy and send.
-
-## 🚀 Quick Start
-
-1. **Clone the repository**
-   ```bash
-   git clone https://github.com/JSB2010/sl-emails.git
-   cd sl-emails
-   ```
-
-2. **Set up sports email automation**
-   - Follow [SETUP.md](SETUP.md)
-   - Takes ~20 minutes total
-
-3. **Generate emails manually** (optional)
-   ```bash
-   cd sports-emails
-   pip install -r requirements.txt
-   python generate_games.py
-   ```
-
-## 🎨 Email Design
-
-All emails follow Kent Denver branding:
-- **Colors**: KDS Blue (#041e42), KDS Red (#a11919)
-- **Fonts**: Red Hat Text (body), Crimson Pro (headers)
-- **Style**: Professional, mobile-responsive, email-client compatible
-
-## 📝 Documentation
-
-- **[SETUP.md](SETUP.md)** - Complete automation setup guide
-- **[sports-emails/README.md](sports-emails/README.md)** - Sports email generator details
-- **[digital-signage/README.md](digital-signage/README.md)** - Digital signage setup and usage
-- **[google-apps-script/](google-apps-script/)** - Email sending scripts (.gs files)
-
-## 🛠️ Technologies
-
-- **Python 3.11+** - Email generation, web scraping, and signage generation
-- **GitHub Actions** - Automated scheduling (emails + signage)
-- **Google Apps Script** - Email distribution via Gmail
-- **Cloudflare Pages** - Digital signage hosting and deployment
-- **HTML/CSS** - Email templates and signage displays
-
-## 👤 Author
+## Author
 
 **Jacob Barkin** (jbarkin28@kentdenver.org)  
 Student Leadership Media Team
 
 ---
 
-**Last Updated:** November 2025
+**Last Updated:** March 2026

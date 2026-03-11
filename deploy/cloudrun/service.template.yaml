@@ -1,0 +1,33 @@
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: sl-emails
+spec:
+  template:
+    metadata:
+      annotations:
+        run.googleapis.com/execution-environment: gen2
+    spec:
+      # Preferred production auth: attach a Cloud Run service account with
+      # Firestore access. This avoids requiring any committed JSON key file.
+      serviceAccountName: sl-emails-runtime@PROJECT_ID.iam.gserviceaccount.com
+      containers:
+        - image: REGION-docker.pkg.dev/PROJECT_ID/sl-emails/sl-emails:TAG
+          ports:
+            - containerPort: 8080
+          env:
+            - name: FIREBASE_PROJECT_ID
+              value: PROJECT_ID
+            - name: FIRESTORE_COLLECTION
+              value: emailWeeks
+            # Optional local/dev-only emulator override:
+            # - name: FIRESTORE_EMULATOR_HOST
+            #   value: host.docker.internal:8080
+            # Optional fallback only if you cannot rely on the attached
+            # service account / ADC. Store the JSON in Secret Manager rather
+            # than committing a file in the repo.
+            # - name: FIREBASE_SERVICE_ACCOUNT_JSON
+            #   valueFrom:
+            #     secretKeyRef:
+            #       name: firebase-service-account-json
+            #       key: latest

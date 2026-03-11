@@ -1,0 +1,13 @@
+.git
+.github
+__pycache__/
+.pytest_cache/
+.venv/
+tests/
+student-leadership-media-firebase-adminsdk-*.json
+*.pyc
+*.pyo
+*.pyd
+*.sqlite3
+.DS_Store
+deploy/

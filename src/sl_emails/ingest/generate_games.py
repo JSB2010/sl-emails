@@ -35,18 +35,17 @@ from typing import List, Dict, Optional, Union
 import sys
 import os
 from icalendar import Calendar
-from selenium import webdriver
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-from selenium.common.exceptions import TimeoutException, NoSuchElementException
-from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.chrome.service import Service
-from webdriver_manager.chrome import ChromeDriverManager
-import time
 
 from sl_emails.config import FirestoreDraftPublishConfig
 from .firestore_drafts import build_week_draft_document, upsert_week_draft
+
+ATHLETICS_SCHEDULE_URL = "https://www.kentdenver.org/athletics-wellness/schedules-and-scores"
+ATHLETICS_LOAD_MORE_URL = "https://www.kentdenver.org/fs/elements/{element_id}"
+ATHLETICS_USER_AGENT = (
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '
+    '(KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+)
+ATHLETICS_PAGE_ID_PATTERN = re.compile(r'data-pageid="(?P<page_id>\d+)"')
 
 ICON_CDN_BASE = "https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.5.2/svgs/solid"
 KDS_PRIMARY_LOGO_URL = (
@@ -181,10 +180,13 @@ def parse_games_from_soup(soup: BeautifulSoup, start_date: str, end_date: str) -
         print("Warning: Could not find games table on the website")
         return [], None
 
-    # Parse each game row
-    rows = games_table.find_all('tr')[1:]  # Skip header row
+    # Parse each game row. Full-page responses include a header row; load-more fragments do not.
+    rows = games_table.find_all('tr')
 
     for row in rows:
+        if row.find_all('th'):
+            continue
+
         cells = row.find_all('td')
         if len(cells) < 6:
             continue
@@ -265,116 +267,145 @@ def parse_games_from_soup(soup: BeautifulSoup, start_date: str, end_date: str) -
     return games, latest_date
 
 
-def scrape_athletics_schedule_with_selenium(start_date: str, end_date: str) -> List[Game]:
+def build_kent_denver_headers() -> Dict[str, str]:
+    """Return shared request headers for Kent Denver source fetches."""
+    return {'User-Agent': ATHLETICS_USER_AGENT}
+
+
+def extend_unique_games(existing_games: List[Game], new_games: List[Game]) -> List[Game]:
+    """Append only games we have not already collected."""
+    seen = {
+        (game.team, game.opponent, game.date, game.time, game.location, game.is_home, game.sport)
+        for game in existing_games
+    }
+
+    for game in new_games:
+        key = (game.team, game.opponent, game.date, game.time, game.location, game.is_home, game.sport)
+        if key in seen:
+            continue
+        existing_games.append(game)
+        seen.add(key)
+
+    return existing_games
+
+
+def extract_load_more_context(soup: BeautifulSoup, page_html: str) -> Optional[Dict[str, str]]:
+    """Extract the Finalsite load-more coordinates from the athletics table."""
+    games_table = soup.find('table')
+    athletics_element = games_table.find_parent('div', class_='fsAthleticsEvent') if games_table else None
+    load_more_button = athletics_element.find('button', class_='fsLoadMoreButton') if athletics_element else None
+    page_id_match = ATHLETICS_PAGE_ID_PATTERN.search(page_html)
+
+    if not athletics_element or not load_more_button or not page_id_match:
+        return None
+
+    element_id = athletics_element.get('id', '').removeprefix('fsEl_')
+    start_row = load_more_button.get('data-start-row')
+    if not element_id or not start_row:
+        return None
+
+    return {
+        'page_id': page_id_match.group('page_id'),
+        'element_id': element_id,
+        'start_row': start_row,
+    }
+
+
+def scrape_athletics_schedule_with_load_more(
+    start_date: str,
+    end_date: str,
+    *,
+    initial_soup: Optional[BeautifulSoup] = None,
+    initial_page_html: Optional[str] = None,
+    seed_games: Optional[List[Game]] = None,
+    seed_latest_date: Optional[datetime] = None,
+) -> List[Game]:
     """
-    Scrape athletics schedule using Selenium to handle "Load More" button
+    Fetch additional athletics rows through Finalsite's load-more endpoint.
     """
-    url = "https://www.kentdenver.org/athletics-wellness/schedules-and-scores"
+    print("🔄 Stage 2: Fetching additional athletics rows via Finalsite load-more endpoint...")
 
-    print("🔄 Using Selenium to load more events...")
+    headers = build_kent_denver_headers()
+    collected_games = list(seed_games or [])
+    latest_date = seed_latest_date
 
-    # Setup Chrome options for headless mode (works in GitHub Actions)
-    chrome_options = Options()
-    chrome_options.add_argument('--headless')
-    chrome_options.add_argument('--no-sandbox')
-    chrome_options.add_argument('--disable-dev-shm-usage')
-    chrome_options.add_argument('--disable-gpu')
-    chrome_options.add_argument('--window-size=1920,1080')
-    chrome_options.add_argument('user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36')
-
-    driver = None
     try:
-        # Initialize the Chrome driver
-        service = Service(ChromeDriverManager().install())
-        driver = webdriver.Chrome(service=service, options=chrome_options)
+        if initial_soup is None or initial_page_html is None:
+            response = requests.get(ATHLETICS_SCHEDULE_URL, headers=headers, timeout=30)
+            response.raise_for_status()
+            initial_page_html = response.text
+            initial_soup = BeautifulSoup(response.content, 'html.parser')
+            initial_games, latest_date = parse_games_from_soup(initial_soup, start_date, end_date)
+            collected_games = extend_unique_games(collected_games, initial_games)
 
-        # Navigate to the page
-        driver.get(url)
-        time.sleep(2)  # Wait for initial load
+        context = extract_load_more_context(initial_soup, initial_page_html)
+        if not context:
+            print("⚠️  Stage 2 skipped: no load-more metadata found on the athletics page")
+            return collected_games
 
         end_dt = datetime.strptime(end_date, '%Y-%m-%d').date()
-        max_clicks = 50  # Safety limit to prevent infinite loops
-        clicks = 0
+        next_start_row = context['start_row']
+        requests_made = 0
 
-        while clicks < max_clicks:
-            # Parse current page content
-            soup = BeautifulSoup(driver.page_source, 'html.parser')
-            games, latest_date = parse_games_from_soup(soup, start_date, end_date)
+        while next_start_row and requests_made < 50:
+            response = requests.get(
+                ATHLETICS_LOAD_MORE_URL.format(element_id=context['element_id']),
+                headers=headers,
+                params={
+                    'is_load_more': 'true',
+                    'page_id': context['page_id'],
+                    'parent_id': context['element_id'],
+                    'start_row': next_start_row,
+                },
+                timeout=30,
+            )
+            response.raise_for_status()
 
-            # Check if we have events covering our date range
+            fragment_soup = BeautifulSoup(response.content, 'html.parser')
+            page_games, page_latest_date = parse_games_from_soup(fragment_soup, start_date, end_date)
+            collected_games = extend_unique_games(collected_games, page_games)
+
+            if page_latest_date and (latest_date is None or page_latest_date > latest_date):
+                latest_date = page_latest_date
+
+            requests_made += 1
             if latest_date and latest_date >= end_dt:
-                print(f"✅ Found events up to {latest_date}, which covers requested range")
+                print(f"✅ Stage 2 fetched events through {latest_date}, covering the requested range")
                 break
 
-            # Try to find and click "Load More" button
-            try:
-                # Look for common "Load More" button patterns
-                load_more_button = None
+            next_button = fragment_soup.find('button', class_='fsLoadMoreButton')
+            next_start_row = next_button.get('data-start-row') if next_button else None
+            if next_start_row:
+                print(f"   Retrieved additional athletics rows (request {requests_made}); continuing...")
+            else:
+                print(f"✅ Stage 2 exhausted the athletics load-more feed after {requests_made} request(s)")
 
-                # Try different selectors
-                selectors = [
-                    "//button[contains(text(), 'Load More')]",
-                    "//a[contains(text(), 'Load More')]",
-                    "//button[contains(@class, 'load-more')]",
-                    "//a[contains(@class, 'load-more')]",
-                    "//*[contains(text(), 'Show More')]",
-                    "//*[contains(text(), 'View More')]"
-                ]
+        return collected_games
 
-                for selector in selectors:
-                    try:
-                        load_more_button = driver.find_element(By.XPATH, selector)
-                        if load_more_button and load_more_button.is_displayed():
-                            break
-                    except NoSuchElementException:
-                        continue
+    except requests.RequestException as e:
+        print(f"Error with Stage 2 athletics fetch: {e}")
+        return collected_games
 
-                if not load_more_button or not load_more_button.is_displayed():
-                    print(f"✅ No more 'Load More' button found after {clicks} clicks")
-                    break
 
-                # Click the button
-                driver.execute_script("arguments[0].scrollIntoView(true);", load_more_button)
-                time.sleep(0.5)
-                load_more_button.click()
-                clicks += 1
-                print(f"   Clicked 'Load More' ({clicks} times)...")
-                time.sleep(1.5)  # Wait for content to load
-
-            except Exception as e:
-                print(f"✅ Finished loading events (no more button available)")
-                break
-
-        # Final parse of all loaded content
-        soup = BeautifulSoup(driver.page_source, 'html.parser')
-        games, _ = parse_games_from_soup(soup, start_date, end_date)
-
-        return games
-
-    except Exception as e:
-        print(f"Error with Selenium scraping: {e}")
-        return []
-    finally:
-        if driver:
-            driver.quit()
+def scrape_athletics_schedule_with_selenium(start_date: str, end_date: str) -> List[Game]:
+    """Legacy compatibility wrapper for the former Selenium-based Stage 2 fetch."""
+    return scrape_athletics_schedule_with_load_more(start_date, end_date)
 
 
 def scrape_athletics_schedule(start_date: str, end_date: str) -> List[Game]:
     """
-    Two-stage scraping: Try BeautifulSoup first, fall back to Selenium if needed
+    Two-stage scraping: Try BeautifulSoup first, then use Finalsite's load-more endpoint.
 
     Stage 1: Quick scrape with BeautifulSoup (fast)
-    Stage 2: Use Selenium to click "Load More" if we need more events (thorough)
+    Stage 2: Use the non-browser load-more endpoint if we need more events (thorough)
     """
-    url = "https://www.kentdenver.org/athletics-wellness/schedules-and-scores"
+    url = ATHLETICS_SCHEDULE_URL
 
     # STAGE 1: Try BeautifulSoup first (fast method)
     print("📥 Stage 1: Quick fetch with BeautifulSoup...")
     try:
-        headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-        }
-        response = requests.get(url, headers=headers)
+        headers = build_kent_denver_headers()
+        response = requests.get(url, headers=headers, timeout=30)
         response.raise_for_status()
 
         soup = BeautifulSoup(response.content, 'html.parser')
@@ -391,14 +422,22 @@ def scrape_athletics_schedule(start_date: str, end_date: str) -> List[Game]:
                 print(f"⚠️  Stage 1: No games found in date range")
             else:
                 print(f"⚠️  Stage 1: Latest event is {latest_date}, but need events until {end_dt}")
-            print(f"🔄 Moving to Stage 2: Selenium with 'Load More' clicking...")
+            print("🔄 Moving to Stage 2: Finalsite load-more endpoint...")
+            return scrape_athletics_schedule_with_load_more(
+                start_date,
+                end_date,
+                initial_soup=soup,
+                initial_page_html=response.text,
+                seed_games=games,
+                seed_latest_date=latest_date,
+            )
 
     except requests.RequestException as e:
         print(f"⚠️  Stage 1 failed: {e}")
-        print(f"🔄 Moving to Stage 2: Selenium with 'Load More' clicking...")
+        print("🔄 Moving to Stage 2: Finalsite load-more endpoint...")
 
-    # STAGE 2: Use Selenium to load more events
-    return scrape_athletics_schedule_with_selenium(start_date, end_date)
+    # STAGE 2: Use Finalsite's load-more endpoint
+    return scrape_athletics_schedule_with_load_more(start_date, end_date)
 
 def extract_sport_from_team(team_name: str) -> str:
     """Extract sport name from team name"""
@@ -435,10 +474,8 @@ def fetch_arts_events(start_date: str, end_date: str) -> List[Event]:
     ical_url = "https://www.kentdenver.org/cf_calendar/feed.cfm?type=ical&feedID=8017725D73BE4200B7C10FDFFBB83FAF"
 
     try:
-        headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-        }
-        response = requests.get(ical_url, headers=headers)
+        headers = build_kent_denver_headers()
+        response = requests.get(ical_url, headers=headers, timeout=30)
         response.raise_for_status()
 
         # Parse iCal data

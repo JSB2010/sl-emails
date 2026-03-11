@@ -36,6 +36,11 @@ class SharedEventShapeTests(unittest.TestCase):
         self.assertEqual(event.badge, "HOME")
         self.assertEqual(event.priority, 3)
         self.assertEqual(event.accent, "#F59E0B")
+        self.assertEqual(event.audiences, ["middle-school"])
+        self.assertEqual(event.team, "Middle School Volleyball")
+        self.assertEqual(event.opponent, "Front Range")
+        self.assertTrue(event.is_home)
+        self.assertEqual(event.metadata, {"source_type": "game", "sport": "volleyball"})
 
 
 if __name__ == "__main__":

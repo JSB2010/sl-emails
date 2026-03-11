@@ -9,6 +9,17 @@ class EmailsAdminUiTests(unittest.TestCase):
         app = create_app({"TESTING": True, "EMAILS_STORE": MemoryWeeklyEmailStore()})
         self.client = app.test_client()
 
+    def test_emails_page_exposes_dashboard_filters(self):
+        response = self.client.get("/emails")
+
+        self.assertEqual(response.status_code, 200)
+        body = response.get_data(as_text=True)
+        self.assertIn("Filter large weeks", body)
+        self.assertIn('id="event-search"', body)
+        self.assertIn('id="event-source-filter"', body)
+        self.assertIn('id="event-visibility-filter"', body)
+        self.assertIn("Actions", body)
+
     def test_hidden_events_are_excluded_from_preview_outputs(self):
         self.client.put(
             "/api/emails/weeks/2026-03-09",

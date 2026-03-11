@@ -12,6 +12,11 @@
     week: null,
     outputs: null,
     dirty: false,
+    filters: {
+      query: '',
+      source: 'all',
+      visibility: 'all',
+    },
   };
 
   const els = {
@@ -24,6 +29,11 @@
     addBtn: document.getElementById('add-custom'),
     heading: document.getElementById('week-heading'),
     notes: document.getElementById('week-notes'),
+    eventSearch: document.getElementById('event-search'),
+    sourceFilter: document.getElementById('event-source-filter'),
+    visibilityFilter: document.getElementById('event-visibility-filter'),
+    clearFiltersBtn: document.getElementById('clear-event-filters'),
+    filteredCount: document.getElementById('filtered-count'),
     tbody: document.getElementById('events-tbody'),
     flash: document.getElementById('flash'),
     weekSummary: document.getElementById('week-summary'),
@@ -62,10 +72,71 @@
     const normalized = [];
     values.forEach((value) => {
       const text = String(value).trim().toLowerCase().replaceAll('_', '-');
+      if (text === 'all' || text === 'both' || text === 'both-audiences') {
+        normalized.push('middle-school', 'upper-school');
+      }
       if (text === 'middle-school' || text === 'middle school' || text === 'ms') normalized.push('middle-school');
       if (text === 'upper-school' || text === 'upper school' || text === 'us') normalized.push('upper-school');
     });
     return Array.from(new Set(normalized));
+  }
+
+  function looksMiddleSchool(label) {
+    const value = ` ${String(label || '').toLowerCase()} `;
+    return ['middle school', ' ms ', ' 6th', ' 7th', ' 8th', 'sixth', 'seventh', 'eighth']
+      .some((indicator) => value.includes(indicator));
+  }
+
+  function inferAudiences(event) {
+    const explicit = normalizeAudiences(event.audiences || event.audience || event.school_levels || event.school_level);
+    if (explicit.length) return explicit;
+
+    const source = String(event.source || 'custom').trim().toLowerCase() || 'custom';
+    const label = String(event.team || event.title || '').trim();
+    if (source === 'custom') return ['middle-school', 'upper-school'];
+    if (looksMiddleSchool(label)) return ['middle-school'];
+    if (source === 'athletics' || source === 'arts') return ['upper-school'];
+    return ['middle-school', 'upper-school'];
+  }
+
+  function audienceChoiceForEvent(event) {
+    const audiences = normalizeAudiences(event.audiences);
+    if (audiences.includes('middle-school') && audiences.includes('upper-school')) return 'both';
+    if (audiences[0] === 'middle-school') return 'middle-school';
+    return 'upper-school';
+  }
+
+  function audiencesFromChoice(choice) {
+    if (choice === 'middle-school') return ['middle-school'];
+    if (choice === 'upper-school') return ['upper-school'];
+    return ['middle-school', 'upper-school'];
+  }
+
+  function resetFilters() {
+    state.filters = { query: '', source: 'all', visibility: 'all' };
+  }
+
+  function filtersAreActive() {
+    return Boolean(state.filters.query || state.filters.source !== 'all' || state.filters.visibility !== 'all');
+  }
+
+  function filteredEventRows() {
+    if (!state.week) return [];
+    const query = state.filters.query.trim().toLowerCase();
+    return state.week.events
+      .map((event, index) => ({ event, index }))
+      .filter(({ event }) => {
+        const matchesQuery = !query || [event.title, event.subtitle, event.location, event.category, event.team, event.opponent]
+          .join(' ')
+          .toLowerCase()
+          .includes(query);
+        const matchesSource = state.filters.source === 'all' || event.source === state.filters.source;
+        const isHidden = event.status === 'hidden';
+        const matchesVisibility = state.filters.visibility === 'all'
+          || (state.filters.visibility === 'hidden' && isHidden)
+          || (state.filters.visibility === 'visible' && !isHidden);
+        return matchesQuery && matchesSource && matchesVisibility;
+      });
   }
 
   function defaultAccent(source) {
@@ -86,6 +157,7 @@
     const source = String(event.source || 'custom').trim().toLowerCase() || 'custom';
     const title = String(event.title || event.team || '').trim();
     const opponent = String(event.opponent || '').trim();
+    const audiences = inferAudiences(event);
     return {
       id: String(event.id || crypto.randomUUID()),
       source,
@@ -97,7 +169,7 @@
       time_text: String(event.time_text || event.time || 'TBA').trim() || 'TBA',
       location: String(event.location || 'On Campus').trim() || 'On Campus',
       category: String(event.category || 'School Event').trim() || 'School Event',
-      audiences: normalizeAudiences(event.audiences).length ? normalizeAudiences(event.audiences) : ['middle-school', 'upper-school'],
+      audiences,
       status: String(event.status || 'active').trim().toLowerCase() || 'active',
       link: String(event.link || '').trim(),
       description: String(event.description || '').trim(),
@@ -170,6 +242,7 @@
   }
 
   function applyWeek(week) {
+    resetFilters();
     state.week = {
       ...week,
       events: (week.events || []).map(normalizeEvent),
@@ -246,10 +319,28 @@
     renderPreviewAudience(state.outputs?.['upper-school'], els.usSubject, els.usCount, els.usFrame);
   }
 
+  function renderFilters() {
+    els.eventSearch.value = state.filters.query;
+    els.sourceFilter.value = state.filters.source;
+    els.visibilityFilter.value = state.filters.visibility;
+
+    if (!state.week) {
+      els.filteredCount.textContent = 'No events loaded';
+      els.clearFiltersBtn.disabled = true;
+      return;
+    }
+
+    const total = state.week.events.length;
+    const shown = filteredEventRows().length;
+    els.filteredCount.textContent = filtersAreActive() ? `Showing ${shown} of ${total}` : `All ${total} events shown`;
+    els.clearFiltersBtn.disabled = !filtersAreActive();
+  }
+
   function rowMarkup(event, index) {
     const isHidden = event.status === 'hidden';
+    const audienceChoice = audienceChoiceForEvent(event);
     return `
-      <tr data-index="${index}">
+      <tr data-index="${index}" class="${isHidden ? 'row-hidden' : ''}">
         <td>
           <span class="source-pill ${sourceClass(event.source)}">${escapeHtml(event.source)}</span>
         </td>
@@ -281,9 +372,13 @@
           </div>
         </td>
         <td>
-          <div class="audience-stack">
-            <label class="check"><input type="checkbox" data-audience="middle-school" ${event.audiences.includes('middle-school') ? 'checked' : ''} ${isHidden ? '' : ''}/>Middle School</label>
-            <label class="check"><input type="checkbox" data-audience="upper-school" ${event.audiences.includes('upper-school') ? 'checked' : ''} ${isHidden ? '' : ''}/>Upper School</label>
+          <div class="cell-stack">
+            <select class="mini-select" data-field="audience_choice">
+              <option value="middle-school" ${audienceChoice === 'middle-school' ? 'selected' : ''}>Middle School</option>
+              <option value="upper-school" ${audienceChoice === 'upper-school' ? 'selected' : ''}>Upper School</option>
+              <option value="both" ${audienceChoice === 'both' ? 'selected' : ''}>Both Audiences</option>
+            </select>
+            <p class="field-note">Controls which preview and sender output includes this row.</p>
           </div>
         </td>
         <td>
@@ -293,13 +388,17 @@
               <option value="hidden" ${event.status === 'hidden' ? 'selected' : ''}>Hidden</option>
             </select>
             <input class="mini-input" type="url" data-field="link" value="${escapeHtml(event.link)}" placeholder="Optional link" />
+            <p class="field-note">${isHidden ? 'Hidden rows stay in the draft but do not appear in preview or sender output.' : 'Visible rows appear in preview and sender output.'}</p>
           </div>
         </td>
         <td>
           <textarea class="mini-textarea" data-field="description" placeholder="Optional details">${escapeHtml(event.description)}</textarea>
         </td>
         <td>
-          <button class="row-remove" data-action="remove">Remove</button>
+          <div class="row-actions">
+            <button class="row-action" data-action="duplicate" type="button">Duplicate</button>
+            <button class="row-remove row-action-danger" data-action="remove" type="button">Delete</button>
+          </div>
         </td>
       </tr>
     `;
@@ -316,7 +415,13 @@
       return;
     }
 
-    els.tbody.innerHTML = state.week.events.map((event, index) => rowMarkup(event, index)).join('');
+    const rows = filteredEventRows();
+    if (!rows.length) {
+      els.tbody.innerHTML = '<tr><td colspan="8" class="empty-row">No events match the current filters. Clear filters to review the full draft.</td></tr>';
+      return;
+    }
+
+    els.tbody.innerHTML = rows.map(({ event, index }) => rowMarkup(event, index)).join('');
   }
 
   function render() {
@@ -324,6 +429,7 @@
     els.heading.value = state.week?.heading || 'This Week at Kent Denver';
     els.notes.value = state.week?.notes || '';
     renderMeta();
+    renderFilters();
     renderRows();
     renderPreview();
 
@@ -374,7 +480,7 @@
   function mapFetchedEvent(event) {
     return normalizeEvent({
       source: event.source,
-      kind: event.source === 'athletics' ? 'game' : 'event',
+      kind: event.kind || (event.source === 'athletics' ? 'game' : 'event'),
       title: event.title,
       subtitle: event.subtitle,
       start_date: event.date,
@@ -382,9 +488,15 @@
       time_text: event.time,
       location: event.location,
       category: event.category,
+      audiences: event.audiences,
       badge: event.badge,
       priority: event.priority,
       accent: event.accent,
+      team: event.team || event.title,
+      opponent: event.opponent || deriveOpponent(event.subtitle),
+      is_home: event.is_home,
+      metadata: event.metadata,
+      source_id: event.source_id,
     });
   }
 
@@ -412,8 +524,8 @@
       metadata: event.metadata,
       created_at: event.created_at,
       updated_at: event.updated_at,
-      team: event.kind === 'game' ? (event.title || event.team) : '',
-      opponent: event.kind === 'game' ? opponent : '',
+      team: event.team || event.title,
+      opponent: event.kind === 'game' ? opponent : event.opponent,
       is_home: event.is_home,
     };
   }
@@ -538,7 +650,9 @@
       return;
     }
 
+    resetFilters();
     state.week.events.push(createCustomEventTemplate());
+    renderFilters();
     renderRows();
     markDirty();
     setFlash('Custom event added. Save the draft when you are ready.');
@@ -550,6 +664,20 @@
     markDirty();
   }
 
+  function onFilterInput() {
+    state.filters.query = els.eventSearch.value.trim();
+    state.filters.source = els.sourceFilter.value;
+    state.filters.visibility = els.visibilityFilter.value;
+    renderFilters();
+    renderRows();
+  }
+
+  function clearEventFilters() {
+    resetFilters();
+    renderFilters();
+    renderRows();
+  }
+
   function onTableInput(event) {
     const row = event.target.closest('tr[data-index]');
     if (!row || !state.week) return;
@@ -559,18 +687,9 @@
     if (!item) return;
 
     const field = event.target.dataset.field;
-    const audience = event.target.dataset.audience;
 
-    if (audience) {
-      const nextAudiences = normalizeAudiences(
-        item.audiences.filter((value) => value !== audience).concat(event.target.checked ? [audience] : [])
-      );
-      if (!nextAudiences.length && item.status !== 'hidden') {
-        event.target.checked = true;
-        setFlash('Visible events must target at least one audience. Use Hidden to remove an event from previews.', true);
-        return;
-      }
-      item.audiences = nextAudiences;
+    if (field === 'audience_choice') {
+      item.audiences = audiencesFromChoice(event.target.value);
       markDirty();
       return;
     }
@@ -581,21 +700,21 @@
     if (field === 'kind' && event.target.value === 'event') {
       item.opponent = '';
     }
-    if (field === 'title' && item.kind === 'game') {
+    if (field === 'title') {
       item.team = item.title;
     }
     if (field === 'subtitle' && item.kind === 'game') {
       item.opponent = deriveOpponent(item.subtitle);
     }
     if (field === 'status' && item.status !== 'hidden' && !item.audiences.length) {
-      item.audiences = ['middle-school', 'upper-school'];
+      item.audiences = inferAudiences(item);
       renderRows();
     }
     markDirty();
   }
 
   function onTableClick(event) {
-    const button = event.target.closest('[data-action="remove"]');
+    const button = event.target.closest('[data-action]');
     if (!button || !state.week) return;
 
     const row = button.closest('tr[data-index]');
@@ -604,7 +723,33 @@
     const index = Number(row.dataset.index);
     if (!Number.isFinite(index)) return;
 
+    const action = button.dataset.action;
+    const item = state.week.events[index];
+    if (!item) return;
+
+    if (action === 'duplicate') {
+      resetFilters();
+      state.week.events.splice(index + 1, 0, normalizeEvent({
+        ...item,
+        id: crypto.randomUUID(),
+        created_at: '',
+        updated_at: '',
+      }));
+      renderFilters();
+      renderRows();
+      markDirty();
+      setFlash(`Duplicated ${item.title || 'event'}. Save to keep both rows.`);
+      return;
+    }
+
+    if (action !== 'remove') return;
+
+    const confirmed = typeof window.confirm !== 'function'
+      || window.confirm(`Delete “${item.title || 'this event'}” from this draft? Reload the week to undo an unsaved deletion.`);
+    if (!confirmed) return;
+
     state.week.events.splice(index, 1);
+    renderFilters();
     renderRows();
     markDirty();
     setFlash('Event removed from the draft. Save to persist the change.');
@@ -619,6 +764,10 @@
     els.addBtn.addEventListener('click', addCustomEvent);
     els.heading.addEventListener('input', onHeadingInput);
     els.notes.addEventListener('input', onHeadingInput);
+    els.eventSearch.addEventListener('input', onFilterInput);
+    els.sourceFilter.addEventListener('change', onFilterInput);
+    els.visibilityFilter.addEventListener('change', onFilterInput);
+    els.clearFiltersBtn.addEventListener('click', clearEventFilters);
     els.tbody.addEventListener('input', onTableInput);
     els.tbody.addEventListener('change', onTableInput);
     els.tbody.addEventListener('click', onTableClick);

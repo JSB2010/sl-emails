@@ -25,6 +25,10 @@ class AppApiTests(unittest.TestCase):
         body = response.get_data(as_text=True)
         self.assertIn("Weekly Email Review", body)
         self.assertIn("__EMAIL_REVIEW_DEFAULTS__", body)
+        self.assertIn('id="event-search"', body)
+        self.assertIn('id="event-source-filter"', body)
+        self.assertIn('id="event-visibility-filter"', body)
+        self.assertIn("Clear Filters", body)
 
     def test_render_endpoint_handles_custom_event(self):
         response = self.client.post(
@@ -68,6 +72,11 @@ class AppApiTests(unittest.TestCase):
                 badge="HOME",
                 priority=3,
                 accent="#0C3A6B",
+                audiences=["upper-school"],
+                team="Varsity Basketball",
+                opponent="Opp",
+                is_home=False,
+                metadata={"source_type": "game", "sport": "basketball"},
             )
         ]
 
@@ -82,6 +91,11 @@ class AppApiTests(unittest.TestCase):
         self.assertTrue(payload["ok"])
         self.assertEqual(len(payload["events"]), 1)
         self.assertEqual(payload["events"][0]["title"], "Sample")
+        self.assertEqual(payload["events"][0]["audiences"], ["upper-school"])
+        self.assertEqual(payload["events"][0]["team"], "Varsity Basketball")
+        self.assertEqual(payload["events"][0]["opponent"], "Opp")
+        self.assertFalse(payload["events"][0]["is_home"])
+        self.assertEqual(payload["events"][0]["metadata"]["sport"], "basketball")
 
     def test_healthcheck(self):
         response = self.client.get("/healthz")
@@ -207,6 +221,48 @@ class AppApiTests(unittest.TestCase):
         sender_after_payload = sender_after_sent.get_json()
         assert sender_after_payload is not None
         self.assertTrue(sender_after_payload["sent"]["sent"])
+
+    def test_weekly_save_infers_middle_school_audience_for_source_imports(self):
+        save_response = self.client.put(
+            "/api/emails/weeks/2026-03-09",
+            json={
+                "start_date": "2026-03-09",
+                "end_date": "2026-03-15",
+                "heading": "This Week at Kent Denver",
+                "events": [
+                    {
+                        "id": "ms-soccer",
+                        "kind": "game",
+                        "source": "athletics",
+                        "title": "Middle School Girls Soccer",
+                        "team": "Middle School Girls Soccer",
+                        "subtitle": "vs. Front Range",
+                        "opponent": "Front Range",
+                        "start_date": "2026-03-10",
+                        "end_date": "2026-03-10",
+                        "time_text": "4:00 PM",
+                        "location": "North Field",
+                        "category": "Soccer",
+                        "is_home": True,
+                        "metadata": {"source_type": "game"},
+                    }
+                ],
+            },
+        )
+
+        self.assertEqual(save_response.status_code, 200)
+        save_payload = save_response.get_json()
+        assert save_payload is not None
+        event = save_payload["week"]["events"][0]
+        self.assertEqual(event["audiences"], ["middle-school"])
+
+        preview_response = self.client.post("/api/emails/weeks/2026-03-09/preview")
+
+        self.assertEqual(preview_response.status_code, 200)
+        preview_payload = preview_response.get_json()
+        assert preview_payload is not None
+        self.assertIn("Middle School Girls Soccer", preview_payload["outputs"]["middle-school"]["html"])
+        self.assertNotIn("Middle School Girls Soccer", preview_payload["outputs"]["upper-school"]["html"])
 
     def test_claim_send_requires_approval(self):
         self.client.put(

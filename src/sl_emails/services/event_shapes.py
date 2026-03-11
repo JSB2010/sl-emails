@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from datetime import date
 import hashlib
 import re
@@ -8,6 +8,7 @@ from typing import Any, Callable, Iterable
 
 from ..domain.dates import event_date_for_sort, iso_to_date, normalize_to_iso_date, time_for_sort
 from ..domain.styling import SOURCE_ACCENTS, accent_from_sport, source_order
+from ..domain.weekly import infer_audiences
 
 
 @dataclass
@@ -22,6 +23,11 @@ class PosterEvent:
     badge: str = ""
     priority: int = 2
     accent: str = SOURCE_ACCENTS["athletics"]
+    audiences: list[str] = field(default_factory=list)
+    team: str = ""
+    opponent: str = ""
+    is_home: bool = True
+    metadata: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -39,6 +45,11 @@ def poster_event_from_dict(payload: dict[str, Any]) -> PosterEvent:
         badge=str(payload.get("badge", "EVENT")).strip().upper() or "EVENT",
         priority=max(1, min(int(payload.get("priority", 2)), 5)),
         accent=str(payload.get("accent", SOURCE_ACCENTS["athletics"])).strip() or SOURCE_ACCENTS["athletics"],
+        audiences=payload.get("audiences") if isinstance(payload.get("audiences"), list) else [],
+        team=str(payload.get("team", "")).strip(),
+        opponent=str(payload.get("opponent", "")).strip(),
+        is_home=bool(payload.get("is_home", True)),
+        metadata=payload.get("metadata") if isinstance(payload.get("metadata"), dict) else {},
     )
 
 
@@ -153,6 +164,7 @@ def source_event_to_poster_event(source_event: Any, is_varsity_game: Callable[[s
     if event_type == "arts":
         title = getattr(source_event, "title", "Untitled Event")
         category = getattr(source_event, "category", "arts")
+        team = getattr(source_event, "team", title)
         return PosterEvent(
             title=title,
             subtitle=category.title(),
@@ -164,6 +176,9 @@ def source_event_to_poster_event(source_event: Any, is_varsity_game: Callable[[s
             badge="EVENT",
             priority=4,
             accent=SOURCE_ACCENTS["arts"],
+            audiences=infer_audiences({"title": title, "team": team, "audiences": getattr(source_event, "audiences", None)}, source="arts"),
+            team=team,
+            metadata={"source_type": "arts", "raw_category": category},
         )
 
     team = getattr(source_event, "team", "Team Event")
@@ -181,6 +196,11 @@ def source_event_to_poster_event(source_event: Any, is_varsity_game: Callable[[s
         badge="HOME" if is_home else "AWAY",
         priority=priority_from_source_event(source_event, is_varsity_game),
         accent=accent_from_sport(sport, "athletics"),
+        audiences=infer_audiences({"title": team, "team": team, "audiences": getattr(source_event, "audiences", None)}, source="athletics"),
+        team=team,
+        opponent=opponent,
+        is_home=is_home,
+        metadata={"source_type": "game", "sport": sport},
     )
 
 
@@ -208,6 +228,9 @@ def normalize_custom_event(payload: dict[str, Any]) -> PosterEvent:
         badge=str(payload.get("badge", "SPECIAL")).strip().upper() or "SPECIAL",
         priority=priority,
         accent=accent,
+        audiences=["middle-school", "upper-school"],
+        team=title,
+        metadata={"source_type": "custom"},
     )
 
 

@@ -7,9 +7,9 @@ on:
     - cron: '0 22 * * 0'
   workflow_dispatch: # Allows manual triggering for testing
 
-# Grant write permissions to the workflow
+# Grant only the permissions needed for checkout and Firestore auth
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   generate-emails:
@@ -18,9 +18,6 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-        with:
-          # This ensures we can push back to the repo
-          token: ${{ secrets.GITHUB_TOKEN }}
           
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -43,10 +40,19 @@ jobs:
 
       - name: Install dependencies
         run: |
-          cd sports-emails
-          pip install -r requirements.txt
+          pip install -r sports-emails/requirements.txt
+
+      - name: Authenticate to Google Cloud
+        id: auth
+        uses: google-github-actions/auth@v3
+        with:
+          credentials_json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+          service_account: ${{ vars.FIREBASE_SERVICE_ACCOUNT_EMAIL }}
+          token_format: access_token
+          create_credentials_file: false
+          export_environment_variables: false
           
-      - name: Get week date for commit message
+      - name: Get week date for summary
         id: get_date
         run: |
           # Calculate upcoming Monday (same logic as Google Apps Script)
@@ -55,11 +61,15 @@ jobs:
           echo "week_date=$UPCOMING_MONDAY" >> $GITHUB_OUTPUT
           echo "Week date: $UPCOMING_MONDAY"
 
-      - name: Generate sports emails
+      - name: Publish weekly Firestore draft
         id: generate
+        env:
+          FIRESTORE_ACCESS_TOKEN: ${{ steps.auth.outputs.access_token }}
+          FIRESTORE_PROJECT_ID: ${{ steps.auth.outputs.project_id }}
+          FIRESTORE_DATABASE_ID: ${{ vars.FIRESTORE_DATABASE_ID }}
+          FIRESTORE_COLLECTION: ${{ vars.FIRESTORE_COLLECTION }}
         run: |
-          cd sports-emails
-          OUTPUT=$(python generate_games.py 2>&1)
+          OUTPUT=$(PYTHONPATH=src python -m sl_emails.ingest.generate_games --firestore-draft --skip-html 2>&1)
           echo "$OUTPUT"
 
           # Extract key information from output
@@ -67,27 +77,22 @@ jobs:
           ARTS_EVENTS=$(echo "$OUTPUT" | grep -oP '(?<=Found )\d+(?= arts events)' || echo "0")
           MS_EVENTS=$(echo "$OUTPUT" | grep -oP '(?<=Middle School: )\d+(?= events)' || echo "0")
           US_EVENTS=$(echo "$OUTPUT" | grep -oP '(?<=Upper School: )\d+(?= events)' || echo "0")
-          OUTPUT_DIR=$(echo "$OUTPUT" | grep -oP '(?<=Files saved in: )[^\s!]+' || echo "unknown")
+          DRAFT_WEEK_KEY=$(echo "$OUTPUT" | grep '^DRAFT_WEEK_KEY=' | tail -1 | cut -d= -f2- || echo "unknown")
+          DRAFT_DOCUMENT_PATH=$(echo "$OUTPUT" | grep '^DRAFT_DOCUMENT_PATH=' | tail -1 | cut -d= -f2- || echo "unknown")
+          DRAFT_REVIEW_STATUS=$(echo "$OUTPUT" | grep '^DRAFT_REVIEW_STATUS=' | tail -1 | cut -d= -f2- || echo "pending")
 
           # Save to output
           echo "sports_games=$SPORTS_GAMES" >> $GITHUB_OUTPUT
           echo "arts_events=$ARTS_EVENTS" >> $GITHUB_OUTPUT
           echo "ms_events=$MS_EVENTS" >> $GITHUB_OUTPUT
           echo "us_events=$US_EVENTS" >> $GITHUB_OUTPUT
-          echo "output_dir=$OUTPUT_DIR" >> $GITHUB_OUTPUT
-
-      - name: Commit and push generated files
-        uses: stefanzweifel/git-auto-commit-action@v5
-        with:
-          commit_message: 'Auto-generate sports emails for week of ${{ steps.get_date.outputs.week_date }}'
-          file_pattern: 'sports-emails/*/*.html'
-          commit_user_name: 'github-actions[bot]'
-          commit_user_email: 'github-actions[bot]@users.noreply.github.com'
-          commit_author: 'github-actions[bot] <github-actions[bot]@users.noreply.github.com>'
+          echo "draft_week_key=$DRAFT_WEEK_KEY" >> $GITHUB_OUTPUT
+          echo "draft_document_path=$DRAFT_DOCUMENT_PATH" >> $GITHUB_OUTPUT
+          echo "draft_review_status=$DRAFT_REVIEW_STATUS" >> $GITHUB_OUTPUT
 
       - name: Create summary
         run: |
-          echo "## Sports Email Generation Complete" >> $GITHUB_STEP_SUMMARY
+          echo "## Sports Draft Ingest Complete" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Week:** ${{ steps.get_date.outputs.week_date }}" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
@@ -100,16 +105,9 @@ jobs:
           echo "- **Middle School:** ${{ steps.generate.outputs.ms_events }} events" >> $GITHUB_STEP_SUMMARY
           echo "- **Upper School:** ${{ steps.generate.outputs.us_events }} events" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### Generated Files" >> $GITHUB_STEP_SUMMARY
-          if [ -d "sports-emails/${{ steps.generate.outputs.output_dir }}" ]; then
-            for file in sports-emails/${{ steps.generate.outputs.output_dir }}/*.html; do
-              if [ -f "$file" ]; then
-                filename=$(basename "$file")
-                echo "- \`$filename\`" >> $GITHUB_STEP_SUMMARY
-              fi
-            done
-          else
-            echo "- No files generated" >> $GITHUB_STEP_SUMMARY
-          fi
+          echo "### Firestore Draft" >> $GITHUB_STEP_SUMMARY
+          echo "- **Draft week key:** \`${{ steps.generate.outputs.draft_week_key }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Document:** \`${{ steps.generate.outputs.draft_document_path }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Review status:** ${{ steps.generate.outputs.draft_review_status }}" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Status:** Files are ready for Google Apps Script to fetch and send" >> $GITHUB_STEP_SUMMARY
+          echo "**Status:** Draft is ready for review in Firestore; no committed weekly HTML is required at runtime." >> $GITHUB_STEP_SUMMARY

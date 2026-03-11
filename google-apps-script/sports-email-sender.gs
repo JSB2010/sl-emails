@@ -1,22 +1,24 @@
 /**
  * Kent Denver Sports Email Automation
  * 
- * This Google Apps Script automatically fetches generated sports email HTML files
- * from GitHub and sends them via Gmail every Sunday at 4:00 PM.
+ * This Google Apps Script fetches approved weekly email payloads from the
+ * /emails API and sends them via Gmail every Sunday at 4:00 PM.
  * 
  * Setup Instructions:
  * 1. Create a new Google Apps Script project
  * 2. Replace the default Code.gs with this code
- * 3. Update the EMAIL_RECIPIENTS object with actual email addresses
- * 4. Set up time-based triggers (see setupTriggers function)
- * 5. Test with sendSportsEmailsManual() first
+ * 3. Set CONFIG.API_BASE_URL to the deployed host that serves /emails
+ * 4. Update the EMAIL_RECIPIENTS object with actual email addresses
+ * 5. Set up time-based triggers (see setupTriggers function)
+ * 6. Test with sendSportsEmailsManual() first
  */
 
-// Configuration - UPDATE THESE VALUES
+// Configuration - UPDATE THESE VALUES BEFORE LIVE SENDS
 const CONFIG = {
-  GITHUB_REPO: 'JSB2010/sl-emails',
-  GITHUB_BRANCH: 'main',
-  BASE_PATH: 'sports-emails',
+  API_BASE_URL: '',
+  API_ACTOR: 'google-apps-script',
+  ADMIN_EMAIL: 'jbarkin28@kentdenver.org',
+  REQUEST_TIMEOUT_MS: 30000,
   
   // BCC recipients for each school level
   EMAIL_RECIPIENTS: {
@@ -42,52 +44,75 @@ const CONFIG = {
  * Fetches and sends sports emails
  */
 function sendSportsEmails() {
+  let weekId = 'unknown';
+  let sendClaimed = false;
+
   try {
     console.log('🏈 Starting automated sports email sending...');
     
-    // Get current week folder name (e.g., "oct06")
-    const folderName = getCurrentWeekFolder();
-    console.log(`📁 Looking for emails in folder: ${folderName}`);
+    weekId = getCurrentWeekId();
+    console.log(`📅 Looking for approved emails for week: ${weekId}`);
     
-    // Fetch HTML files from GitHub
-    const emails = fetchSportsEmails(folderName);
-    
-    if (!emails.middleSchool && !emails.upperSchool) {
-      console.error('❌ No email files found! Check if GitHub Actions generated the files.');
-      sendErrorNotification('No email files found for this week');
+    const payload = fetchApprovedEmailPayloads(weekId);
+
+    if (!ensureWeekCanSend(payload.sent, weekId)) {
       return;
     }
+
+    const emails = normalizeApprovedOutputs(payload, weekId);
+    const sendClaim = claimWeekSend(weekId);
+
+    if (sendClaim && sendClaim.sent) {
+      console.warn(`⚠️ Week ${weekId} was marked sent before this run could claim it.`);
+      logEmailActivity('SKIP', `Week ${weekId} already marked sent before send claim`);
+      return;
+    }
+    if (!sendClaim || !sendClaim.sending) {
+      throw new Error(`Failed to claim week ${weekId} for sending before email delivery`);
+    }
+
+    sendClaimed = true;
     
-    // Send emails
     let sentCount = 0;
+    const totalEmails = 2;
 
-    if (emails.middleSchool) {
-      const success = sendEmail(
-        CONFIG.EMAIL_RECIPIENTS.MIDDLE_SCHOOL,
-        emails.middleSchool.subject,
-        emails.middleSchool.html
-      );
-      if (success) sentCount++;
+    const middleSchoolSent = sendEmail(
+      CONFIG.EMAIL_RECIPIENTS.MIDDLE_SCHOOL,
+      emails.middleSchool.subject,
+      emails.middleSchool.html
+    );
+    if (!middleSchoolSent) {
+      throw new Error(`Failed to send middle-school email for ${weekId}`);
+    }
+    sentCount++;
+
+    const upperSchoolSent = sendEmail(
+      CONFIG.EMAIL_RECIPIENTS.UPPER_SCHOOL,
+      emails.upperSchool.subject,
+      emails.upperSchool.html
+    );
+    if (!upperSchoolSent) {
+      throw new Error(`Failed to send upper-school email for ${weekId}`);
+    }
+    sentCount++;
+
+    if (sentCount !== totalEmails) {
+      throw new Error(`Expected to send ${totalEmails} emails but only sent ${sentCount}`);
     }
 
-    if (emails.upperSchool) {
-      const success = sendEmail(
-        CONFIG.EMAIL_RECIPIENTS.UPPER_SCHOOL,
-        emails.upperSchool.subject,
-        emails.upperSchool.html
-      );
-      if (success) sentCount++;
-    }
+    const sentState = markWeekSent(weekId);
     
-    console.log(`✅ Successfully sent ${sentCount} sports emails!`);
-    
-    // Log success to a spreadsheet (optional)
-    logEmailActivity('SUCCESS', `Sent ${sentCount} emails for week ${folderName}`);
+    console.log(`✅ Successfully sent ${sentCount} approved sports emails for week ${weekId}!`);
+    console.log(`📝 Backend sent-state recorded: ${JSON.stringify(sentState)}`);
+    logEmailActivity('SUCCESS', `Sent ${sentCount} emails for week ${weekId}`);
     
   } catch (error) {
     console.error('❌ Error in sendSportsEmails:', error);
-    sendErrorNotification(`Error sending sports emails: ${error.message}`);
-    logEmailActivity('ERROR', error.message);
+    const errorMessage = sendClaimed
+      ? `Error sending sports emails: ${error.message}\n\nWeek ${weekId} remains claimed as sending to prevent duplicate reruns. Verify whether any audience emails were delivered before resolving the backend sent-state.`
+      : `Error sending sports emails: ${error.message}`;
+    sendErrorNotification(errorMessage);
+    logEmailActivity('ERROR', errorMessage);
   }
 }
 
@@ -100,15 +125,15 @@ function sendSportsEmailsManual() {
 }
 
 /**
- * Get the upcoming Monday's folder name (e.g., "oct06")
+ * Get the upcoming Monday for the target send week.
  *
  * Logic:
  * - Sunday through Saturday: Generate for the next Monday
- * - Example: Sep 29 (Mon) through Oct 5 (Sun) → generates "oct06"
- * - On Monday Oct 6, still generates "oct06" (gives flexibility for manual reruns)
- * - On Tuesday Oct 7 onwards → generates "oct13"
+ * - Example: Sep 29 (Mon) through Oct 5 (Sun) → returns Oct 06
+ * - On Monday Oct 6, still returns Oct 06 (gives flexibility for manual reruns)
+ * - On Tuesday Oct 7 onwards → returns Oct 13
  */
-function getCurrentWeekFolder() {
+function getTargetMondayDate() {
   const today = new Date();
   const dayOfWeek = today.getDay(); // 0=Sunday, 1=Monday, etc.
 
@@ -117,104 +142,150 @@ function getCurrentWeekFolder() {
   if (dayOfWeek === 0) {
     // Sunday: next Monday is 1 day away
     daysUntilMonday = 1;
+  } else if (dayOfWeek === 1) {
+    // Monday: use today so manual reruns keep the current approved week
+    daysUntilMonday = 0;
   } else {
-    // Monday-Saturday: next Monday is (8 - dayOfWeek) days away
+    // Tuesday-Saturday: next Monday is (8 - dayOfWeek) days away
     daysUntilMonday = 8 - dayOfWeek;
   }
 
   const upcomingMonday = new Date(today);
   upcomingMonday.setDate(today.getDate() + daysUntilMonday);
 
+  return upcomingMonday;
+}
+
+function getCurrentWeekId() {
+  return Utilities.formatDate(getTargetMondayDate(), CONFIG.TIMEZONE, 'yyyy-MM-dd');
+}
+
+function getCurrentWeekFolder() {
+  const upcomingMonday = getTargetMondayDate();
+
   // Format as "oct06" style
   return Utilities.formatDate(upcomingMonday, CONFIG.TIMEZONE, 'MMMdd').toLowerCase();
 }
 
 /**
- * Fetch sports email HTML files from GitHub
+ * Fetch approved sender payloads from the backend API.
  */
-function fetchSportsEmails(folderName) {
-  const baseUrl = `https://raw.githubusercontent.com/${CONFIG.GITHUB_REPO}/${CONFIG.GITHUB_BRANCH}/${CONFIG.BASE_PATH}`;
+function fetchApprovedEmailPayloads(weekId) {
+  const apiBaseUrl = getApiBaseUrl();
+  const url = `${apiBaseUrl}/api/emails/weeks/${encodeURIComponent(weekId)}/sender-output`;
+  console.log(`📥 Fetching approved sender payloads from: ${url}`);
+  return fetchJson(url, { method: 'GET' });
+}
 
-  const middleSchoolFile = `${folderName}/games-week-middle-school-${folderName}.html`;
-  const upperSchoolFile = `${folderName}/games-week-upper-school-${folderName}.html`;
+/**
+ * Ensure both approved outputs are present before sending.
+ */
+function normalizeApprovedOutputs(payload, weekId) {
+  if (!payload || payload.ok !== true || payload.approved !== true) {
+    throw new Error(`Week ${weekId} is not approved for sending`);
+  }
 
-  const msHtml = fetchGitHubFile(`${baseUrl}/${middleSchoolFile}`);
-  const usHtml = fetchGitHubFile(`${baseUrl}/${upperSchoolFile}`);
+  const outputs = payload.outputs || {};
+  const middleSchool = outputs['middle-school'];
+  const upperSchool = outputs['upper-school'];
+
+  if (!middleSchool || !middleSchool.subject || !middleSchool.html) {
+    throw new Error(`Approved middle-school payload is missing for week ${weekId}`);
+  }
+  if (!upperSchool || !upperSchool.subject || !upperSchool.html) {
+    throw new Error(`Approved upper-school payload is missing for week ${weekId}`);
+  }
 
   return {
-    middleSchool: msHtml ? { html: msHtml, subject: extractSubject(msHtml) } : null,
-    upperSchool: usHtml ? { html: usHtml, subject: extractSubject(usHtml) } : null
+    middleSchool,
+    upperSchool
   };
 }
 
-/**
- * Extract date range from HTML title and create subject line
- * Example title: "Kent Denver — Games This Week (September 29–October 05, 2025) — Middle School"
- * Or: "Kent Denver — Games and Performances This Week (September 29–October 05, 2025) — Middle School"
- * Returns: "Games This Week: September 29 - October 05"
- * Or: "Sports and Performances This Week: September 29 - October 05"
- */
-function extractSubject(html) {
-  try {
-    // Check if there are arts events by looking for the meta tag
-    const hasArtsMatch = html.match(/<meta name="has-arts-events" content="(true|false)"/i);
-    const hasArts = hasArtsMatch && hasArtsMatch[1] === 'true';
-
-    // Extract the title content
-    const titleMatch = html.match(/<title>(.*?)<\/title>/i);
-    if (!titleMatch) return hasArts ? 'Sports and Performances This Week' : 'Sports This Week';
-
-    const title = titleMatch[1];
-
-    // Extract date range from parentheses: (September 29–October 05, 2025)
-    const dateMatch = title.match(/\(([^)]+)\)/);
-    if (!dateMatch) return hasArts ? 'Sports and Performances This Week' : 'Sports This Week';
-
-    const dateRange = dateMatch[1];
-
-    // Remove year and replace en-dash with hyphen
-    // "September 29–October 05, 2025" -> "September 29 - October 05"
-    const cleanedRange = dateRange
-      .replace(/,\s*\d{4}/, '') // Remove year
-      .replace(/–/g, '-')       // Replace en-dash with hyphen
-      .trim();
-
-    // Use different subject based on whether there are arts events
-    const subjectPrefix = hasArts ? 'Sports and Performances This Week' : 'Sports This Week';
-    return `${subjectPrefix}: ${cleanedRange}`;
-  } catch (error) {
-    console.error('Error extracting subject:', error);
-    return 'Sports This Week';
+function ensureWeekCanSend(sentState, weekId) {
+  if (sentState && sentState.sent) {
+    console.warn(`⚠️ Week ${weekId} is already marked as sent by ${sentState.sent_by || 'unknown actor'} at ${sentState.sent_at || 'unknown time'}.`);
+    logEmailActivity('SKIP', `Week ${weekId} already marked sent`);
+    return false;
   }
+
+  if (sentState && sentState.sending) {
+    throw new Error(
+      `Week ${weekId} is already claimed for sending by ${sentState.sending_by || 'unknown actor'} at ${sentState.sending_at || 'unknown time'}. ` +
+      'Do not retry until the prior attempt is verified, or duplicate emails may be sent.'
+    );
+  }
+
+  return true;
 }
 
 /**
- * Fetch a single file from GitHub
+ * Fetch JSON from the backend API and convert non-2xx responses into errors.
  */
-function fetchGitHubFile(url) {
-  try {
-    console.log(`📥 Fetching: ${url}`);
+function fetchJson(url, options) {
+  const requestOptions = Object.assign(
+    {
+      muteHttpExceptions: true,
+      contentType: 'application/json; charset=UTF-8',
+      headers: buildApiHeaders()
+    },
+    options || {}
+  );
 
-    const response = UrlFetchApp.fetch(url, {
-      method: 'GET',
-      headers: {
-        'User-Agent': 'Kent Denver Sports Email Bot'
-      },
-      contentType: 'text/html; charset=UTF-8'
-    });
-
-    if (response.getResponseCode() === 200) {
-      console.log(`✅ Successfully fetched file`);
-      // Explicitly get content as UTF-8
-      return response.getContentText('UTF-8');
-    } else {
-      console.warn(`⚠️ File not found (${response.getResponseCode()}): ${url}`);
-      return null;
-    }
-  } catch (error) {
-    console.error(`❌ Error fetching ${url}:`, error);
-    return null;
+  if (!requestOptions.headers['X-Email-Actor'] && CONFIG.API_ACTOR) {
+    requestOptions.headers['X-Email-Actor'] = CONFIG.API_ACTOR;
   }
+
+  const response = UrlFetchApp.fetch(url, requestOptions);
+  const status = response.getResponseCode();
+  const rawText = response.getContentText('UTF-8');
+
+  let payload;
+  try {
+    payload = rawText ? JSON.parse(rawText) : {};
+  } catch (error) {
+    throw new Error(`API returned non-JSON response (${status})`);
+  }
+
+  if (status >= 200 && status < 300) {
+    return payload;
+  }
+
+  const message = payload && payload.error ? payload.error : `API request failed with status ${status}`;
+  throw new Error(message);
+}
+
+function buildApiHeaders() {
+  return {
+    'User-Agent': 'Kent Denver Sports Email Bot',
+    'X-Email-Actor': CONFIG.API_ACTOR
+  };
+}
+
+function getApiBaseUrl() {
+  const rawValue = String(CONFIG.API_BASE_URL || '').trim();
+  if (!rawValue) {
+    throw new Error('CONFIG.API_BASE_URL must be set to the deployed /emails host before sending');
+  }
+  return rawValue.replace(/\/+$/, '');
+}
+
+function claimWeekSend(weekId) {
+  return updateWeekSendState(weekId, 'sending');
+}
+
+function markWeekSent(weekId) {
+  return updateWeekSendState(weekId, 'sent');
+}
+
+function updateWeekSendState(weekId, state) {
+  const apiBaseUrl = getApiBaseUrl();
+  const url = `${apiBaseUrl}/api/emails/weeks/${encodeURIComponent(weekId)}/sent`;
+  const payload = fetchJson(url, {
+    method: 'POST',
+    payload: JSON.stringify({ week_id: weekId, state })
+  });
+  return payload.sent || (payload.week && payload.week.sent) || null;
 }
 
 /**
@@ -258,11 +329,8 @@ function sendEmail(recipientConfig, subject, htmlContent) {
  */
 function sendErrorNotification(errorMessage) {
   try {
-    // Update with your email address for error notifications
-    const adminEmail = 'jbarkin28@kentdenver.org';
-
     MailApp.sendEmail({
-      to: adminEmail,
+      to: CONFIG.ADMIN_EMAIL,
       subject: '🚨 Sports Email Automation Error',
       body: `The sports email automation encountered an error:\n\n${errorMessage}\n\nTime: ${new Date()}\n\nPlease check the logs and fix the issue.`,
       charset: 'UTF-8'
@@ -336,37 +404,32 @@ function removeTriggers() {
 }
 
 /**
- * Test function to check if GitHub files are accessible
+ * Test function to check if approved API payloads are accessible
  */
-function testGitHubAccess() {
+function testApprovedApiAccess() {
   const today = new Date();
-  const dayOfWeek = today.getDay();
-
-  // Calculate upcoming Monday using same logic as getCurrentWeekFolder
-  let daysUntilMonday;
-  if (dayOfWeek === 0) {
-    daysUntilMonday = 1;
-  } else {
-    daysUntilMonday = 8 - dayOfWeek;
-  }
-
-  const upcomingMonday = new Date(today);
-  upcomingMonday.setDate(today.getDate() + daysUntilMonday);
-  const folderName = getCurrentWeekFolder();
+  const upcomingMonday = getTargetMondayDate();
+  const weekId = getCurrentWeekId();
 
   console.log(`📅 Today: ${Utilities.formatDate(today, CONFIG.TIMEZONE, 'EEEE, MMMM dd, yyyy')}`);
   console.log(`📅 Upcoming Monday: ${Utilities.formatDate(upcomingMonday, CONFIG.TIMEZONE, 'EEEE, MMMM dd, yyyy')}`);
-  console.log(`🧪 Testing GitHub access for folder: ${folderName}`);
+  console.log(`🧪 Testing approved API access for week: ${weekId}`);
 
-  const emails = fetchSportsEmails(folderName);
+  const payload = fetchApprovedEmailPayloads(weekId);
+  const emails = normalizeApprovedOutputs(payload, weekId);
 
   console.log('Middle School email found:', !!emails.middleSchool);
   console.log('Upper School email found:', !!emails.upperSchool);
+  console.log('Already marked sent:', !!(payload.sent && payload.sent.sent));
+  console.log('Currently claimed for sending:', !!(payload.sent && payload.sent.sending));
 
   if (emails.middleSchool) {
-    console.log('Middle School email length:', emails.middleSchool.length, 'characters');
+    console.log('Middle School subject:', emails.middleSchool.subject);
+    console.log('Middle School email length:', emails.middleSchool.html.length, 'characters');
   }
   if (emails.upperSchool) {
-    console.log('Upper School email length:', emails.upperSchool.length, 'characters');
+    console.log('Upper School subject:', emails.upperSchool.subject);
+    console.log('Upper School email length:', emails.upperSchool.html.length, 'characters');
   }
 }
+

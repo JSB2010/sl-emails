@@ -1,58 +1,49 @@
 /**
- * Troubleshooting Functions for Sports Email Automation
- * 
- * Add these functions to your Google Apps Script project for easier debugging
- * and testing. These are separate from the main automation code.
+ * Troubleshooting functions for the approved `/emails` sender flow.
+ *
+ * Add these helpers to the same Apps Script project as `sports-email-sender.gs`
+ * when you want extra logging or safe dry-run diagnostics.
  */
 
 /**
- * Test if we can access GitHub and what files are available
+ * Test whether the approved sender-output API is reachable for the current week.
  */
-function debugGitHubAccess() {
-  console.log('🔍 Debugging GitHub access...');
-  
-  const folderName = getCurrentWeekFolder();
-  console.log(`Current week folder: ${folderName}`);
-  
-  // Test different week folders in case current week doesn't exist
-  const testFolders = [
-    folderName,
-    'sep29', // Known existing folder
-    'sep22'  // Another known existing folder
-  ];
-  
-  testFolders.forEach(folder => {
-    console.log(`\n📁 Testing folder: ${folder}`);
-    
-    const baseUrl = `https://raw.githubusercontent.com/JSB2010/sl-emails/main/sports-emails`;
-    const msUrl = `${baseUrl}/${folder}/games-week-middle-school-${folder}.html`;
-    const usUrl = `${baseUrl}/${folder}/games-week-upper-school-${folder}.html`;
-    
-    console.log(`MS URL: ${msUrl}`);
-    console.log(`US URL: ${usUrl}`);
-    
-    // Test middle school file
-    try {
-      const msResponse = UrlFetchApp.fetch(msUrl);
-      console.log(`MS File Status: ${msResponse.getResponseCode()}`);
-      if (msResponse.getResponseCode() === 200) {
-        console.log(`MS File Size: ${msResponse.getContentText().length} characters`);
-      }
-    } catch (error) {
-      console.log(`MS File Error: ${error.message}`);
-    }
-    
-    // Test upper school file
-    try {
-      const usResponse = UrlFetchApp.fetch(usUrl);
-      console.log(`US File Status: ${usResponse.getResponseCode()}`);
-      if (usResponse.getResponseCode() === 200) {
-        console.log(`US File Size: ${usResponse.getContentText().length} characters`);
-      }
-    } catch (error) {
-      console.log(`US File Error: ${error.message}`);
-    }
-  });
+function debugApprovedApiAccess() {
+  debugApprovedApiAccessForWeek(getCurrentWeekId());
+}
+
+/**
+ * Inspect sender-output for a specific week ID (YYYY-MM-DD).
+ */
+function debugApprovedApiAccessForWeek(weekId) {
+  console.log('🔍 Debugging approved sender-output access...');
+  console.log(`API base URL: ${getApiBaseUrl()}`);
+  console.log(`Week ID: ${weekId}`);
+
+  try {
+    const payload = fetchApprovedEmailPayloads(weekId);
+    logApprovedPayloadSummary(payload, weekId);
+  } catch (error) {
+    console.error(`❌ Failed to fetch approved sender-output for ${weekId}:`, error);
+  }
+}
+
+function logApprovedPayloadSummary(payload, weekId) {
+  console.log('Backend ok:', !!(payload && payload.ok));
+  console.log('Week approved:', !!(payload && payload.approved));
+  console.log('Already marked sent:', !!(payload && payload.sent && payload.sent.sent));
+  console.log('Currently claimed for sending:', !!(payload && payload.sent && payload.sent.sending));
+
+  if (!payload || payload.approved !== true) {
+    console.log(`ℹ️ Week ${weekId} is not approved yet, so sender-output is not ready for delivery.`);
+    return;
+  }
+
+  const emails = normalizeApprovedOutputs(payload, weekId);
+  console.log('Middle School subject:', emails.middleSchool.subject);
+  console.log('Middle School email length:', emails.middleSchool.html.length, 'characters');
+  console.log('Upper School subject:', emails.upperSchool.subject);
+  console.log('Upper School email length:', emails.upperSchool.html.length, 'characters');
 }
 
 /**
@@ -60,6 +51,7 @@ function debugGitHubAccess() {
  */
 function sendTestEmail() {
   const testEmail = Session.getActiveUser().getEmail();
+  const weekId = getCurrentWeekId();
   console.log(`📧 Sending test email to: ${testEmail}`);
   
   const testHtml = `
@@ -68,7 +60,7 @@ function sendTestEmail() {
         <h1 style="color: #041e42;">🏈 Test Email from Sports Automation</h1>
         <p>This is a test email to verify that the Google Apps Script can send emails successfully.</p>
         <p><strong>Time sent:</strong> ${new Date()}</p>
-        <p><strong>Week folder:</strong> ${getCurrentWeekFolder()}</p>
+        <p><strong>Week ID:</strong> ${weekId}</p>
         <div style="background: #f0f0f0; padding: 15px; border-radius: 5px; margin: 20px 0;">
           <h3>System Status:</h3>
           <p>✅ Google Apps Script is working</p>
@@ -149,20 +141,20 @@ function listTriggers() {
 }
 
 /**
- * Test the week folder calculation
+ * Test the target week ID calculation used for sender-output fetches.
  */
-function testWeekFolderCalculation() {
-  console.log('📅 Testing week folder calculation...');
-  console.log('Logic: Generate for the next occurring Monday');
-  console.log('(On Monday, still generates for that Monday - gives flexibility for reruns)\n');
+function testWeekIdCalculation() {
+  console.log('📅 Testing week ID calculation...');
+  console.log('Logic: use the Monday week ID targeted by /api/emails/weeks/<week-id>/sender-output');
+  console.log('(On Monday, still uses that Monday - gives flexibility for manual reruns)\n');
 
   const today = new Date();
   console.log(`Today: ${today}`);
   console.log(`Day of week: ${today.getDay()} (0=Sunday, 1=Monday, etc.)`);
 
   // Test the current calculation
-  const currentFolder = getCurrentWeekFolder();
-  console.log(`Current folder: ${currentFolder}`);
+  const currentWeekId = getCurrentWeekId();
+  console.log(`Current week ID: ${currentWeekId}`);
 
   // Calculate and show next Monday
   const dayOfWeek = today.getDay();
@@ -172,7 +164,7 @@ function testWeekFolderCalculation() {
   console.log(`Upcoming Monday: ${upcomingMonday.toDateString()}`);
 
   // Test for different days to see the pattern
-  console.log('\n📊 Folder for different dates:');
+  console.log('\n📊 Week IDs for different dates:');
   for (let i = 0; i < 14; i++) {
     const testDate = new Date(today);
     testDate.setDate(today.getDate() + i);
@@ -183,10 +175,10 @@ function testWeekFolderCalculation() {
     const testUpcomingMonday = new Date(testDate);
     testUpcomingMonday.setDate(testDate.getDate() + testDaysUntilMonday);
 
-    const folderName = Utilities.formatDate(testUpcomingMonday, 'America/Denver', 'MMMdd').toLowerCase();
+    const weekId = Utilities.formatDate(testUpcomingMonday, 'America/Denver', 'yyyy-MM-dd');
     const dayName = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][testDayOfWeek];
 
-    console.log(`  ${dayName} ${testDate.toDateString()} → ${folderName}`);
+    console.log(`  ${dayName} ${testDate.toDateString()} → ${weekId}`);
   }
 }
 
@@ -197,37 +189,22 @@ function simulateEmailSending() {
   console.log('🎭 Simulating email sending process...');
   
   try {
-    const folderName = getCurrentWeekFolder();
-    console.log(`📁 Week folder: ${folderName}`);
+    const weekId = getCurrentWeekId();
+    console.log(`📅 Week ID: ${weekId}`);
     
-    // Fetch emails
-    console.log('📥 Fetching emails from GitHub...');
-    const emails = fetchSportsEmails(folderName);
-    
-    console.log(`Middle School email: ${emails.middleSchool ? 'Found' : 'Not found'}`);
-    console.log(`Upper School email: ${emails.upperSchool ? 'Found' : 'Not found'}`);
-    
-    if (emails.middleSchool) {
-      console.log(`  MS email length: ${emails.middleSchool.length} characters`);
-      console.log(`  MS email preview: ${emails.middleSchool.substring(0, 100)}...`);
-    }
-    
-    if (emails.upperSchool) {
-      console.log(`  US email length: ${emails.upperSchool.length} characters`);
-      console.log(`  US email preview: ${emails.upperSchool.substring(0, 100)}...`);
-    }
+    console.log('📥 Fetching approved sender-output from the backend API...');
+    const payload = fetchApprovedEmailPayloads(weekId);
+    const emails = normalizeApprovedOutputs(payload, weekId);
+
+    console.log(`Middle School subject: ${emails.middleSchool.subject}`);
+    console.log(`Upper School subject: ${emails.upperSchool.subject}`);
+    console.log(`Middle School email length: ${emails.middleSchool.html.length} characters`);
+    console.log(`Upper School email length: ${emails.upperSchool.html.length} characters`);
     
     // Simulate sending (without actually sending)
     console.log('\n📧 Would send emails to:');
-    if (emails.middleSchool) {
-      console.log(`  Middle School: ${CONFIG.EMAIL_RECIPIENTS.MIDDLE_SCHOOL.length} recipients`);
-      CONFIG.EMAIL_RECIPIENTS.MIDDLE_SCHOOL.forEach(email => console.log(`    - ${email}`));
-    }
-    
-    if (emails.upperSchool) {
-      console.log(`  Upper School: ${CONFIG.EMAIL_RECIPIENTS.UPPER_SCHOOL.length} recipients`);
-      CONFIG.EMAIL_RECIPIENTS.UPPER_SCHOOL.forEach(email => console.log(`    - ${email}`));
-    }
+    logRecipientConfig('Middle School', CONFIG.EMAIL_RECIPIENTS.MIDDLE_SCHOOL);
+    logRecipientConfig('Upper School', CONFIG.EMAIL_RECIPIENTS.UPPER_SCHOOL);
     
     console.log('\n✅ Simulation complete! Everything looks ready.');
     
@@ -278,5 +255,15 @@ function emergencySendEmails() {
     sendSportsEmails();
   } else {
     console.log('❌ User cancelled emergency send');
+  }
+}
+
+function logRecipientConfig(label, recipientConfig) {
+  const bccList = recipientConfig.bcc || [];
+  const directCount = recipientConfig.to ? 1 : 0;
+  console.log(`  ${label}: ${directCount + bccList.length} configured recipient target(s)`);
+  console.log(`    To: ${recipientConfig.to || '(none set)'}`);
+  if (bccList.length > 0) {
+    bccList.forEach(email => console.log(`    BCC: ${email}`));
   }
 }

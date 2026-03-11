@@ -50,8 +50,7 @@ jobs:
       - name: Generate digital signage
         id: generate
         run: |
-          cd digital-signage
-          OUTPUT=$(python generate_signage.py 2>&1)
+          OUTPUT=$(PYTHONPATH=src python -m sl_emails.signage.generate_signage 2>&1)
           echo "$OUTPUT"
 
           # Extract key information from output

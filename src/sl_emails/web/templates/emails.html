@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Kent Denver Weekly Email Review</title>
+  <link rel="icon" href="/static/kd-logo.png" type="image/png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Crimson+Pro:wght@500;600;700&family=Red+Hat+Text:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/emails.css" />
+</head>
+<body>
+  <header class="app-topbar">
+    <img src="/static/kd-logo.png" alt="Kent Denver" class="topbar-logo" />
+    <span class="topbar-brand">Kent Denver</span>
+    <span class="topbar-dot">·</span>
+    <span class="topbar-product">Weekly Email Review</span>
+    <div class="topbar-spacer"></div>
+    <span class="topbar-label">Admin Workflow</span>
+  </header>
+
+  <main class="app-shell">
+    <section class="workspace-column">
+      <div class="hero-card">
+        <p class="eyebrow">Student Leadership Media</p>
+        <h1>Weekly Email Review</h1>
+        <p class="hero-copy">Load the weekly draft, tune imported events, add custom announcements, preview both audiences, and approve the week when it is ready to send.</p>
+      </div>
+
+      <section class="panel panel-week">
+        <div class="panel-head">
+          <div>
+            <h2><span class="step-badge">1</span>Week Setup</h2>
+            <p class="panel-subtitle">Choose the Monday for the week you want to review.</p>
+          </div>
+          <div id="week-summary" class="status-pill">No draft loaded</div>
+        </div>
+
+        <div class="week-toolbar">
+          <label>
+            Week Start
+            <input id="week-id" type="date" value="{{ default_week_id }}" />
+          </label>
+          <button id="load-week" class="btn btn-primary">Load Draft</button>
+          <button id="create-from-source" class="btn">Create from Source Events</button>
+        </div>
+
+        <div id="state-banner" class="state-banner state-draft">
+          <div>
+            <strong id="state-title">Draft</strong>
+            <p id="state-detail">Load a week to review imported events and prepare previews.</p>
+          </div>
+          <div id="state-meta" class="state-meta">Waiting for a weekly draft.</div>
+        </div>
+      </section>
+
+      <section class="panel panel-editor">
+        <div class="panel-head panel-header-stack">
+          <div>
+            <h2><span class="step-badge step-badge-mid">2</span>Editor</h2>
+            <p class="panel-subtitle">Update the week heading, notes, and event details before previewing.</p>
+          </div>
+          <div class="button-stack compact-stack">
+            <button id="save-week" class="btn btn-primary">Save Draft</button>
+            <button id="preview-week" class="btn">Refresh Preview</button>
+            <button id="approve-week" class="btn btn-secondary">Approve Week</button>
+          </div>
+        </div>
+
+        <div class="editor-grid">
+          <label>
+            Email Heading
+            <input id="week-heading" type="text" value="This Week at Kent Denver" maxlength="80" />
+          </label>
+          <label class="span-2">
+            Notes for the team
+            <textarea id="week-notes" rows="3" placeholder="Optional notes for the weekly draft."></textarea>
+          </label>
+        </div>
+
+        <div class="editor-summary-row">
+          <div id="event-count" class="status-pill">0 events</div>
+          <div id="save-hint" class="save-hint">Saving edits will return an approved week to draft.</div>
+        </div>
+
+        <div class="panel-head panel-header-stack panel-header-tight">
+          <div>
+            <h3>Event Review</h3>
+            <p class="panel-subtitle">Edit imported rows, hide items that should not send, and add school-wide custom events.</p>
+          </div>
+          <button id="add-custom" class="btn btn-secondary">Add Custom Event</button>
+        </div>
+
+        <div class="events-table-wrap">
+          <table class="events-table">
+            <thead>
+              <tr>
+                <th>Source</th>
+                <th>Event</th>
+                <th>Dates</th>
+                <th>Time &amp; Location</th>
+                <th>Audience</th>
+                <th>Visibility</th>
+                <th>Optional Link / Details</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="events-tbody"></tbody>
+          </table>
+        </div>
+      </section>
+    </section>
+
+    <section class="preview-column">
+      <section class="panel panel-preview">
+        <div class="panel-head">
+          <div>
+            <h2><span class="step-badge step-badge-red">3</span>Audience Previews</h2>
+            <p class="panel-subtitle">Review the rendered middle-school and upper-school emails before approval.</p>
+          </div>
+          <div id="preview-status" class="status-pill">Preview not generated</div>
+        </div>
+
+        <div id="flash" class="status">Ready.</div>
+
+        <div class="preview-grid">
+          <article class="preview-card">
+            <div class="preview-card-head">
+              <div>
+                <h3>Middle School</h3>
+                <p id="ms-subject" class="preview-subject">No preview yet</p>
+              </div>
+              <span id="ms-count" class="preview-count">0 events</span>
+            </div>
+            <iframe id="preview-middle-school" class="preview-frame" title="Middle School Preview"></iframe>
+          </article>
+
+          <article class="preview-card">
+            <div class="preview-card-head">
+              <div>
+                <h3>Upper School</h3>
+                <p id="us-subject" class="preview-subject">No preview yet</p>
+              </div>
+              <span id="us-count" class="preview-count">0 events</span>
+            </div>
+            <iframe id="preview-upper-school" class="preview-frame" title="Upper School Preview"></iframe>
+          </article>
+        </div>
+      </section>
+    </section>
+  </main>
+
+  <script>
+    window.__EMAIL_REVIEW_DEFAULTS__ = {{ {"weekId": default_week_id, "endDate": default_end}|tojson }};
+  </script>
+  <script src="/static/emails.js"></script>
+</body>
+</html>

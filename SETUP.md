@@ -189,9 +189,10 @@ gcloud run services replace deploy/cloudrun/service.template.yaml --region us-ce
    - `src/sl_emails/web/templates/`
    - `src/sl_emails/web/static/`
 8. Capture the default `run.app` URL and smoke-test it before involving Firebase Hosting:
-   - `GET /healthz`
+   - `GET /_health`
    - `GET /`
    - `GET /emails`
+   - Use exact `/_health` for public probes; Google-managed frontends may intercept exact `/healthz` before Flask.
 
 ## Firebase Hosting Manual Setup
 
@@ -209,7 +210,7 @@ firebase deploy --only hosting --project student-leadership-media
 ```
 
 4. Verify the generated Hosting URL works before changing DNS:
-   - `/healthz`
+   - `/_health`
    - `/`
    - `/emails`
 5. Start the Firebase Hosting custom-domain flow for the final school-facing hostname.
@@ -251,7 +252,7 @@ PYTHONPATH=src python3 -m flask --app sl_emails.web:create_app run --port 5050
 - `/` → signage HTML
 - `/emails` → weekly admin UI
 - `/api/emails/weeks/<week-id>` and related subroutes → weekly draft APIs
-- `/healthz` → health check
+- `/_health` → public health check
 
 ### Cloudflare-specific cutover note
 
@@ -292,7 +293,7 @@ Update `google-apps-script/sports-email-sender.gs` before testing or enabling tr
    - Apps Script config values identified but triggers still disabled.
 2. **Deploy and verify Cloud Run directly**
    - Build from `Dockerfile` and deploy the rendered `deploy/cloudrun/service.template.yaml`.
-   - Smoke-test the Cloud Run service URL for `/healthz`, `/`, and `/emails`.
+   - Smoke-test the Cloud Run service URL for `/_health`, `/`, and `/emails`.
    - Stop here if any route is broken.
 3. **Deploy and verify Firebase Hosting**
    - Deploy `firebase.json` / `.firebaserc` with `firebase deploy --only hosting --project student-leadership-media`.
@@ -346,8 +347,8 @@ In GitHub Actions, open **Generate Sports Emails** and verify:
 
 Use this checklist after deployment changes or secret rotation:
 
-1. `GET /healthz` returns `{"ok": true}` on the direct Cloud Run URL before front-door cutover.
-2. `GET /healthz` also returns `{"ok": true}` through Firebase Hosting/custom domain after cutover.
+1. `GET /_health` returns `{"ok": true}` on the direct Cloud Run URL before front-door cutover.
+2. `GET /_health` also returns `{"ok": true}` through Firebase Hosting/custom domain after cutover.
 3. `GET /` still shows the signage HTML.
 4. `GET /emails` loads the weekly review UI.
 5. Load an existing draft week from Firestore.

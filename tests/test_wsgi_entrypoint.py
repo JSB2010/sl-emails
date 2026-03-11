@@ -4,8 +4,8 @@ from sl_emails.web.wsgi import app as wsgi_app
 
 
 class WsgiEntrypointTests(unittest.TestCase):
-    def test_wsgi_entrypoint_serves_healthcheck(self):
-        response = wsgi_app.test_client().get("/healthz")
+    def test_wsgi_entrypoint_serves_public_healthcheck(self):
+        response = wsgi_app.test_client().get("/_health")
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.get_json(), {"ok": True})

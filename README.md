@@ -15,7 +15,7 @@ Production deployment is explicitly **Cloud Run for Python compute**, **Firebase
 
 ## Production Platform Roles
 
-- **Cloud Run** — runs the Flask app exported by `sl_emails.web:create_app` and must serve `/`, `/emails`, `/api/emails/...`, and `/healthz`.
+- **Cloud Run** — runs the Flask app exported by `sl_emails.web:create_app` and must serve `/`, `/emails`, `/api/emails/...`, and `/_health`.
 - **Firebase Hosting** — public web front door in front of Cloud Run, including the final school-facing hostname.
 - **Cloudflare** — DNS/registrar layer only; not the compute runtime for this deployment.
 - **Firebase Firestore** — weekly draft, approval, and sent-state system of record.
@@ -111,7 +111,7 @@ sl-emails/
 - `/` — signage page sourced from `digital-signage/index.html`
 - `/emails` — weekly admin workflow for review, preview, approval, and custom events
 - `/api/emails/weeks/<week-id>` — Firestore-backed weekly draft APIs
-- `/healthz` — runtime health check
+- `/_health` — runtime health check
 
 ## Config & Dependency Ownership
 

@@ -42,8 +42,15 @@
             Week Start
             <input id="week-id" type="date" value="{{ default_week_id }}" />
           </label>
+          <button id="prev-week" class="btn btn-ghost" title="Previous week">&#8592;</button>
+          <button id="next-week" class="btn btn-ghost" title="Next week">&#8594;</button>
           <button id="load-week" class="btn btn-primary">Load Draft</button>
-          <button id="create-from-source" class="btn">Create from Source Events</button>
+          <button id="ingest-week" class="btn">Re-ingest from Source</button>
+        </div>
+
+        <div id="ingest-summary" class="ingest-summary" hidden>
+          <div id="ingest-counts" class="ingest-counts"></div>
+          <div id="ingest-meta" class="ingest-meta"></div>
         </div>
 
         <div id="state-banner" class="state-banner state-draft">

@@ -30,6 +30,8 @@ from ..domain.weekly import (
 class WeeklyEmailStore(Protocol):
     def get_week(self, week_id: str) -> WeeklyDraftRecord | None: ...
 
+    def list_weeks(self) -> list[str]: ...
+
     def save_week(self, week_id: str, payload: dict[str, Any]) -> WeeklyDraftRecord: ...
 
     def add_event(self, week_id: str, payload: dict[str, Any]) -> WeeklyDraftRecord: ...
@@ -144,6 +146,8 @@ def normalize_week_payload(
         events=events,
         created_at=existing.created_at if existing else timestamp,
         updated_at=timestamp,
+        source_summary=payload.get("source_summary") if isinstance(payload.get("source_summary"), dict) else (existing.source_summary if existing else {}),
+        ingest_context=payload.get("ingest_context") if isinstance(payload.get("ingest_context"), dict) else (existing.ingest_context if existing else {}),
     )
 
 
@@ -167,7 +171,12 @@ class MemoryWeeklyEmailStore:
             events=[WeeklyEventRecord.from_dict(event.to_dict()) for event in week.events],
             created_at=week.created_at,
             updated_at=week.updated_at,
+            source_summary=dict(week.source_summary) if week.source_summary else {},
+            ingest_context=dict(week.ingest_context) if week.ingest_context else {},
         )
+
+    def list_weeks(self) -> list[str]:
+        return sorted(self._weeks.keys())
 
     def save_week(self, week_id: str, payload: dict[str, Any]) -> WeeklyDraftRecord:
         week = normalize_week_payload(week_id, payload, existing=self._weeks.get(week_id))
@@ -298,7 +307,13 @@ class FirestoreWeeklyEmailStore:
             events=events,
             created_at=str(data.get("created_at") or ""),
             updated_at=str(data.get("updated_at") or ""),
+            source_summary=data.get("source_summary") if isinstance(data.get("source_summary"), dict) else {},
+            ingest_context=data.get("ingest_context") if isinstance(data.get("ingest_context"), dict) else {},
         )
+
+    def list_weeks(self) -> list[str]:
+        docs = self._get_client().collection(self.collection_name).stream()
+        return sorted(doc.id for doc in docs)
 
     def save_week(self, week_id: str, payload: dict[str, Any]) -> WeeklyDraftRecord:
         existing = self.get_week(week_id)

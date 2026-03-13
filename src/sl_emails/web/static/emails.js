@@ -21,8 +21,10 @@
 
   const els = {
     weekId: document.getElementById('week-id'),
+    prevWeekBtn: document.getElementById('prev-week'),
+    nextWeekBtn: document.getElementById('next-week'),
     loadBtn: document.getElementById('load-week'),
-    createBtn: document.getElementById('create-from-source'),
+    ingestBtn: document.getElementById('ingest-week'),
     saveBtn: document.getElementById('save-week'),
     previewBtn: document.getElementById('preview-week'),
     approveBtn: document.getElementById('approve-week'),
@@ -50,6 +52,9 @@
     usCount: document.getElementById('us-count'),
     msFrame: document.getElementById('preview-middle-school'),
     usFrame: document.getElementById('preview-upper-school'),
+    ingestSummary: document.getElementById('ingest-summary'),
+    ingestCounts: document.getElementById('ingest-counts'),
+    ingestMeta: document.getElementById('ingest-meta'),
   };
 
   function escapeHtml(value) {
@@ -66,6 +71,51 @@
     if (Number.isNaN(date.getTime())) return startValue;
     date.setDate(date.getDate() + 6);
     return date.toISOString().slice(0, 10);
+  }
+
+  function shiftWeekId(weekId, deltaDays) {
+    const date = new Date(`${weekId}T00:00:00`);
+    if (Number.isNaN(date.getTime())) return weekId;
+    date.setDate(date.getDate() + deltaDays);
+    return date.toISOString().slice(0, 10);
+  }
+
+  function renderIngestSummary(week) {
+    if (!week || (!week.source_summary && !week.ingest_context)) {
+      els.ingestSummary.hidden = true;
+      return;
+    }
+    const summary = week.source_summary || {};
+    const context = week.ingest_context || {};
+    const total = summary.totalEvents ?? summary.total_events;
+    const sports = summary.sportsGames ?? summary.sports_games;
+    const arts = summary.artsEvents ?? summary.arts_events;
+    const runner = context.runner || context.githubActor ? (context.runner || 'github-actions') : null;
+    const lastIngested = context.last_ingested_at || week.updated_at || '';
+
+    if (total == null && !lastIngested) {
+      els.ingestSummary.hidden = true;
+      return;
+    }
+
+    const parts = [];
+    if (sports != null) parts.push(`${sports} sports`);
+    if (arts != null) parts.push(`${arts} arts`);
+    if (total != null && parts.length === 0) parts.push(`${total} events`);
+    els.ingestCounts.textContent = parts.length ? `Ingested: ${parts.join(', ')}` : '';
+
+    const metaParts = [];
+    if (runner) metaParts.push(`via ${runner}`);
+    if (lastIngested) {
+      try {
+        const dt = new Date(lastIngested);
+        if (!Number.isNaN(dt.getTime())) {
+          metaParts.push(`at ${dt.toLocaleString()}`);
+        }
+      } catch (_) { /* ignore */ }
+    }
+    els.ingestMeta.textContent = metaParts.join(' ');
+    els.ingestSummary.hidden = false;
   }
 
   function normalizeAudiences(raw) {
@@ -251,6 +301,7 @@
     state.weekId = state.week.week_id;
     state.dirty = false;
     render();
+    renderIngestSummary(state.week);
   }
 
   function markDirty(flag = true) {
@@ -449,6 +500,7 @@
     els.approveBtn.disabled = !state.week || isSendLocked;
     els.markUnsentBtn.hidden = !isSendLocked;
     els.markUnsentBtn.disabled = !state.week || !isSendLocked;
+    els.ingestBtn.disabled = isSendLocked;
   }
 
   function currentWeekId() {
@@ -461,6 +513,12 @@
     if (!state.week) return;
     state.week.heading = els.heading.value.trim() || 'This Week at Kent Denver';
     state.week.notes = els.notes.value.trim();
+  }
+
+  function navigateWeek(deltaDays) {
+    const current = String(els.weekId.value || state.weekId || '').trim();
+    if (!current) return;
+    els.weekId.value = shiftWeekId(current, deltaDays);
   }
 
   async function loadWeek() {
@@ -479,12 +537,44 @@
       if (/No weekly draft found/i.test(error.message)) {
         state.outputs = null;
         applyWeek(blankWeek(weekId));
-        setFlash('No saved draft found for this week yet. Create one from source events or start with custom rows.');
+        setFlash('No saved draft found for this week yet. Use "Re-ingest from Source" to scrape events or add custom rows.');
       } else {
         setFlash(error.message || 'Unable to load week.', true);
       }
     } finally {
       setButtonBusy(els.loadBtn, false);
+    }
+  }
+
+  async function ingestWeek() {
+    const weekId = currentWeekId();
+    state.weekId = weekId;
+
+    if (state.week?.approval?.approved) {
+      const confirmed = typeof window.confirm !== 'function'
+        || window.confirm('This week is already approved. Re-ingesting will replace all scraped events and reset approval to draft. Custom events will be removed. Continue?');
+      if (!confirmed) return;
+    } else if (state.week?.events?.length) {
+      const confirmed = typeof window.confirm !== 'function'
+        || window.confirm(`Re-ingesting will replace the current ${state.week.events.length} events with freshly scraped data. Custom events will be removed. Continue?`);
+      if (!confirmed) return;
+    }
+
+    setButtonBusy(els.ingestBtn, true);
+    setFlash(`Scraping events from source for ${weekId}... this may take a moment.`);
+
+    try {
+      const data = await fetchJson(`/api/emails/weeks/${weekId}/ingest`, { method: 'POST' });
+      state.outputs = null;
+      applyWeek(data.week);
+      const summary = data.source_summary || {};
+      const total = summary.totalEvents ?? (summary.sportsGames ?? 0) + (summary.artsEvents ?? 0);
+      setFlash(`Re-ingested ${total} events from source (${summary.sportsGames ?? 0} sports, ${summary.artsEvents ?? 0} arts).`);
+      await previewWeek({ silent: true, autoSave: false });
+    } catch (error) {
+      setFlash(error.message || 'Unable to re-ingest events from source.', true);
+    } finally {
+      setButtonBusy(els.ingestBtn, false);
     }
   }
 
@@ -552,45 +642,16 @@
     };
   }
 
-  async function createDraftFromSource() {
-    const weekId = currentWeekId();
-    setButtonBusy(els.createBtn, true);
-    setFlash(`Creating draft for ${weekId} from athletics and arts sources...`);
-
-    try {
-      const endDate = weekEndFromStart(weekId);
-      const fetched = await fetchJson('/api/fetch-events', {
-        method: 'POST',
-        body: JSON.stringify({ mode: 'custom', start_date: weekId, end_date: endDate }),
-      });
-
-      const payload = {
-        start_date: weekId,
-        end_date: endDate,
-        heading: state.week?.heading || 'This Week at Kent Denver',
-        notes: state.week?.notes || '',
-        events: (fetched.events || []).map(mapFetchedEvent).map(serializeEvent),
-      };
-
-      const saved = await fetchJson(`/api/emails/weeks/${weekId}`, {
-        method: 'PUT',
-        body: JSON.stringify(payload),
-      });
-
-      state.outputs = null;
-      applyWeek(saved.week);
-      setFlash(`Created weekly draft with ${(saved.week.events || []).length} imported events.`);
-      await previewWeek({ silent: true, autoSave: false });
-    } catch (error) {
-      setFlash(error.message || 'Unable to create the draft.', true);
-    } finally {
-      setButtonBusy(els.createBtn, false);
-    }
-  }
-
   async function saveWeek({ silent = false } = {}) {
     if (!state.week) return null;
     syncWeekFields();
+
+    if (!silent && state.week.approval?.approved) {
+      const confirmed = typeof window.confirm !== 'function'
+        || window.confirm('This week is approved. Saving now will reset it to draft and require re-approval before sending. Continue?');
+      if (!confirmed) return null;
+    }
+
     setButtonBusy(els.saveBtn, true);
     if (!silent) setFlash(`Saving draft for ${state.week.week_id}...`);
 
@@ -796,8 +857,10 @@
   }
 
   function bind() {
+    els.prevWeekBtn.addEventListener('click', () => navigateWeek(-7));
+    els.nextWeekBtn.addEventListener('click', () => navigateWeek(7));
     els.loadBtn.addEventListener('click', loadWeek);
-    els.createBtn.addEventListener('click', createDraftFromSource);
+    els.ingestBtn.addEventListener('click', ingestWeek);
     els.saveBtn.addEventListener('click', () => saveWeek());
     els.previewBtn.addEventListener('click', () => previewWeek());
     els.approveBtn.addEventListener('click', approveWeek);

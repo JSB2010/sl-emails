@@ -206,8 +206,29 @@ body {
 }
 
 .week-toolbar {
-  grid-template-columns: minmax(220px, 1fr) auto auto;
+  grid-template-columns: minmax(220px, 1fr) auto auto auto auto;
   align-items: end;
+}
+
+.ingest-summary {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 14px;
+  background: rgba(7, 36, 72, 0.04);
+  border: 1px solid rgba(7, 36, 72, 0.1);
+  border-radius: 8px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.ingest-counts {
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.ingest-meta {
+  opacity: 0.75;
 }
 
 .editor-grid {

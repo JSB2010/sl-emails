@@ -168,6 +168,8 @@ class WeeklyDraftRecord:
     events: list[WeeklyEventRecord] = field(default_factory=list)
     created_at: str = ""
     updated_at: str = ""
+    source_summary: dict[str, Any] = field(default_factory=dict)
+    ingest_context: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         payload = asdict(self)

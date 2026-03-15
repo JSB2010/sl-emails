@@ -445,6 +445,7 @@
     const isSending = Boolean(state.week?.sent?.sending);
     const isSendLocked = isSent || isSending;
     els.exportBtn.disabled = !state.week || !(state.week.events || []).length;
+    els.createBtn.disabled = !state.week || isSendLocked;
     els.addBtn.disabled = !state.week || isSendLocked;
     els.saveBtn.disabled = !state.week || isSendLocked;
     els.previewBtn.disabled = !state.week;
@@ -556,35 +557,43 @@
 
   async function createDraftFromSource() {
     const weekId = currentWeekId();
+    if (!state.week) {
+      setFlash('Load a week first.', true);
+      return;
+    }
+
+    const hasExistingDraft = Boolean(state.week.events?.length);
+    const isApproved = Boolean(state.week.approval?.approved);
+    const confirmationMessage = hasExistingDraft
+      ? 'Refresh imported source events for this week? Custom events and notes will be kept, but imported events will be replaced and approval will reset.'
+      : 'Fetch source events and create the weekly draft for this week?';
+    if (hasExistingDraft && typeof window.confirm === 'function' && !window.confirm(confirmationMessage)) {
+      return;
+    }
+
     setButtonBusy(els.createBtn, true);
-    setFlash(`Creating draft for ${weekId} from athletics and arts sources...`);
+    setFlash(`Refreshing source events for ${weekId}...`);
 
     try {
-      const endDate = weekEndFromStart(weekId);
-      const fetched = await fetchJson('/api/fetch-events', {
+      const saved = await fetchJson(`/api/emails/weeks/${weekId}/source-refresh`, {
         method: 'POST',
-        body: JSON.stringify({ mode: 'custom', start_date: weekId, end_date: endDate }),
       });
-
-      const payload = {
-        start_date: weekId,
-        end_date: endDate,
-        heading: state.week?.heading || 'This Week at Kent Denver',
-        notes: state.week?.notes || '',
-        events: (fetched.events || []).map(mapFetchedEvent).map(serializeEvent),
-      };
-
-      const saved = await fetchJson(`/api/emails/weeks/${weekId}`, {
-        method: 'PUT',
-        body: JSON.stringify(payload),
-      });
-
       state.outputs = null;
       applyWeek(saved.week);
-      setFlash(`Created weekly draft with ${(saved.week.events || []).length} imported events.`);
+      const summary = saved.source_summary || {};
+      const importedCount = Number(summary.total_events || 0);
+      if (saved.action === 'refreshed') {
+        setFlash(
+          isApproved
+            ? `Source events refreshed. ${importedCount} imported events reloaded and approval reset.`
+            : `Source events refreshed. ${importedCount} imported events reloaded; custom events were kept.`
+        );
+      } else {
+        setFlash(`Created weekly draft with ${importedCount} imported events.`);
+      }
       await previewWeek({ silent: true, autoSave: false });
     } catch (error) {
-      setFlash(error.message || 'Unable to create the draft.', true);
+      setFlash(error.message || 'Unable to refresh source events.', true);
     } finally {
       setButtonBusy(els.createBtn, false);
     }

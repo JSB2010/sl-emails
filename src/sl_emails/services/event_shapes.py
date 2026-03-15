@@ -6,7 +6,7 @@ import hashlib
 import re
 from typing import Any, Callable, Iterable
 
-from ..domain.dates import event_date_for_sort, iso_to_date, normalize_to_iso_date, time_for_sort
+from ..domain.dates import event_date_for_sort, iso_to_date, normalize_to_iso_date, time_for_sort, utc_now_iso
 from ..domain.styling import SOURCE_ACCENTS, accent_from_sport, source_order
 from ..domain.weekly import infer_audiences
 
@@ -266,3 +266,55 @@ def fetch_week_events(
     end_str = end.strftime("%Y-%m-%d")
     source_events = scrape_athletics_schedule(start_str, end_str) + fetch_arts_events(start_str, end_str)
     return sort_poster_events(source_event_to_poster_event(event, is_varsity_game) for event in source_events)
+
+
+def poster_event_to_weekly_event_payload(event: PosterEvent, *, timestamp: str | None = None) -> dict[str, Any]:
+    resolved_timestamp = timestamp or utc_now_iso()
+    audiences = list(event.audiences) or infer_audiences({"title": event.title, "team": event.team}, source=event.source)
+    unique_key = "|".join(
+        [
+            event.source,
+            event.title,
+            event.subtitle,
+            event.date,
+            event.time,
+            event.location,
+            event.category,
+            ",".join(sorted(audiences)),
+            str(event.is_home),
+        ]
+    )
+    event_id = hashlib.sha1(unique_key.encode("utf-8")).hexdigest()[:16]
+    kind = "game" if event.source == "athletics" else "event"
+    opponent = event.opponent or (
+        event.subtitle.removeprefix("vs. ").strip() if kind == "game" and event.subtitle.startswith("vs. ") else ""
+    )
+    metadata = dict(event.metadata)
+    metadata.setdefault("source_type", "game" if kind == "game" else event.source)
+
+    return {
+        "id": event_id,
+        "title": event.title,
+        "start_date": event.date,
+        "end_date": event.date,
+        "time_text": event.time,
+        "location": event.location,
+        "category": event.category,
+        "source": event.source,
+        "audiences": audiences,
+        "kind": kind,
+        "subtitle": event.subtitle,
+        "description": "",
+        "link": "",
+        "badge": event.badge,
+        "priority": event.priority,
+        "accent": event.accent,
+        "source_id": event_id,
+        "status": "active",
+        "team": event.team or event.title,
+        "opponent": opponent,
+        "is_home": event.is_home,
+        "metadata": metadata,
+        "created_at": resolved_timestamp,
+        "updated_at": resolved_timestamp,
+    }

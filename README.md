@@ -1,162 +1,102 @@
 # Kent Denver Student Leadership Emails
 
-Kent Denver's weekly email workflow runs from the canonical `src/sl_emails` package: Sunday ingest writes Firestore drafts, staff review and approve at `/emails`, Google Apps Script sends only approved payloads, and the same runtime serves the root signage page from `digital-signage/index.html`.
+Kent Denver's sports email workflow now runs through the deployed app plus Google Apps Script:
 
-Production deployment is explicitly **Cloud Run for Python compute**, **Firebase Hosting as the public front door**, and **Cloudflare as DNS/registrar only**.
+1. Sunday 8:00 AM MT: Apps Script calls the app's protected scheduled-ingest endpoint.
+2. The app fetches athletics + arts sources, creates the next week's Firestore draft if missing, and never overwrites an existing week automatically.
+3. Apps Script emails the admin a review link to `/emails?week=<YYYY-MM-DD>`.
+4. Staff review, edit, preview, and approve in `/emails`.
+5. Sunday 4:00 PM MT: Apps Script fetches approved sender-output and sends both audience emails.
 
-## Live Workflow
+Digital signage still stays on GitHub Actions for now. GitHub remains deployment and signage automation only for sports email operations.
 
-1. **Sunday ingest**: GitHub Actions scrapes athletics + arts sources and writes the next week's draft to Firestore.
-2. **Admin review**: Staff open `/emails`, edit events, preview both audiences, and approve the week.
-3. **Approved send**: Google Apps Script fetches `/api/emails/.../sender-output` and sends only approved payloads.
-4. **Daily signage**: The deployed runtime serves `/` from the committed `digital-signage/index.html` artifact.
+## Production Roles
 
-> **Operational source of truth:** Firestore weekly drafts plus approval/sent-state metadata. Historical HTML week folders under `sports-emails/` are optional preview/archive output, not production runtime state.
+- Cloud Run: Flask runtime serving `/`, `/emails`, and `/api/emails/...`
+- Firebase Hosting: public front door in front of Cloud Run
+- Cloudflare: DNS/registrar only
+- Firestore: weekly drafts, approval state, and sent state
+- Google Apps Script: Sunday cron triggers and Gmail delivery
+- GitHub Actions: deploy pipeline and daily signage refresh only
 
-## Production Platform Roles
+## Key Routes
 
-- **Cloud Run** — runs the Flask app exported by `sl_emails.web:create_app` and must serve `/`, `/emails`, `/api/emails/...`, and `/_health`.
-- **Firebase Hosting** — public web front door in front of Cloud Run, including the final school-facing hostname.
-- **Cloudflare** — DNS/registrar layer only; not the compute runtime for this deployment.
-- **Firebase Firestore** — weekly draft, approval, and sent-state system of record.
-- **GitHub Actions** — Sunday ingest and daily signage refresh automation.
-- **Google Apps Script** — approved-send Gmail integration only after operator approval.
+- `/` — signage page from `digital-signage/index.html`
+- `/emails` — weekly admin review UI
+- `/emails?week=YYYY-MM-DD` — deep link to a specific Monday week
+- `/api/emails/weeks/<week-id>` — weekly draft CRUD
+- `/api/emails/weeks/<week-id>/source-refresh` — manual source refresh that preserves custom events
+- `/api/emails/automation/weeks/<week-id>/scheduled-ingest` — protected Sunday morning ingest endpoint
+- `/api/emails/weeks/<week-id>/sender-output` — approved output for Apps Script sends
+- `/_health` — health check
 
-## Deployment Artifacts
+## Runtime Config
 
-- `Dockerfile` — builds the Cloud Run image for the existing Flask runtime and starts it with Gunicorn.
-- `.dockerignore` — keeps git metadata, tests, local Firebase JSON files, and `deploy/` out of the image build context.
-- `deploy/cloudrun/service.template.yaml` — Cloud Run service template with placeholders for `PROJECT_ID`, `REGION`, `TAG`, and the runtime service account.
-- `.firebaserc` — sets the default Firebase project to `student-leadership-media`.
-- `firebase.json` — configures Firebase Hosting to rewrite all routes to Cloud Run service `sl-emails` in `us-central1`.
-- `firebase-hosting/404.html` — placeholder Hosting public directory content required by Firebase Hosting.
+The deployed app expects:
+
+- `FIREBASE_PROJECT_ID`
+- `FIREBASE_SERVICE_ACCOUNT_JSON`
+- `FIRESTORE_COLLECTION` (optional; defaults to `emailWeeks`)
+- `FIRESTORE_EMULATOR_HOST` (local only)
+- `EMAILS_AUTOMATION_KEY` (required for scheduled-ingest calls)
+
+Apps Script expects:
+
+- `CONFIG.API_BASE_URL`
+- `CONFIG.AUTOMATION_API_KEY`
+- `CONFIG.ADMIN_EMAIL`
+- `CONFIG.EMAIL_RECIPIENTS`
+- `CONFIG.EMAIL_FROM_NAME`
 
 ## Supported Commands
 
-Install the current dependency manifests from the repo root:
+Install dependencies from the repo root:
 
 ```bash
 python3 -m pip install -r sports-emails/requirements.txt
 python3 -m pip install -r instagram-poster/requirements.txt
 ```
 
-`instagram-poster/requirements.txt` owns the deployed runtime stack (`flask`, `gunicorn`, and `firebase-admin`).
-
-### Runtime app
+Run the web app locally:
 
 ```bash
 PYTHONPATH=src python3 -m flask --app sl_emails.web:create_app run --port 5050
 ```
 
-### Weekly ingest
+Generate local/manual HTML previews:
 
 ```bash
-PYTHONPATH=src python3 -m sl_emails.ingest.generate_games --firestore-draft --skip-html
 PYTHONPATH=src python3 -m sl_emails.ingest.generate_games
 ```
 
-- The first command matches the production-style Firestore draft publish.
-- The second command is the supported local/manual HTML preview path.
-
-### Digital signage generation
+Refresh signage locally:
 
 ```bash
 PYTHONPATH=src python3 -m sl_emails.signage.generate_signage
 ```
 
-This updates the live signage artifact at `digital-signage/index.html`.
-
-### Poster / carousel generation
+Generate poster/carousel output:
 
 ```bash
 PYTHONPATH=src python3 -m sl_emails.poster.carousel --next-week
-```
-
-Example custom range:
-
-```bash
-PYTHONPATH=src python3 -m sl_emails.poster.carousel \
-  --start-date 2026-03-09 \
-  --end-date 2026-03-15 \
-  --custom-events custom-events.json \
-  --heading "This Week at Kent Denver" \
-  --output-html instagram-poster/carousel.html
 ```
 
 ## Repository Structure
 
 ```text
 sl-emails/
-├── Dockerfile                     # Cloud Run image build for the Flask runtime
-├── .dockerignore                  # Excludes local secrets/tests from the image build context
-├── deploy/cloudrun/service.template.yaml
-│                                  # Cloud Run service template with runtime/env placeholders
-├── .firebaserc                    # Default Firebase project mapping (`student-leadership-media`)
-├── firebase.json                  # Firebase Hosting rewrite to Cloud Run service `sl-emails`
-├── firebase-hosting/404.html      # Placeholder public asset required by Firebase Hosting
-├── src/sl_emails/                  # Canonical runtime, ingest, signage, poster, and shared services
-├── src/sl_emails/web/templates/    # Canonical Flask templates for the /emails admin workflow
-├── src/sl_emails/web/static/       # Canonical Flask static assets and shared runtime logo
-├── google-apps-script/             # Approved-send Gmail integration and troubleshooting helpers
-├── digital-signage/index.html      # Generated signage artifact served at /
-├── instagram-poster/               # Poster export artifact location + runtime requirements manifest
-├── sports-emails/                  # Optional generated HTML previews + shared requirements manifest
-├── .github/workflows/              # Sunday ingest and daily signage automation
-├── README.md                       # Architecture and supported commands
-└── SETUP.md                        # Deployment/runbook and operator checklist
+├── src/sl_emails/                 # Runtime, services, ingest, signage, poster tools
+├── src/sl_emails/web/templates/   # /emails admin UI
+├── src/sl_emails/web/static/      # /emails static assets
+├── google-apps-script/            # Sunday draft/send automation + troubleshooting
+├── digital-signage/index.html     # Signage artifact served at /
+├── .github/workflows/             # Deploy + signage automation
+├── README.md
+└── SETUP.md
 ```
 
-## Key Routes
+## Notes
 
-- `/` — signage page sourced from `digital-signage/index.html`
-- `/emails` — weekly admin workflow for review, preview, approval, and custom events
-- `/api/emails/weeks/<week-id>` — Firestore-backed weekly draft APIs
-- `/_health` — runtime health check
-
-## Config & Dependency Ownership
-
-- Shared repo paths and Firestore env names live in `src/sl_emails/config.py`.
-- Production secrets belong in GitHub secrets/vars, Cloud Run secrets/env vars, and Apps Script config values — **not** in committed repo files.
-- The repo-root Firebase service-account JSON should be treated as a migration artifact, not a production credential source.
-- Runtime Firestore config ownership:
-  - `FIREBASE_PROJECT_ID`
-  - `FIREBASE_SERVICE_ACCOUNT_JSON`
-  - `FIRESTORE_COLLECTION`
-  - `FIRESTORE_EMULATOR_HOST` *(local/dev only)*
-- GitHub Actions ingest ownership:
-  - `FIRESTORE_ACCESS_TOKEN`
-  - `FIRESTORE_PROJECT_ID`
-  - `FIRESTORE_DATABASE_ID`
-  - `FIRESTORE_COLLECTION`
-- Dependency ownership remains split:
-  - `sports-emails/requirements.txt` owns the shared scrape/render stack used by ingest, signage, and source-backed preview tooling.
-  - `instagram-poster/requirements.txt` owns the deployed web runtime stack: Flask, Gunicorn, and the Firebase Admin SDK used by Firestore-backed runtime reads/writes.
-
-## Documentation
-
-- **[README.md](README.md)** — architecture, supported commands, and repo navigation
-- **[SETUP.md](SETUP.md)** — deployment cutover, secrets inventory, operator-vs-agent ownership, and weekly runbook
-- **[google-apps-script/sports-email-sender.gs](google-apps-script/sports-email-sender.gs)** — Gmail sender configuration, `testApprovedApiAccess()`, and `setupTriggers()`
-- **[google-apps-script/troubleshooting-functions.gs](google-apps-script/troubleshooting-functions.gs)** — optional debug helpers such as `sendTestEmail()`
-- **`Dockerfile` + `deploy/cloudrun/service.template.yaml`** — repo-owned Cloud Run deployment artifacts
-- **`.firebaserc` + `firebase.json`** — repo-owned Firebase Hosting front-door configuration
-
-## Technologies
-
-- **Python 3.11+** — scraping, rendering, signage generation, poster tooling, and Flask runtime
-- **Flask** — deployed app serving `/`, `/emails`, and email APIs
-- **Google Cloud Run** — production Python compute/runtime target
-- **Firebase Hosting** — public hosting layer and custom-domain front door
-- **Firebase Firestore** — weekly draft, approval, and sent-state storage
-- **GitHub Actions** — scheduled Sunday ingest and daily signage regeneration
-- **Google Apps Script** — Gmail delivery for approved payloads only
-- **Cloudflare DNS** — registrar/DNS management for the production hostname
-
-## Author
-
-**Jacob Barkin** (jbarkin28@kentdenver.org)  
-Student Leadership Media Team
-
----
-
-**Last Updated:** March 2026
+- Firestore is the operational source of truth for sports email weeks.
+- Historical `sports-emails/<week>/...html` output is optional preview/archive output only.
+- The legacy Firestore REST publish path remains in the repo for manual tooling compatibility, but it is no longer the production scheduler path.

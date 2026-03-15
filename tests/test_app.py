@@ -2,6 +2,7 @@ import unittest
 from unittest.mock import patch
 
 from sl_emails.poster.carousel import PosterEvent
+from sl_emails.services import weekly_ingest
 from sl_emails.services.weekly_store import MemoryWeeklyEmailStore
 from sl_emails.web import create_app
 from sl_emails.web.routes import poster_api
@@ -29,6 +30,13 @@ class AppApiTests(unittest.TestCase):
         self.assertIn('id="event-source-filter"', body)
         self.assertIn('id="event-visibility-filter"', body)
         self.assertIn("Clear Filters", body)
+
+    def test_emails_route_honors_week_query_parameter(self):
+        response = self.client.get("/emails?week=2026-03-09")
+
+        self.assertEqual(response.status_code, 200)
+        body = response.get_data(as_text=True)
+        self.assertIn('"weekId": "2026-03-09"', body)
 
     def test_render_endpoint_handles_custom_event(self):
         response = self.client.post(
@@ -102,6 +110,164 @@ class AppApiTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.get_json(), {"ok": True})
+
+    @patch.object(weekly_ingest, "fetch_week_events")
+    def test_scheduled_ingest_creates_week_then_skips_existing_draft(self, mock_fetch_week_events):
+        mock_fetch_week_events.return_value = [
+            PosterEvent(
+                title="Varsity Basketball",
+                subtitle="vs. Front Range",
+                date="2026-03-10",
+                time="4:00 PM",
+                location="Main Gym",
+                category="Basketball",
+                source="athletics",
+                badge="HOME",
+                priority=3,
+                accent="#0C3A6B",
+                audiences=["upper-school"],
+                team="Varsity Basketball",
+                opponent="Front Range",
+                is_home=True,
+                metadata={"source_type": "game", "sport": "basketball"},
+            ),
+            PosterEvent(
+                title="Spring Concert",
+                subtitle="Music",
+                date="2026-03-11",
+                time="7:00 PM",
+                location="PAC",
+                category="Music",
+                source="arts",
+                badge="EVENT",
+                priority=4,
+                accent="#A11919",
+                audiences=["upper-school"],
+                team="Spring Concert",
+                metadata={"source_type": "arts"},
+            ),
+        ]
+
+        forbidden = self.client.post("/api/emails/automation/weeks/2026-03-09/scheduled-ingest")
+        self.assertEqual(forbidden.status_code, 503)
+
+        self.client.application.config["EMAILS_AUTOMATION_KEY"] = "secret-key"
+        created = self.client.post(
+            "/api/emails/automation/weeks/2026-03-09/scheduled-ingest",
+            headers={"X-Automation-Key": "wrong-key"},
+        )
+        self.assertEqual(created.status_code, 403)
+
+        created = self.client.post(
+            "/api/emails/automation/weeks/2026-03-09/scheduled-ingest",
+            headers={"X-Automation-Key": "secret-key"},
+        )
+
+        self.assertEqual(created.status_code, 200)
+        created_payload = created.get_json()
+        assert created_payload is not None
+        self.assertEqual(created_payload["action"], "created")
+        self.assertEqual(created_payload["reason"], "created_from_sources")
+        self.assertEqual(created_payload["source_summary"]["athletics_events"], 1)
+        self.assertEqual(created_payload["source_summary"]["arts_events"], 1)
+        self.assertEqual(len(created_payload["week"]["events"]), 2)
+        self.assertEqual(mock_fetch_week_events.call_count, 1)
+
+        skipped = self.client.post(
+            "/api/emails/automation/weeks/2026-03-09/scheduled-ingest",
+            headers={"X-Automation-Key": "secret-key"},
+        )
+
+        self.assertEqual(skipped.status_code, 200)
+        skipped_payload = skipped.get_json()
+        assert skipped_payload is not None
+        self.assertEqual(skipped_payload["action"], "skipped")
+        self.assertEqual(skipped_payload["reason"], "existing_draft")
+        self.assertEqual(mock_fetch_week_events.call_count, 1)
+
+    @patch.object(weekly_ingest, "fetch_week_events")
+    def test_source_refresh_preserves_custom_events_and_resets_review_state(self, mock_fetch_week_events):
+        mock_fetch_week_events.return_value = [
+            PosterEvent(
+                title="Updated Varsity Basketball",
+                subtitle="vs. Kent",
+                date="2026-03-10",
+                time="5:00 PM",
+                location="Main Gym",
+                category="Basketball",
+                source="athletics",
+                badge="AWAY",
+                priority=3,
+                accent="#0C3A6B",
+                audiences=["upper-school"],
+                team="Updated Varsity Basketball",
+                opponent="Kent",
+                is_home=False,
+                metadata={"source_type": "game", "sport": "basketball"},
+            )
+        ]
+
+        self.client.put(
+            "/api/emails/weeks/2026-03-09",
+            json={
+                "start_date": "2026-03-09",
+                "end_date": "2026-03-15",
+                "heading": "Original Heading",
+                "notes": "Keep these notes",
+                "events": [
+                    {
+                        "id": "legacy-athletics",
+                        "kind": "game",
+                        "source": "athletics",
+                        "title": "Old Athletics Row",
+                        "team": "Old Athletics Row",
+                        "opponent": "Legacy Opponent",
+                        "start_date": "2026-03-10",
+                        "end_date": "2026-03-10",
+                        "time_text": "4:00 PM",
+                        "location": "Old Gym",
+                        "category": "Basketball",
+                        "audiences": ["upper-school"],
+                    },
+                    {
+                        "id": "custom-row",
+                        "kind": "event",
+                        "source": "custom",
+                        "title": "Custom Announcement",
+                        "start_date": "2026-03-12",
+                        "end_date": "2026-03-12",
+                        "time_text": "All Day",
+                        "location": "Campus",
+                        "category": "Community",
+                        "audiences": ["middle-school", "upper-school"],
+                        "status": "hidden",
+                    },
+                ],
+            },
+        )
+        self.client.post("/api/emails/weeks/2026-03-09/approve", headers={"X-Email-Actor": "reviewer"})
+        self.client.post(
+            "/api/emails/weeks/2026-03-09/sent",
+            json={"state": "sending"},
+            headers={"X-Email-Actor": "sender-bot"},
+        )
+
+        response = self.client.post("/api/emails/weeks/2026-03-09/source-refresh")
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        assert payload is not None
+        self.assertEqual(payload["action"], "refreshed")
+        self.assertEqual(payload["reason"], "replaced_source_events_preserved_custom")
+        self.assertEqual(payload["week"]["heading"], "Original Heading")
+        self.assertEqual(payload["week"]["notes"], "Keep these notes")
+        self.assertFalse(payload["week"]["approval"]["approved"])
+        self.assertFalse(payload["week"]["sent"]["sent"])
+        self.assertFalse(payload["week"]["sent"]["sending"])
+        titles = [event["title"] for event in payload["week"]["events"]]
+        self.assertIn("Custom Announcement", titles)
+        self.assertIn("Updated Varsity Basketball", titles)
+        self.assertNotIn("Old Athletics Row", titles)
 
     def test_weekly_email_backend_flow(self):
         save_response = self.client.put(

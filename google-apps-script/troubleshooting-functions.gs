@@ -6,6 +6,27 @@
  */
 
 /**
+ * Test whether the protected Sunday ingest endpoint is reachable for the current week.
+ */
+function debugScheduledIngestAccess() {
+  const weekId = getCurrentWeekId();
+  console.log('🔍 Debugging scheduled ingest access...');
+  console.log(`API base URL: ${getApiBaseUrl()}`);
+  console.log(`Week ID: ${weekId}`);
+
+  try {
+    assertAutomationApiKeyConfigured();
+    const payload = triggerScheduledIngest(weekId);
+    console.log(`Action: ${payload.action}`);
+    console.log(`Reason: ${payload.reason}`);
+    console.log(`Week in response: ${payload.week && payload.week.week_id}`);
+    console.log(`Imported events: ${(payload.source_summary && payload.source_summary.total_events) || 0}`);
+  } catch (error) {
+    console.error(`❌ Failed to trigger scheduled ingest for ${weekId}:`, error);
+  }
+}
+
+/**
  * Test whether the approved sender-output API is reachable for the current week.
  */
 function debugApprovedApiAccess() {
@@ -133,11 +154,11 @@ function listTriggers() {
     console.log(`\nTrigger ${index + 1}:`);
     console.log(`  Function: ${trigger.getHandlerFunction()}`);
     console.log(`  Type: ${trigger.getTriggerSource()}`);
-    
-    if (trigger.getTriggerSource() === ScriptApp.TriggerSource.CLOCK) {
-      console.log(`  Schedule: Every ${trigger.getTriggerSourceId()}`);
-    }
   });
+
+  console.log('\nExpected managed triggers:');
+  console.log('  - runSundayDraftCycle (Sunday 8:00 AM MT)');
+  console.log('  - sendSportsEmails (Sunday 4:00 PM MT)');
 }
 
 /**
@@ -179,6 +200,28 @@ function testWeekIdCalculation() {
     const dayName = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][testDayOfWeek];
 
     console.log(`  ${dayName} ${testDate.toDateString()} → ${weekId}`);
+  }
+}
+
+/**
+ * Simulate the Sunday draft cycle without waiting for the trigger.
+ */
+function simulateSundayDraftCycle() {
+  console.log('🎭 Simulating Sunday draft cycle...');
+
+  try {
+    const weekId = getCurrentWeekId();
+    console.log(`📅 Week ID: ${weekId}`);
+    assertAutomationApiKeyConfigured();
+
+    const result = triggerScheduledIngest(weekId);
+    console.log(`Action: ${result.action}`);
+    console.log(`Reason: ${result.reason}`);
+    console.log(`Review URL: ${getReviewUrl(weekId)}`);
+    console.log(`Imported events: ${(result.source_summary && result.source_summary.total_events) || 0}`);
+    console.log('✅ Draft cycle simulation complete.');
+  } catch (error) {
+    console.error('❌ Draft cycle simulation failed:', error);
   }
 }
 
@@ -227,10 +270,12 @@ function checkIfSunday() {
   
   if (day === 0) {
     console.log('✅ Today is Sunday!');
-    if (hour >= 16) {
-      console.log('✅ It\'s after 4:00 PM - emails should be sent');
+    if (hour < 8) {
+      console.log('⏰ It is before the 8:00 AM draft cycle.');
+    } else if (hour < 16) {
+      console.log('✅ The 8:00 AM draft cycle has passed; review should happen before the 4:00 PM send.');
     } else {
-      console.log(`⏰ It's before 4:00 PM (currently ${hour}:xx) - emails will be sent later`);
+      console.log('✅ It is after 4:00 PM - approved emails should be sending or already sent.');
     }
   } else {
     const daysUntilSunday = (7 - day) % 7;

@@ -17,6 +17,7 @@ concurrency:
 # - FIREBASE_SERVICE_ACCOUNT_JSON: deploy-capable Google service-account key.
 #   It must be able to run Cloud Build, deploy Cloud Run, act as the runtime
 #   service account, and deploy Firebase Hosting.
+# - EMAILS_AUTOMATION_KEY: shared secret for Apps Script scheduled-ingest calls.
 # Optional repository variables (defaults match current production):
 # - GCP_PROJECT_ID (default: student-leadership-media)
 # - GCP_REGION (default: us-central1)
@@ -36,6 +37,7 @@ env:
   ARTIFACT_REGISTRY_REPOSITORY: ${{ vars.ARTIFACT_REGISTRY_REPOSITORY || 'sl-emails' }}
   FIRESTORE_COLLECTION: ${{ vars.FIRESTORE_COLLECTION || 'emailWeeks' }}
   FIREBASE_HOSTING_URL: ${{ vars.FIREBASE_HOSTING_URL || '' }}
+  EMAILS_AUTOMATION_KEY: ${{ secrets.EMAILS_AUTOMATION_KEY }}
 
 jobs:
   deploy:
@@ -79,6 +81,15 @@ jobs:
           credentials_json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
           create_credentials_file: true
           export_environment_variables: true
+
+      - name: Validate required deploy secrets
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "${EMAILS_AUTOMATION_KEY}" ]; then
+            echo "EMAILS_AUTOMATION_KEY is required for deployment." >&2
+            exit 1
+          fi
 
       - name: Set up gcloud
         uses: google-github-actions/setup-gcloud@v2
@@ -126,7 +137,7 @@ jobs:
               --region "${GCP_REGION}" \
               --service-account "${CLOUD_RUN_RUNTIME_SERVICE_ACCOUNT}" \
               --allow-unauthenticated \
-              --set-env-vars "FIREBASE_PROJECT_ID=${GCP_PROJECT_ID},FIRESTORE_COLLECTION=${FIRESTORE_COLLECTION}" \
+              --set-env-vars "FIREBASE_PROJECT_ID=${GCP_PROJECT_ID},FIRESTORE_COLLECTION=${FIRESTORE_COLLECTION},EMAILS_AUTOMATION_KEY=${EMAILS_AUTOMATION_KEY}" \
               --format='value(status.url)' \
               --quiet
           )"

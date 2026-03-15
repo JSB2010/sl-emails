@@ -7,9 +7,10 @@ from typing import Any
 from flask import Blueprint, jsonify, request
 
 from sl_emails.ingest import generate_games
+from sl_emails.services.weekly_ingest import WeeklyIngestResult, scheduled_ingest_week, source_refresh_week
 from sl_emails.services.weekly_outputs import build_weekly_email_outputs as render_weekly_email_outputs
 
-from ..support import get_emails_store, json_error, open_emails_access
+from ..support import get_emails_store, json_error, open_emails_access, require_automation_key
 
 
 blueprint = Blueprint("emails_api", __name__, url_prefix="/api/emails")
@@ -17,6 +18,19 @@ blueprint = Blueprint("emails_api", __name__, url_prefix="/api/emails")
 
 def build_weekly_email_outputs(week: Any) -> dict[str, dict[str, Any]]:
     return render_weekly_email_outputs(week, generate_games_module=generate_games)
+
+
+def serialize_ingest_result(result: WeeklyIngestResult) -> Any:
+    return jsonify(
+        {
+            "ok": True,
+            "week_id": result.week_id,
+            "action": result.action,
+            "reason": result.reason,
+            "source_summary": result.source_summary,
+            "week": result.week.to_dict(),
+        }
+    )
 
 
 @blueprint.get("/weeks/<week_id>")
@@ -40,6 +54,19 @@ def save_week(week_id: str) -> Any:
         return json_error(str(exc), status=503)
 
     return jsonify({"ok": True, "week": week.to_dict()})
+
+
+@blueprint.post("/weeks/<week_id>/source-refresh")
+@open_emails_access
+def source_refresh(week_id: str) -> Any:
+    try:
+        result = source_refresh_week(get_emails_store(), week_id)
+    except ValueError as exc:
+        return json_error(str(exc), status=400)
+    except RuntimeError as exc:
+        return json_error(str(exc), status=503)
+
+    return serialize_ingest_result(result)
 
 
 @blueprint.post("/weeks/<week_id>/events")
@@ -134,3 +161,16 @@ def sender_output(week_id: str) -> Any:
         return jsonify({"ok": True, "week_id": week_id, "approved": True, "output": selected, "sent": week.sent})
 
     return jsonify({"ok": True, "week_id": week_id, "approved": True, "outputs": outputs, "sent": week.sent})
+
+
+@blueprint.post("/automation/weeks/<week_id>/scheduled-ingest")
+@require_automation_key
+def scheduled_ingest(week_id: str) -> Any:
+    try:
+        result = scheduled_ingest_week(get_emails_store(), week_id)
+    except ValueError as exc:
+        return json_error(str(exc), status=400)
+    except RuntimeError as exc:
+        return json_error(str(exc), status=503)
+
+    return serialize_ingest_result(result)

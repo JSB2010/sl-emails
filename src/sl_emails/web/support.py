@@ -7,6 +7,7 @@ from typing import Any, Callable
 
 from flask import Response, current_app, jsonify, request
 
+from sl_emails.config import EMAILS_AUTOMATION_KEY_ENV
 from sl_emails.config import SIGNAGE_OUTPUT_HTML as SIGNAGE_INDEX
 from sl_emails.config import WEB_STATIC_DIR as STATIC_DIR
 from sl_emails.config import WEB_TEMPLATES_DIR as TEMPLATE_DIR
@@ -44,6 +45,26 @@ def open_emails_access(view_func: Callable[..., Any]) -> Callable[..., Any]:
     return wrapped
 
 
+def require_automation_key(view_func: Callable[..., Any]) -> Callable[..., Any]:
+    @wraps(view_func)
+    def wrapped(*args: Any, **kwargs: Any):
+        configured_key = str(
+            current_app.config.get("EMAILS_AUTOMATION_KEY")
+            or current_app.config.get(EMAILS_AUTOMATION_KEY_ENV)
+            or ""
+        ).strip()
+        if not configured_key:
+            return json_error("Automation key is not configured", status=503)
+
+        supplied_key = str(request.headers.get("X-Automation-Key", "")).strip()
+        if supplied_key != configured_key:
+            return json_error("Invalid automation key", status=403)
+
+        return view_func(*args, **kwargs)
+
+    return wrapped
+
+
 __all__ = [
     "SIGNAGE_INDEX",
     "TEMPLATE_DIR",
@@ -52,4 +73,5 @@ __all__ = [
     "serve_signage",
     "json_error",
     "open_emails_access",
+    "require_automation_key",
 ]

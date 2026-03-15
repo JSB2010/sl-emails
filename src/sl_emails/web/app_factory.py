@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 from typing import Any
+import os
 
 from flask import Flask
+
+from sl_emails.config import EMAILS_AUTOMATION_KEY_ENV
 
 from .routes import register_routes
 from .support import STATIC_DIR, TEMPLATE_DIR
@@ -12,6 +15,7 @@ from .support import STATIC_DIR, TEMPLATE_DIR
 
 def create_app(config: dict[str, Any] | None = None) -> Flask:
     app = Flask(__name__, template_folder=str(TEMPLATE_DIR), static_folder=str(STATIC_DIR))
+    app.config["EMAILS_AUTOMATION_KEY"] = os.getenv(EMAILS_AUTOMATION_KEY_ENV, "").strip()
 
     if config:
         app.config.update(config)

@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
-"""Helpers for publishing weekly email draft data to Firestore via REST."""
+"""Legacy helpers for publishing weekly email draft data to Firestore via REST.
+
+The production sports scheduler now uses the deployed app plus Apps Script instead
+of this direct REST publish path. Keep this module only for manual tooling and
+migration compatibility.
+"""
 
 from __future__ import annotations
 

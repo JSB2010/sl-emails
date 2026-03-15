@@ -1,58 +1,66 @@
 /**
  * Kent Denver Sports Email Automation
- * 
- * This Google Apps Script fetches approved weekly email payloads from the
- * /emails API and sends them via Gmail every Sunday at 4:00 PM.
- * 
- * Setup Instructions:
- * 1. Create a new Google Apps Script project
- * 2. Replace the default Code.gs with this code
- * 3. Set CONFIG.API_BASE_URL to the deployed host that serves /emails
- * 4. Update the EMAIL_RECIPIENTS object with actual email addresses
- * 5. Set up time-based triggers (see setupTriggers function)
- * 6. Test with sendSportsEmailsManual() first
+ *
+ * Google Apps Script owns the sports email cron flow:
+ * 1. Sunday 8:00 AM MT: create or confirm the weekly draft in the web app.
+ * 2. Email the admin a review link to /emails?week=<YYYY-MM-DD>.
+ * 3. Sunday 4:00 PM MT: send only approved payloads.
  */
 
-// Configuration - UPDATE THESE VALUES BEFORE LIVE SENDS
 const CONFIG = {
   API_BASE_URL: '',
   API_ACTOR: 'google-apps-script',
+  AUTOMATION_API_KEY: '',
   ADMIN_EMAIL: 'jbarkin28@kentdenver.org',
   REQUEST_TIMEOUT_MS: 30000,
-  
-  // BCC recipients for each school level
+  EMAIL_FROM_NAME: 'Student Leadership',
+  TIMEZONE: 'America/Denver',
+
   EMAIL_RECIPIENTS: {
     MIDDLE_SCHOOL: {
       to: '',
-      bcc: ["allmiddleschoolstudents@kentdenver.org","middleschoolteachers@kentdenver.org"] // Add additional BCC recipients if needed
+      bcc: ['allmiddleschoolstudents@kentdenver.org', 'middleschoolteachers@kentdenver.org']
     },
     UPPER_SCHOOL: {
-      to: "",
-      bcc: ["allupperschoolstudents@kentdenver.org","upperschoolteachers@kentdenver.org"] // Add additional BCC recipients if needed
+      to: '',
+      bcc: ['allupperschoolstudents@kentdenver.org', 'upperschoolteachers@kentdenver.org']
     }
-  },
-
-  // Email settings
-  EMAIL_FROM_NAME: 'Student Leadership',
-  
-  // Timezone for logging (Mountain Time)
-  TIMEZONE: 'America/Denver'
+  }
 };
 
-/**
- * Main function that runs automatically via trigger
- * Fetches and sends sports emails
- */
+const MANAGED_TRIGGER_FUNCTIONS = ['runSundayDraftCycle', 'sendSportsEmails'];
+
+function runSundayDraftCycle() {
+  const weekId = getCurrentWeekId();
+
+  try {
+    console.log(`📥 Starting Sunday draft cycle for ${weekId}...`);
+    assertAutomationApiKeyConfigured();
+
+    const ingestResult = triggerScheduledIngest(weekId);
+    sendAdminReviewNotification(weekId, ingestResult);
+    logEmailActivity('DRAFT', `Weekly draft cycle ${ingestResult.action} for ${weekId}`);
+  } catch (error) {
+    console.error('❌ Error in runSundayDraftCycle:', error);
+    sendErrorNotification(`Error running Sunday draft cycle for ${weekId}: ${error.message}`);
+    logEmailActivity('ERROR', `Draft cycle failed for ${weekId}: ${error.message}`);
+  }
+}
+
+function runSundayDraftCycleManual() {
+  runSundayDraftCycle();
+}
+
 function sendSportsEmails() {
   let weekId = 'unknown';
   let sendClaimed = false;
 
   try {
     console.log('🏈 Starting automated sports email sending...');
-    
+
     weekId = getCurrentWeekId();
     console.log(`📅 Looking for approved emails for week: ${weekId}`);
-    
+
     const payload = fetchApprovedEmailPayloads(weekId);
 
     if (!ensureWeekCanSend(payload.sent, weekId)) {
@@ -72,7 +80,7 @@ function sendSportsEmails() {
     }
 
     sendClaimed = true;
-    
+
     let sentCount = 0;
     const totalEmails = 2;
 
@@ -101,11 +109,10 @@ function sendSportsEmails() {
     }
 
     const sentState = markWeekSent(weekId);
-    
+
     console.log(`✅ Successfully sent ${sentCount} approved sports emails for week ${weekId}!`);
     console.log(`📝 Backend sent-state recorded: ${JSON.stringify(sentState)}`);
     logEmailActivity('SUCCESS', `Sent ${sentCount} emails for week ${weekId}`);
-    
   } catch (error) {
     console.error('❌ Error in sendSportsEmails:', error);
     const errorMessage = sendClaimed
@@ -116,37 +123,20 @@ function sendSportsEmails() {
   }
 }
 
-/**
- * Manual testing function - use this to test the setup
- */
 function sendSportsEmailsManual() {
-  console.log('🧪 Running manual test...');
   sendSportsEmails();
 }
 
-/**
- * Get the upcoming Monday for the target send week.
- *
- * Logic:
- * - Sunday through Saturday: Generate for the next Monday
- * - Example: Sep 29 (Mon) through Oct 5 (Sun) → returns Oct 06
- * - On Monday Oct 6, still returns Oct 06 (gives flexibility for manual reruns)
- * - On Tuesday Oct 7 onwards → returns Oct 13
- */
 function getTargetMondayDate() {
   const today = new Date();
-  const dayOfWeek = today.getDay(); // 0=Sunday, 1=Monday, etc.
+  const dayOfWeek = today.getDay();
 
-  // Calculate the next Monday
   let daysUntilMonday;
   if (dayOfWeek === 0) {
-    // Sunday: next Monday is 1 day away
     daysUntilMonday = 1;
   } else if (dayOfWeek === 1) {
-    // Monday: use today so manual reruns keep the current approved week
     daysUntilMonday = 0;
   } else {
-    // Tuesday-Saturday: next Monday is (8 - dayOfWeek) days away
     daysUntilMonday = 8 - dayOfWeek;
   }
 
@@ -161,15 +151,9 @@ function getCurrentWeekId() {
 }
 
 function getCurrentWeekFolder() {
-  const upcomingMonday = getTargetMondayDate();
-
-  // Format as "oct06" style
-  return Utilities.formatDate(upcomingMonday, CONFIG.TIMEZONE, 'MMMdd').toLowerCase();
+  return Utilities.formatDate(getTargetMondayDate(), CONFIG.TIMEZONE, 'MMMdd').toLowerCase();
 }
 
-/**
- * Fetch approved sender payloads from the backend API.
- */
 function fetchApprovedEmailPayloads(weekId) {
   const apiBaseUrl = getApiBaseUrl();
   const url = `${apiBaseUrl}/api/emails/weeks/${encodeURIComponent(weekId)}/sender-output`;
@@ -177,9 +161,13 @@ function fetchApprovedEmailPayloads(weekId) {
   return fetchJson(url, { method: 'GET' });
 }
 
-/**
- * Ensure both approved outputs are present before sending.
- */
+function triggerScheduledIngest(weekId) {
+  const apiBaseUrl = getApiBaseUrl();
+  const url = `${apiBaseUrl}/api/emails/automation/weeks/${encodeURIComponent(weekId)}/scheduled-ingest`;
+  console.log(`📥 Triggering scheduled ingest at: ${url}`);
+  return fetchJson(url, { method: 'POST' });
+}
+
 function normalizeApprovedOutputs(payload, weekId) {
   if (!payload || payload.ok !== true || payload.approved !== true) {
     throw new Error(`Week ${weekId} is not approved for sending`);
@@ -219,9 +207,6 @@ function ensureWeekCanSend(sentState, weekId) {
   return true;
 }
 
-/**
- * Fetch JSON from the backend API and convert non-2xx responses into errors.
- */
 function fetchJson(url, options) {
   const requestOptions = Object.assign(
     {
@@ -256,10 +241,16 @@ function fetchJson(url, options) {
 }
 
 function buildApiHeaders() {
-  return {
+  const headers = {
     'User-Agent': 'Kent Denver Sports Email Bot',
     'X-Email-Actor': CONFIG.API_ACTOR
   };
+
+  if (String(CONFIG.AUTOMATION_API_KEY || '').trim()) {
+    headers['X-Automation-Key'] = String(CONFIG.AUTOMATION_API_KEY).trim();
+  }
+
+  return headers;
 }
 
 function getApiBaseUrl() {
@@ -268,6 +259,16 @@ function getApiBaseUrl() {
     throw new Error('CONFIG.API_BASE_URL must be set to the deployed /emails host before sending');
   }
   return rawValue.replace(/\/+$/, '');
+}
+
+function getReviewUrl(weekId) {
+  return `${getApiBaseUrl()}/emails?week=${encodeURIComponent(weekId)}`;
+}
+
+function assertAutomationApiKeyConfigured() {
+  if (!String(CONFIG.AUTOMATION_API_KEY || '').trim()) {
+    throw new Error('CONFIG.AUTOMATION_API_KEY must be set before running the Sunday draft cycle');
+  }
 }
 
 function claimWeekSend(weekId) {
@@ -288,9 +289,6 @@ function updateWeekSendState(weekId, state) {
   return payload.sent || (payload.week && payload.week.sent) || null;
 }
 
-/**
- * Send email with BCC recipients
- */
 function sendEmail(recipientConfig, subject, htmlContent) {
   try {
     console.log(`📧 Sending email to: ${recipientConfig.to}`);
@@ -298,7 +296,6 @@ function sendEmail(recipientConfig, subject, htmlContent) {
       console.log(`📧 BCC: ${recipientConfig.bcc.join(', ')}`);
     }
 
-    // Use MailApp with UTF-8 support
     const emailOptions = {
       to: recipientConfig.to,
       subject: subject,
@@ -309,24 +306,53 @@ function sendEmail(recipientConfig, subject, htmlContent) {
       noReply: false
     };
 
-    // Add BCC if there are any
     if (recipientConfig.bcc && recipientConfig.bcc.length > 0) {
       emailOptions.bcc = recipientConfig.bcc.join(',');
     }
 
     MailApp.sendEmail(emailOptions);
 
-    console.log(`✅ Email sent successfully`);
+    console.log('✅ Email sent successfully');
     return true;
   } catch (error) {
-    console.error(`❌ Error sending email:`, error);
+    console.error('❌ Error sending email:', error);
     return false;
   }
 }
 
-/**
- * Send error notification to admin
- */
+function sendAdminReviewNotification(weekId, ingestResult) {
+  const reviewUrl = getReviewUrl(weekId);
+  const sourceSummary = ingestResult && ingestResult.source_summary ? ingestResult.source_summary : {};
+  const totalEvents = Number(sourceSummary.total_events || 0);
+  const athleticsEvents = Number(sourceSummary.athletics_events || 0);
+  const artsEvents = Number(sourceSummary.arts_events || 0);
+  const created = ingestResult && ingestResult.action === 'created';
+  const subject = created
+    ? `Review sports email draft for ${weekId}`
+    : `Review existing sports email draft for ${weekId}`;
+  const statusLine = created
+    ? `A new weekly draft is ready for review with ${totalEvents} imported events.`
+    : 'A weekly draft already existed for this week, so the backend left it unchanged.';
+  const countsLine = created
+    ? `Imported events: ${athleticsEvents} athletics, ${artsEvents} arts, ${totalEvents} total.`
+    : 'Existing draft preserved. Open the review link to continue editing and approval.';
+
+  MailApp.sendEmail({
+    to: CONFIG.ADMIN_EMAIL,
+    subject,
+    body:
+      `${statusLine}\n\n` +
+      `${countsLine}\n\n` +
+      `Review and approve here:\n${reviewUrl}\n`,
+    htmlBody:
+      `<p>${statusLine}</p>` +
+      `<p>${countsLine}</p>` +
+      `<p><a href="${reviewUrl}">Open weekly review</a></p>`,
+    name: CONFIG.EMAIL_FROM_NAME,
+    charset: 'UTF-8'
+  });
+}
+
 function sendErrorNotification(errorMessage) {
   try {
     MailApp.sendEmail({
@@ -340,72 +366,45 @@ function sendErrorNotification(errorMessage) {
   }
 }
 
-/**
- * Log email activity to a spreadsheet (optional but recommended)
- */
 function logEmailActivity(status, message) {
   try {
-    // You can create a Google Sheet to track email sending
-    // Uncomment and update the spreadsheet ID if you want logging
-    /*
-    const spreadsheetId = 'YOUR_SPREADSHEET_ID_HERE';
-    const sheet = SpreadsheetApp.openById(spreadsheetId).getActiveSheet();
-    
-    sheet.appendRow([
-      new Date(),
-      status,
-      message,
-      getCurrentWeekFolder()
-    ]);
-    */
-    
     console.log(`📝 Log: ${status} - ${message}`);
   } catch (error) {
     console.error('Failed to log activity:', error);
   }
 }
 
-/**
- * Setup time-based triggers
- * Run this once to set up automatic execution
- */
 function setupTriggers() {
-  // Delete existing triggers first
-  const triggers = ScriptApp.getProjectTriggers();
-  triggers.forEach(trigger => {
-    if (trigger.getHandlerFunction() === 'sendSportsEmails') {
-      ScriptApp.deleteTrigger(trigger);
-    }
-  });
-  
-  // Create new trigger for every Sunday at 4:00 PM
+  removeTriggers();
+
+  ScriptApp.newTrigger('runSundayDraftCycle')
+    .timeBased()
+    .everyWeeks(1)
+    .onWeekDay(ScriptApp.WeekDay.SUNDAY)
+    .atHour(8)
+    .create();
+
   ScriptApp.newTrigger('sendSportsEmails')
     .timeBased()
     .everyWeeks(1)
     .onWeekDay(ScriptApp.WeekDay.SUNDAY)
-    .atHour(16) // 4:00 PM (24-hour format)
+    .atHour(16)
     .create();
-    
-  console.log('✅ Trigger set up successfully! Emails will be sent every Sunday at 4:00 PM.');
+
+  console.log('✅ Triggers set up successfully. Draft review email runs Sunday at 8:00 AM and approved sends run Sunday at 4:00 PM.');
 }
 
-/**
- * Remove all triggers (for cleanup)
- */
 function removeTriggers() {
-  const triggers = ScriptApp.getProjectTriggers();
+  const triggers = ScriptApp.getProjectTriggers().slice();
   triggers.forEach(trigger => {
-    if (trigger.getHandlerFunction() === 'sendSportsEmails') {
+    if (MANAGED_TRIGGER_FUNCTIONS.indexOf(trigger.getHandlerFunction()) !== -1) {
       ScriptApp.deleteTrigger(trigger);
     }
   });
-  
-  console.log('🗑️ All triggers removed.');
+
+  console.log('🗑️ Managed triggers removed.');
 }
 
-/**
- * Test function to check if approved API payloads are accessible
- */
 function testApprovedApiAccess() {
   const today = new Date();
   const upcomingMonday = getTargetMondayDate();
@@ -432,4 +431,3 @@ function testApprovedApiAccess() {
     console.log('Upper School email length:', emails.upperSchool.html.length, 'characters');
   }
 }
-

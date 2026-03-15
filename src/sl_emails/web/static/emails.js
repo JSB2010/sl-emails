@@ -28,6 +28,7 @@
     approveBtn: document.getElementById('approve-week'),
     markUnsentBtn: document.getElementById('mark-unsent'),
     addBtn: document.getElementById('add-custom'),
+    exportBtn: document.getElementById('export-csv'),
     heading: document.getElementById('week-heading'),
     notes: document.getElementById('week-notes'),
     eventSearch: document.getElementById('event-search'),
@@ -443,6 +444,7 @@
     const isSent = Boolean(state.week?.sent?.sent);
     const isSending = Boolean(state.week?.sent?.sending);
     const isSendLocked = isSent || isSending;
+    els.exportBtn.disabled = !state.week || !(state.week.events || []).length;
     els.addBtn.disabled = !state.week || isSendLocked;
     els.saveBtn.disabled = !state.week || isSendLocked;
     els.previewBtn.disabled = !state.week;
@@ -684,6 +686,62 @@
     }
   }
 
+  function csvCell(value) {
+    const str = String(value ?? '');
+    if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+      return '"' + str.replaceAll('"', '""') + '"';
+    }
+    return str;
+  }
+
+  function formatAudiences(audiences) {
+    if (!audiences || !audiences.length) return 'Both';
+    return audiences.map((a) => (a === 'middle-school' ? 'Middle School' : a === 'upper-school' ? 'Upper School' : a)).join(', ');
+  }
+
+  function exportEvents() {
+    if (!state.week || !state.week.events.length) return;
+
+    const week = state.week;
+    const headers = ['Date', 'Day', 'End Date', 'Time', 'Title', 'Subtitle', 'Category', 'Source', 'Location', 'Audience', 'Status', 'Link', 'Description'];
+
+    const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+    function dayName(isoDate) {
+      if (!isoDate) return '';
+      const d = new Date(`${isoDate}T00:00:00`);
+      return Number.isNaN(d.getTime()) ? '' : DAY_NAMES[d.getDay()];
+    }
+
+    const rows = week.events.map((event) => [
+      csvCell(event.start_date),
+      csvCell(dayName(event.start_date)),
+      csvCell(event.end_date !== event.start_date ? event.end_date : ''),
+      csvCell(event.time_text),
+      csvCell(event.title),
+      csvCell(event.subtitle),
+      csvCell(event.category),
+      csvCell(event.source),
+      csvCell(event.location),
+      csvCell(formatAudiences(event.audiences)),
+      csvCell(event.status === 'hidden' ? 'Hidden' : 'Visible'),
+      csvCell(event.link),
+      csvCell(event.description),
+    ]);
+
+    const csv = [headers.join(','), ...rows.map((r) => r.join(','))].join('\r\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `kd-events-${week.week_id || 'export'}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    setFlash(`Exported ${week.events.length} events to CSV.`);
+  }
+
   function addCustomEvent() {
     if (!state.week) {
       setFlash('Load or create a week first.', true);
@@ -802,6 +860,7 @@
     els.previewBtn.addEventListener('click', () => previewWeek());
     els.approveBtn.addEventListener('click', approveWeek);
     els.markUnsentBtn.addEventListener('click', markWeekUnsent);
+    els.exportBtn.addEventListener('click', exportEvents);
     els.addBtn.addEventListener('click', addCustomEvent);
     els.heading.addEventListener('input', onHeadingInput);
     els.notes.addEventListener('input', onHeadingInput);

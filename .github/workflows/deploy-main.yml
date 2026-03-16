@@ -144,6 +144,25 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          ENV_FILE="$(mktemp)"
+          python - <<'PY' > "${ENV_FILE}"
+          import os
+          values = {
+              "FIREBASE_PROJECT_ID": os.environ["GCP_PROJECT_ID"],
+              "FIRESTORE_COLLECTION": os.environ["FIRESTORE_COLLECTION"],
+              "EMAILS_AUTOMATION_KEY": os.environ["EMAILS_AUTOMATION_KEY"],
+              "EMAILS_SESSION_SECRET": os.environ["EMAILS_SESSION_SECRET"],
+              "GOOGLE_OAUTH_CLIENT_ID": os.environ["GOOGLE_OAUTH_CLIENT_ID"],
+              "GOOGLE_OAUTH_CLIENT_SECRET": os.environ["GOOGLE_OAUTH_CLIENT_SECRET"],
+              "GOOGLE_OAUTH_CALLBACK_URL": os.environ["GOOGLE_OAUTH_CALLBACK_URL"],
+              "EMAILS_BOOTSTRAP_ALLOWED_EMAILS": os.environ["EMAILS_BOOTSTRAP_ALLOWED_EMAILS"],
+              "EMAILS_BOOTSTRAP_NOTIFICATION_EMAILS": os.environ["EMAILS_BOOTSTRAP_NOTIFICATION_EMAILS"],
+          }
+          for key, value in values.items():
+              escaped = value.replace("\\", "\\\\").replace('"', '\\"')
+              print(f'{key}: "{escaped}"')
+          PY
+
           CLOUD_RUN_URL="$(
             gcloud run deploy "${CLOUD_RUN_SERVICE}" \
               --image "${{ steps.meta.outputs.image }}" \
@@ -151,11 +170,12 @@ jobs:
               --region "${GCP_REGION}" \
               --service-account "${CLOUD_RUN_RUNTIME_SERVICE_ACCOUNT}" \
               --allow-unauthenticated \
-              --set-env-vars "^@^FIREBASE_PROJECT_ID=${GCP_PROJECT_ID}@FIRESTORE_COLLECTION=${FIRESTORE_COLLECTION}@EMAILS_AUTOMATION_KEY=${EMAILS_AUTOMATION_KEY}@EMAILS_SESSION_SECRET=${EMAILS_SESSION_SECRET}@GOOGLE_OAUTH_CLIENT_ID=${GOOGLE_OAUTH_CLIENT_ID}@GOOGLE_OAUTH_CLIENT_SECRET=${GOOGLE_OAUTH_CLIENT_SECRET}@GOOGLE_OAUTH_CALLBACK_URL=${GOOGLE_OAUTH_CALLBACK_URL}@EMAILS_BOOTSTRAP_ALLOWED_EMAILS=${EMAILS_BOOTSTRAP_ALLOWED_EMAILS}@EMAILS_BOOTSTRAP_NOTIFICATION_EMAILS=${EMAILS_BOOTSTRAP_NOTIFICATION_EMAILS}" \
+              --env-vars-file "${ENV_FILE}" \
               --format='value(status.url)' \
               --quiet
           )"
 
+          rm -f "${ENV_FILE}"
           echo "url=${CLOUD_RUN_URL}" >> "$GITHUB_OUTPUT"
 
       - name: Deploy Firebase Hosting

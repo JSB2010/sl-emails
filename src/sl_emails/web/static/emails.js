@@ -220,9 +220,16 @@
     });
   }
 
+  let _flashTimer = null;
+
   function setFlash(message, isError = false) {
+    clearTimeout(_flashTimer);
     els.flash.textContent = message;
-    els.flash.classList.toggle('status-error', isError);
+    els.flash.classList.toggle('flash-error', isError);
+    els.flash.classList.add('flash-show');
+    _flashTimer = setTimeout(() => {
+      els.flash.classList.remove('flash-show');
+    }, 5000);
   }
 
   function setButtonBusy(button, busy) {
@@ -395,12 +402,14 @@
               <option value="active" ${event.status !== 'hidden' ? 'selected' : ''}>Visible</option>
               <option value="hidden" ${event.status === 'hidden' ? 'selected' : ''}>Hidden</option>
             </select>
-            <input class="mini-input" type="url" data-field="link" value="${escapeHtml(event.link)}" placeholder="Optional link" />
-            <p class="field-note">${isHidden ? 'Hidden rows stay in the draft but do not appear in preview or sender output.' : 'Visible rows appear in preview and sender output.'}</p>
+            <p class="field-note">${isHidden ? 'Hidden rows are omitted from preview and sender output.' : 'Visible rows appear in preview and sender output.'}</p>
           </div>
         </td>
         <td>
-          <textarea class="mini-textarea" data-field="description" placeholder="Optional details">${escapeHtml(event.description)}</textarea>
+          <div class="cell-stack">
+            <input class="mini-input" type="url" data-field="link" value="${escapeHtml(event.link)}" placeholder="Optional link URL" />
+            <textarea class="mini-textarea" data-field="description" placeholder="Optional notes or details">${escapeHtml(event.description)}</textarea>
+          </div>
         </td>
         <td>
           <div class="row-actions">
@@ -862,6 +871,21 @@
     setFlash('Event removed from the draft. Save to persist the change.');
   }
 
+  function initPreviewTabs() {
+    document.querySelectorAll('.tab-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const tab = btn.dataset.tab;
+        document.querySelectorAll('.tab-btn').forEach((b) => {
+          b.classList.toggle('tab-active', b.dataset.tab === tab);
+          b.setAttribute('aria-selected', String(b.dataset.tab === tab));
+        });
+        document.querySelectorAll('.tab-panel').forEach((p) => {
+          p.classList.toggle('tab-active', p.id === `tab-${tab}`);
+        });
+      });
+    });
+  }
+
   function bind() {
     els.loadBtn.addEventListener('click', loadWeek);
     els.createBtn.addEventListener('click', createDraftFromSource);
@@ -887,6 +911,7 @@
     els.usFrame.srcdoc = EMPTY_PREVIEW;
     render();
     bind();
+    initPreviewTabs();
     await loadWeek();
   }
 

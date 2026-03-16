@@ -11,113 +11,119 @@
   <link rel="stylesheet" href="/static/emails.css" />
 </head>
 <body>
+
+  <!-- ── Topbar ──────────────────────────────────────────── -->
   <header class="app-topbar">
     <img src="/static/kd-logo.png" alt="Kent Denver" class="topbar-logo" />
     <span class="topbar-brand">Kent Denver</span>
     <span class="topbar-dot">·</span>
     <span class="topbar-product">Weekly Email Review</span>
     <div class="topbar-spacer"></div>
-    <span class="topbar-label">Admin Workflow</span>
+    <span class="topbar-label">Student Leadership Media</span>
   </header>
 
-  <main class="app-shell">
-    <section class="workspace-column">
-      <div class="hero-card">
-        <p class="eyebrow">Student Leadership Media</p>
-        <h1>Weekly Email Review</h1>
-        <p class="hero-copy">Sunday morning automation prepares the weekly draft. Review imported events, add custom announcements, preview both audiences, and approve the week when it is ready to send.</p>
+  <!-- ── Command bar ─────────────────────────────────────── -->
+  <div class="cmd-bar">
+    <div class="cmd-inner">
+
+      <!-- Week picker -->
+      <div class="cmd-group cmd-week-group">
+        <label class="cmd-label" for="week-id">Week of</label>
+        <input id="week-id" type="date" value="{{ default_week_id }}" class="cmd-date" />
+        <button id="load-week" class="btn btn-primary">Load Draft</button>
+        <button id="create-from-source" class="btn cmd-ghost-btn">↺ Refresh Events</button>
       </div>
 
-      <section class="panel panel-week">
+      <div class="cmd-divider"></div>
+
+      <!-- Week state info -->
+      <div class="cmd-group cmd-state-group">
+        <span id="week-summary" class="cmd-week-range">No draft loaded</span>
+        <span id="event-count" class="cmd-event-count">—</span>
+      </div>
+
+      <div class="cmd-spacer"></div>
+
+      <!-- Action buttons -->
+      <div class="cmd-group cmd-actions-group">
+        <button id="export-csv" class="btn cmd-ghost-btn" disabled title="Export events to CSV">↓ CSV</button>
+        <button id="add-custom" class="btn btn-ghost" disabled>+ Add Event</button>
+        <div class="cmd-action-sep"></div>
+        <button id="save-week" class="btn btn-primary" disabled>Save Draft</button>
+        <button id="preview-week" class="btn" disabled>Refresh Preview</button>
+        <button id="approve-week" class="btn btn-approve" disabled>✓ Approve Week</button>
+        <button id="mark-unsent" class="btn btn-ghost" type="button" hidden>Mark Unsent</button>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ── Status strip ────────────────────────────────────── -->
+  <div id="state-banner" class="state-banner state-draft">
+    <div class="state-banner-inner">
+      <strong id="state-title">Draft</strong>
+      <span class="state-sep">—</span>
+      <span id="state-detail">Load a week to review imported events and prepare previews.</span>
+      <span id="state-meta" class="state-meta">Waiting for a weekly draft.</span>
+    </div>
+  </div>
+
+  <!-- ── Main layout ─────────────────────────────────────── -->
+  <main class="app-shell">
+
+    <!-- Left: workspace -->
+    <section class="workspace-column">
+
+      <!-- Email content -->
+      <section class="panel panel-content">
         <div class="panel-head">
           <div>
-            <h2><span class="step-badge">1</span>Week Setup</h2>
-            <p class="panel-subtitle">Choose the Monday for the week you want to review or reopen.</p>
+            <h2>Email Content</h2>
+            <p class="panel-subtitle">Heading and optional team notes for this week's draft.</p>
           </div>
-          <div id="week-summary" class="status-pill">No draft loaded</div>
+          <p id="save-hint" class="save-hint">Saving edits will return an approved week to draft.</p>
         </div>
-
-        <div class="week-toolbar">
-          <label>
-            Week Start
-            <input id="week-id" type="date" value="{{ default_week_id }}" />
-          </label>
-          <button id="load-week" class="btn btn-primary">Load Draft</button>
-          <button id="create-from-source" class="btn">Refresh Source Events</button>
-        </div>
-
-        <div id="state-banner" class="state-banner state-draft">
-          <div>
-            <strong id="state-title">Draft</strong>
-            <p id="state-detail">Load a week to review imported events and prepare previews.</p>
-          </div>
-          <div id="state-meta" class="state-meta">Waiting for a weekly draft.</div>
-        </div>
-      </section>
-
-      <section class="panel panel-editor">
-        <div class="panel-head panel-header-stack">
-          <div>
-            <h2><span class="step-badge step-badge-mid">2</span>Editor</h2>
-            <p class="panel-subtitle">Update the week heading, notes, audience assignments, and event details before previewing.</p>
-          </div>
-          <div class="button-stack compact-stack">
-            <button id="save-week" class="btn btn-primary">Save Draft</button>
-            <button id="preview-week" class="btn">Refresh Preview</button>
-            <button id="approve-week" class="btn btn-secondary">Approve Week</button>
-            <button id="mark-unsent" class="btn btn-ghost" type="button" hidden>Mark Unsent</button>
-          </div>
-        </div>
-
         <div class="editor-grid">
           <label>
             Email Heading
             <input id="week-heading" type="text" value="This Week at Kent Denver" maxlength="80" />
           </label>
-          <label class="span-2">
+          <label>
             Notes for the team
             <textarea id="week-notes" rows="3" placeholder="Optional notes for the weekly draft."></textarea>
           </label>
         </div>
+      </section>
 
-        <div class="editor-summary-row">
-          <div id="event-count" class="status-pill">0 events</div>
-          <button id="export-csv" class="btn" disabled>Export CSV</button>
-          <div id="save-hint" class="save-hint">Saving edits will return an approved week to draft.</div>
-        </div>
-
-        <div class="panel-head panel-header-stack panel-header-tight">
-          <div>
-            <h3>Event Review</h3>
-            <p class="panel-subtitle">Filter large weeks, edit audience targets explicitly, duplicate rows when needed, and hide or delete items that should not send.</p>
+      <!-- Event review -->
+      <section class="panel panel-events">
+        <div class="events-panel-head">
+          <h2 class="events-panel-title">Events</h2>
+          <div class="event-tools">
+            <label class="event-search-label">
+              <span class="sr-only">Search events</span>
+              <input id="event-search" type="search" placeholder="Search title, opponent, or location…" />
+            </label>
+            <label class="sr-only-label">
+              <span class="sr-only">Source filter</span>
+              <select id="event-source-filter">
+                <option value="all">All Sources</option>
+                <option value="athletics">Athletics</option>
+                <option value="arts">Arts</option>
+                <option value="custom">Custom</option>
+              </select>
+            </label>
+            <label class="sr-only-label">
+              <span class="sr-only">Visibility filter</span>
+              <select id="event-visibility-filter">
+                <option value="all">All Events</option>
+                <option value="visible">Visible Only</option>
+                <option value="hidden">Hidden Only</option>
+              </select>
+            </label>
+            <button id="clear-event-filters" class="btn btn-ghost btn-sm" type="button">Clear</button>
+            <div id="filtered-count" class="status-pill">All shown</div>
           </div>
-          <button id="add-custom" class="btn btn-secondary">Add Custom Event</button>
-        </div>
-
-        <div class="event-tools">
-          <label class="event-search-field">
-            Find event
-            <input id="event-search" type="search" placeholder="Search title, opponent, or location" />
-          </label>
-          <label>
-            Source
-            <select id="event-source-filter">
-              <option value="all">All Sources</option>
-              <option value="athletics">Athletics</option>
-              <option value="arts">Arts</option>
-              <option value="custom">Custom</option>
-            </select>
-          </label>
-          <label>
-            Show
-            <select id="event-visibility-filter">
-              <option value="all">All Events</option>
-              <option value="visible">Visible Only</option>
-              <option value="hidden">Hidden Only</option>
-            </select>
-          </label>
-          <button id="clear-event-filters" class="btn btn-ghost" type="button">Clear Filters</button>
-          <div id="filtered-count" class="status-pill">All events shown</div>
         </div>
 
         <div class="events-table-wrap">
@@ -130,7 +136,7 @@
                 <th>Time &amp; Location</th>
                 <th>Audience</th>
                 <th>Visibility</th>
-                <th>Optional Link / Details</th>
+                <th>Link &amp; Notes</th>
                 <th>Actions</th>
               </tr>
             </thead>
@@ -138,46 +144,47 @@
           </table>
         </div>
       </section>
+
     </section>
 
+    <!-- Right: preview -->
     <section class="preview-column">
       <section class="panel panel-preview">
         <div class="panel-head">
           <div>
-            <h2><span class="step-badge step-badge-red">3</span>Audience Previews</h2>
-            <p class="panel-subtitle">Review the rendered middle-school and upper-school emails before approval.</p>
+            <h2>Audience Preview</h2>
+            <p class="panel-subtitle">Review both emails before approving.</p>
           </div>
-          <div id="preview-status" class="status-pill">Preview not generated</div>
+          <div id="preview-status" class="status-pill">Not generated</div>
         </div>
 
-        <div id="flash" class="status">Ready.</div>
-
-        <div class="preview-grid">
-          <article class="preview-card">
-            <div class="preview-card-head">
-              <div>
-                <h3>Middle School</h3>
-                <p id="ms-subject" class="preview-subject">No preview yet</p>
-              </div>
-              <span id="ms-count" class="preview-count">0 events</span>
-            </div>
-            <iframe id="preview-middle-school" class="preview-frame" title="Middle School Preview"></iframe>
-          </article>
-
-          <article class="preview-card">
-            <div class="preview-card-head">
-              <div>
-                <h3>Upper School</h3>
-                <p id="us-subject" class="preview-subject">No preview yet</p>
-              </div>
-              <span id="us-count" class="preview-count">0 events</span>
-            </div>
-            <iframe id="preview-upper-school" class="preview-frame" title="Upper School Preview"></iframe>
-          </article>
+        <div class="preview-tabs" role="tablist">
+          <button class="tab-btn tab-active" data-tab="ms" role="tab" aria-selected="true" aria-controls="tab-ms">
+            Middle School
+            <span id="ms-count" class="tab-badge">0</span>
+          </button>
+          <button class="tab-btn" data-tab="us" role="tab" aria-selected="false" aria-controls="tab-us">
+            Upper School
+            <span id="us-count" class="tab-badge">0</span>
+          </button>
         </div>
+
+        <div id="tab-ms" class="tab-panel tab-active" role="tabpanel">
+          <p id="ms-subject" class="preview-subject">No preview yet</p>
+          <iframe id="preview-middle-school" class="preview-frame" title="Middle School Preview"></iframe>
+        </div>
+        <div id="tab-us" class="tab-panel" role="tabpanel">
+          <p id="us-subject" class="preview-subject">No preview yet</p>
+          <iframe id="preview-upper-school" class="preview-frame" title="Upper School Preview"></iframe>
+        </div>
+
       </section>
     </section>
+
   </main>
+
+  <!-- ── Toast notification ──────────────────────────────── -->
+  <div id="flash" class="flash-toast" role="status" aria-live="polite"></div>
 
   <script>
     window.__EMAIL_REVIEW_DEFAULTS__ = {{ {"weekId": default_week_id, "endDate": default_end}|tojson }};

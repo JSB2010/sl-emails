@@ -30,6 +30,7 @@ def create_app(config: dict[str, Any] | None = None) -> Flask:
     app.config["EMAILS_BOOTSTRAP_ALLOWED_EMAILS"] = os.getenv(EMAILS_BOOTSTRAP_ALLOWED_EMAILS_ENV, "").strip()
     app.config["EMAILS_BOOTSTRAP_NOTIFICATION_EMAILS"] = os.getenv(EMAILS_BOOTSTRAP_NOTIFICATION_EMAILS_ENV, "").strip()
     app.config["SESSION_COOKIE_HTTPONLY"] = True
+    app.config["SESSION_COOKIE_NAME"] = "__session"
     app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
     app.config["SESSION_COOKIE_SECURE"] = True
     app.config["PREFERRED_URL_SCHEME"] = "https"

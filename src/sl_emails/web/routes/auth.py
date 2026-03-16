@@ -62,9 +62,10 @@ def google_callback() -> Any:
     next_url = _safe_next_url(session.pop("auth_next", None))
     try:
         token = oauth.google.authorize_access_token()
-    except Exception:
+    except Exception as exc:
+        current_app.logger.exception("Google OAuth callback failed")
         session.clear()
-        write_activity(event_type="auth.login", status="failed", actor="google-oauth", message="Google OAuth callback failed")
+        write_activity(event_type="auth.login", status="failed", actor="google-oauth", message=f"Google OAuth callback failed: {exc}")
         return redirect(url_for("auth.login"))
     userinfo = token.get("userinfo") if isinstance(token, dict) else None
     email = str((userinfo or {}).get("email") or "").strip().lower()
@@ -73,15 +74,18 @@ def google_callback() -> Any:
 
     if not email:
         session.clear()
+        current_app.logger.error("Google callback completed without an email address")
         write_activity(event_type="auth.login", status="failed", actor="google-oauth", message="Google callback did not provide an email address")
         return redirect(url_for("auth.login"))
 
     settings = ensure_admin_settings()
     session["auth_user"] = {"email": email, "name": name, "picture": picture}
     if email not in settings.allowed_admin_emails:
+        current_app.logger.warning("Google sign-in denied for non-allowlisted email: %s", email)
         write_activity(event_type="auth.login", status="denied", actor=email, message="Signed in successfully but is not on the allowlist")
         return redirect(url_for("auth.access_denied"))
 
+    current_app.logger.info("Google sign-in completed for %s", email)
     write_activity(event_type="auth.login", status="success", actor=email, message="Google sign-in completed")
     return redirect(next_url)
 

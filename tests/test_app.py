@@ -51,6 +51,7 @@ class AppApiTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertIn("Admin Sign-In", response.get_data(as_text=True))
+        self.assertEqual(self.client.application.config["SESSION_COOKIE_NAME"], "__session")
 
     def test_emails_route_serves_review_ui(self):
         response = self.client.get("/emails")

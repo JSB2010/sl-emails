@@ -2,6 +2,8 @@ import unittest
 from unittest.mock import patch
 
 from sl_emails.poster.carousel import PosterEvent
+from sl_emails.services.activity_log import MemoryActivityLogStore
+from sl_emails.services.admin_settings import MemoryAdminSettingsStore
 from sl_emails.services import weekly_ingest
 from sl_emails.services.weekly_store import MemoryWeeklyEmailStore
 from sl_emails.web import create_app
@@ -10,14 +12,45 @@ from sl_emails.web.routes import poster_api
 
 class AppApiTests(unittest.TestCase):
     def setUp(self):
-        app = create_app({"TESTING": True, "EMAILS_STORE": MemoryWeeklyEmailStore()})
+        app = create_app(
+            {
+                "TESTING": True,
+                "SESSION_COOKIE_SECURE": False,
+                "EMAILS_STORE": MemoryWeeklyEmailStore(),
+                "EMAILS_SETTINGS_STORE": MemoryAdminSettingsStore(),
+                "EMAILS_ACTIVITY_STORE": MemoryActivityLogStore(),
+            }
+        )
         self.client = app.test_client()
+        self.login_as()
+
+    def login_as(self, email: str = "appdev@kentdenver.org", name: str = "App Dev") -> None:
+        with self.client.session_transaction() as session:
+            session["auth_user"] = {"email": email, "name": name}
+
+    def logout(self) -> None:
+        with self.client.session_transaction() as session:
+            session.clear()
 
     def test_root_serves_signage_html(self):
         response = self.client.get("/")
 
         self.assertEqual(response.status_code, 200)
         self.assertIn("Today's Events", response.get_data(as_text=True))
+
+    def test_emails_route_requires_login_when_unauthenticated(self):
+        self.logout()
+        response = self.client.get("/emails")
+
+        self.assertEqual(response.status_code, 302)
+        self.assertIn("/login?next=/emails", response.headers["Location"])
+
+    def test_login_route_serves_sign_in_ui(self):
+        self.logout()
+        response = self.client.get("/login")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Admin Sign-In", response.get_data(as_text=True))
 
     def test_emails_route_serves_review_ui(self):
         response = self.client.get("/emails")
@@ -29,14 +62,29 @@ class AppApiTests(unittest.TestCase):
         self.assertIn('id="event-search"', body)
         self.assertIn('id="event-source-filter"', body)
         self.assertIn('id="event-visibility-filter"', body)
-        self.assertIn("Clear Filters", body)
+        self.assertIn("System Status", body)
 
     def test_emails_route_honors_week_query_parameter(self):
+        self.logout()
+        response = self.client.get("/emails?week=2026-03-09")
+
+        self.assertEqual(response.status_code, 302)
+        self.assertIn("/login?next=/emails?week=2026-03-09", response.headers["Location"])
+
+        self.login_as()
         response = self.client.get("/emails?week=2026-03-09")
 
         self.assertEqual(response.status_code, 200)
-        body = response.get_data(as_text=True)
-        self.assertIn('"weekId": "2026-03-09"', body)
+        self.assertIn('"weekId": "2026-03-09"', response.get_data(as_text=True))
+
+    def test_non_allowlisted_user_is_redirected_to_access_denied(self):
+        self.logout()
+        self.login_as(email="outsider@kentdenver.org", name="Outside User")
+
+        response = self.client.get("/emails")
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.headers["Location"], "/access-denied")
 
     def test_render_endpoint_handles_custom_event(self):
         response = self.client.post(
@@ -111,6 +159,66 @@ class AppApiTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.get_json(), {"ok": True})
 
+    def test_admin_api_requires_authentication(self):
+        self.logout()
+
+        response = self.client.get("/api/emails/weeks/2026-03-09")
+
+        self.assertEqual(response.status_code, 401)
+        payload = response.get_json()
+        assert payload is not None
+        self.assertEqual(payload["error"], "Authentication required")
+        self.assertIn("/login", payload["login_url"])
+
+    def test_settings_bootstrap_and_update(self):
+        response = self.client.get("/api/emails/settings")
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        assert payload is not None
+        self.assertEqual(
+            payload["settings"]["allowed_admin_emails"],
+            ["appdev@kentdenver.org", "studentleader@kentdenver.org"],
+        )
+
+        update_response = self.client.put(
+            "/api/emails/settings",
+            json={
+                "allowed_admin_emails": [
+                    "appdev@kentdenver.org",
+                    "studentleader@kentdenver.org",
+                    "newadmin@kentdenver.org",
+                ],
+                "ops_notification_emails": [
+                    "appdev@kentdenver.org",
+                    "ops@kentdenver.org",
+                ],
+            },
+        )
+
+        self.assertEqual(update_response.status_code, 200)
+        update_payload = update_response.get_json()
+        assert update_payload is not None
+        self.assertIn("newadmin@kentdenver.org", update_payload["settings"]["allowed_admin_emails"])
+        self.assertEqual(
+            update_payload["settings"]["ops_notification_emails"],
+            ["appdev@kentdenver.org", "ops@kentdenver.org"],
+        )
+
+    def test_settings_update_cannot_remove_current_user(self):
+        response = self.client.put(
+            "/api/emails/settings",
+            json={
+                "allowed_admin_emails": ["studentleader@kentdenver.org"],
+                "ops_notification_emails": ["studentleader@kentdenver.org"],
+            },
+        )
+
+        self.assertEqual(response.status_code, 400)
+        payload = response.get_json()
+        assert payload is not None
+        self.assertIn("cannot remove your own email", payload["error"].lower())
+
     @patch.object(weekly_ingest, "fetch_week_events")
     def test_scheduled_ingest_creates_week_then_skips_existing_draft(self, mock_fetch_week_events):
         mock_fetch_week_events.return_value = [
@@ -171,6 +279,7 @@ class AppApiTests(unittest.TestCase):
         self.assertEqual(created_payload["source_summary"]["athletics_events"], 1)
         self.assertEqual(created_payload["source_summary"]["arts_events"], 1)
         self.assertEqual(len(created_payload["week"]["events"]), 2)
+        self.assertEqual(created_payload["week"]["metadata"]["scheduled_ingest"]["action"], "created")
         self.assertEqual(mock_fetch_week_events.call_count, 1)
 
         skipped = self.client.post(
@@ -183,6 +292,7 @@ class AppApiTests(unittest.TestCase):
         assert skipped_payload is not None
         self.assertEqual(skipped_payload["action"], "skipped")
         self.assertEqual(skipped_payload["reason"], "existing_draft")
+        self.assertEqual(skipped_payload["week"]["metadata"]["scheduled_ingest"]["action"], "skipped")
         self.assertEqual(mock_fetch_week_events.call_count, 1)
 
     @patch.object(weekly_ingest, "fetch_week_events")
@@ -264,6 +374,7 @@ class AppApiTests(unittest.TestCase):
         self.assertFalse(payload["week"]["approval"]["approved"])
         self.assertFalse(payload["week"]["sent"]["sent"])
         self.assertFalse(payload["week"]["sent"]["sending"])
+        self.assertEqual(payload["week"]["metadata"]["manual_refresh"]["status"], "success")
         titles = [event["title"] for event in payload["week"]["events"]]
         self.assertIn("Custom Announcement", titles)
         self.assertIn("Updated Varsity Basketball", titles)
@@ -482,6 +593,31 @@ class AppApiTests(unittest.TestCase):
         self.assertEqual(payload["sent"]["sent_by"], "")
         self.assertEqual(payload["sent"]["sending_by"], "")
         self.assertTrue(payload["week"]["approval"]["approved"])
+
+    def test_automation_key_can_fetch_sender_output_and_update_sent_state(self):
+        self.client.application.config["EMAILS_AUTOMATION_KEY"] = "secret-key"
+        self.client.put(
+            "/api/emails/weeks/2026-03-09",
+            json={"start_date": "2026-03-09", "end_date": "2026-03-15", "events": []},
+        )
+        self.client.post("/api/emails/weeks/2026-03-09/approve", headers={"X-Email-Actor": "reviewer"})
+        self.logout()
+
+        sender_response = self.client.get(
+            "/api/emails/weeks/2026-03-09/sender-output",
+            headers={"X-Automation-Key": "secret-key", "X-Email-Actor": "google-apps-script"},
+        )
+        self.assertEqual(sender_response.status_code, 200)
+
+        claim_response = self.client.post(
+            "/api/emails/weeks/2026-03-09/sent",
+            json={"state": "sending"},
+            headers={"X-Automation-Key": "secret-key", "X-Email-Actor": "google-apps-script"},
+        )
+        self.assertEqual(claim_response.status_code, 200)
+        claim_payload = claim_response.get_json()
+        assert claim_payload is not None
+        self.assertTrue(claim_payload["sent"]["sending"])
 
     def test_mark_unsent_clears_sending_lock_and_save_still_resets_approval(self):
         self.client.put(

@@ -23,11 +23,21 @@ function buildHarness(options = {}) {
     sent: { sent: false, sent_at: '', sent_by: '', sending: false, sending_at: '', sending_by: '' },
     finalizeAttempts: 0,
     ingestCalls: 0,
+    activityCalls: [],
     failIngest: Boolean(options.failIngest),
     ingestAction: options.ingestAction || 'created',
   };
   const deliveries = [];
   const adminEmails = [];
+  const properties = {
+    API_BASE_URL: 'https://example.test',
+    AUTOMATION_API_KEY: 'secret-key',
+    ADMIN_NOTIFICATION_EMAILS: 'admin@example.test',
+    MIDDLE_SCHOOL_TO: 'middle@example.test',
+    MIDDLE_SCHOOL_BCC: 'middlebcc@example.test',
+    UPPER_SCHOOL_TO: 'upper@example.test',
+    UPPER_SCHOOL_BCC: 'upperbcc@example.test',
+  };
   const triggers = (options.triggers || []).map((handlerFunction) => ({
     getHandlerFunction() {
       return handlerFunction;
@@ -40,16 +50,42 @@ function buildHarness(options = {}) {
   const sandbox = {
     console,
     MailApp: {
-      sendEmail(options) {
-        if (options.to === 'admin@example.test') {
-          adminEmails.push(options);
+      sendEmail(opts) {
+        if ((opts.to || '').includes('admin@example.test')) {
+          adminEmails.push(opts);
           return;
         }
-        deliveries.push(options);
+        deliveries.push(opts);
+      },
+    },
+    PropertiesService: {
+      getScriptProperties() {
+        return {
+          getProperty(name) {
+            return properties[name] || '';
+          },
+          setProperty(name, value) {
+            properties[name] = value;
+          },
+        };
+      },
+    },
+    Session: {
+      getActiveUser() {
+        return {
+          getEmail() {
+            return 'tester@example.test';
+          },
+        };
       },
     },
     UrlFetchApp: {
       fetch(url, options = {}) {
+        if (url.includes('/api/emails/automation/weeks/') && url.endsWith('/activity')) {
+          backendState.activityCalls.push(JSON.parse(options.payload || '{}'));
+          return makeResponse(200, { ok: true });
+        }
+
         if (url.includes('/api/emails/automation/weeks/')) {
           backendState.ingestCalls += 1;
           if (backendState.failIngest) {
@@ -163,17 +199,22 @@ function buildHarness(options = {}) {
 
   vm.createContext(sandbox);
   vm.runInContext(
-    `${senderSource}\nthis.__exports = { runSundayDraftCycle, sendSportsEmails, setupTriggers, removeTriggers, CONFIG };`,
+    `${senderSource}\nthis.__exports = { runSundayDraftCycle, sendSportsEmails, setupTriggers, removeTriggers, validateConfiguration, getEffectiveConfig, CONFIG };`,
     sandbox
   );
-  sandbox.__exports.CONFIG.API_BASE_URL = 'https://example.test';
-  sandbox.__exports.CONFIG.AUTOMATION_API_KEY = 'secret-key';
-  sandbox.__exports.CONFIG.ADMIN_EMAIL = 'admin@example.test';
-  sandbox.__exports.CONFIG.EMAIL_RECIPIENTS.MIDDLE_SCHOOL.to = 'middle@example.test';
-  sandbox.__exports.CONFIG.EMAIL_RECIPIENTS.UPPER_SCHOOL.to = 'upper@example.test';
 
-  return { exports: sandbox.__exports, backendState, deliveries, adminEmails, triggers };
+  return { exports: sandbox.__exports, backendState, deliveries, adminEmails, triggers, properties };
 }
+
+test('configuration validation fails fast when script properties are missing', () => {
+  const harness = buildHarness();
+  delete harness.properties.AUTOMATION_API_KEY;
+
+  const result = harness.exports.validateConfiguration();
+
+  assert.equal(result.ok, false);
+  assert.match(result.missing.join(','), /AUTOMATION_API_KEY/);
+});
 
 test('rerun does not resend when sent finalization fails after delivery', () => {
   const harness = buildHarness();
@@ -205,6 +246,8 @@ test('sunday draft cycle emails review link when a draft is created', () => {
   assert.match(harness.adminEmails[0].body, /2026-03-09/);
   assert.match(harness.adminEmails[0].body, /3 imported events/i);
   assert.match(harness.adminEmails[0].htmlBody, /emails\?week=2026-03-09/i);
+  assert.equal(harness.backendState.activityCalls[0].event_type, 'review_notification');
+  assert.equal(harness.backendState.activityCalls[0].status, 'success');
 });
 
 test('sunday draft cycle still emails review link when draft already exists', () => {
@@ -228,6 +271,7 @@ test('sunday draft cycle sends admin error email on backend failure', () => {
   assert.equal(harness.adminEmails.length, 1);
   assert.match(harness.adminEmails[0].subject, /Automation Error/i);
   assert.match(harness.adminEmails[0].body, /draft cycle/i);
+  assert.equal(harness.backendState.activityCalls[0].status, 'failed');
 });
 
 test('setupTriggers creates both sunday triggers and removes existing managed ones', () => {
@@ -239,10 +283,11 @@ test('setupTriggers creates both sunday triggers and removes existing managed on
   assert.deepEqual(handlers, ['otherHandler', 'runSundayDraftCycle', 'sendSportsEmails']);
 });
 
-test('apps script sources use app-owned ingest and approved sender flow', () => {
+test('apps script sources use app-owned ingest, approved sender flow, and script properties', () => {
   assert.doesNotMatch(senderSource, /raw\.githubusercontent/);
   assert.doesNotMatch(troubleshootingSource, /raw\.githubusercontent/);
   assert.match(senderSource, /scheduled-ingest/);
   assert.match(senderSource, /sender-output/);
-  assert.match(troubleshootingSource, /debugScheduledIngestAccess/);
+  assert.match(senderSource, /PropertiesService/);
+  assert.match(troubleshootingSource, /validateConfiguration/);
 });

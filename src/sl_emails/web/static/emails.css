@@ -78,6 +78,28 @@ body {
   color: rgba(255, 255, 255, 0.45);
 }
 
+.topbar-link {
+  color: rgba(255, 255, 255, 0.92);
+  text-decoration: none;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.topbar-link:hover {
+  text-decoration: underline;
+}
+
+.topbar-link-muted {
+  color: rgba(255, 255, 255, 0.72);
+}
+
+.topbar-user {
+  font-size: 12px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.82);
+}
+
 /* ── Command bar ─────────────────────────────────────────── */
 
 .cmd-bar {
@@ -317,6 +339,37 @@ body {
   margin: 5px 0 0;
   font-size: 13px;
   color: var(--muted);
+}
+
+.status-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+  margin: 0;
+}
+
+.status-card {
+  margin: 0;
+  padding: 12px 14px;
+  border-radius: 14px;
+  border: 1px solid rgba(7, 36, 72, 0.11);
+  background: linear-gradient(180deg, #f8fbff 0%, #f1f6fc 100%);
+}
+
+.status-card dt {
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  font-weight: 700;
+  margin-bottom: 6px;
+}
+
+.status-card dd {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--ink);
 }
 
 .panel-content {

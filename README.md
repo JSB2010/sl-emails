@@ -4,8 +4,8 @@ Kent Denver's sports email workflow now runs through the deployed app plus Googl
 
 1. Sunday 8:00 AM MT: Apps Script calls the app's protected scheduled-ingest endpoint.
 2. The app fetches athletics + arts sources, creates the next week's Firestore draft if missing, and never overwrites an existing week automatically.
-3. Apps Script emails the admin a review link to `/emails?week=<YYYY-MM-DD>`.
-4. Staff review, edit, preview, and approve in `/emails`.
+3. Apps Script emails the ops/admin list a review link to `/emails?week=<YYYY-MM-DD>`.
+4. Staff sign in with Google, review, edit, preview, and approve in `/emails`.
 5. Sunday 4:00 PM MT: Apps Script fetches approved sender-output and sends both audience emails.
 
 Digital signage still stays on GitHub Actions for now. GitHub remains deployment and signage automation only for sports email operations.
@@ -22,11 +22,14 @@ Digital signage still stays on GitHub Actions for now. GitHub remains deployment
 ## Key Routes
 
 - `/` — signage page from `digital-signage/index.html`
-- `/emails` — weekly admin review UI
+- `/login` — Google sign-in entrypoint for sports email admins
+- `/emails` — weekly admin review UI (Google sign-in + allowlist required)
 - `/emails?week=YYYY-MM-DD` — deep link to a specific Monday week
+- `/emails/settings` — allowlist and ops-notification settings
 - `/api/emails/weeks/<week-id>` — weekly draft CRUD
 - `/api/emails/weeks/<week-id>/source-refresh` — manual source refresh that preserves custom events
 - `/api/emails/automation/weeks/<week-id>/scheduled-ingest` — protected Sunday morning ingest endpoint
+- `/api/emails/automation/weeks/<week-id>/activity` — protected automation activity/audit endpoint
 - `/api/emails/weeks/<week-id>/sender-output` — approved output for Apps Script sends
 - `/_health` — health check
 
@@ -39,14 +42,29 @@ The deployed app expects:
 - `FIRESTORE_COLLECTION` (optional; defaults to `emailWeeks`)
 - `FIRESTORE_EMULATOR_HOST` (local only)
 - `EMAILS_AUTOMATION_KEY` (required for scheduled-ingest calls)
+- `EMAILS_SESSION_SECRET` (required for stable admin sessions)
+- `GOOGLE_OAUTH_CLIENT_ID`
+- `GOOGLE_OAUTH_CLIENT_SECRET`
+- `GOOGLE_OAUTH_CALLBACK_URL` (recommended in production)
+- `EMAILS_BOOTSTRAP_ALLOWED_EMAILS` (optional; defaults to `appdev@kentdenver.org,studentleader@kentdenver.org`)
+- `EMAILS_BOOTSTRAP_NOTIFICATION_EMAILS` (optional; defaults to the same two emails)
 
 Apps Script expects:
 
-- `CONFIG.API_BASE_URL`
-- `CONFIG.AUTOMATION_API_KEY`
-- `CONFIG.ADMIN_EMAIL`
-- `CONFIG.EMAIL_RECIPIENTS`
-- `CONFIG.EMAIL_FROM_NAME`
+- Script Properties, not hardcoded constants
+- Required:
+  - `API_BASE_URL`
+  - `AUTOMATION_API_KEY`
+  - `ADMIN_NOTIFICATION_EMAILS`
+  - `MIDDLE_SCHOOL_TO`
+  - `MIDDLE_SCHOOL_BCC`
+  - `UPPER_SCHOOL_TO`
+  - `UPPER_SCHOOL_BCC`
+- Optional:
+  - `EMAIL_FROM_NAME`
+  - `API_ACTOR`
+  - `REPLY_TO_EMAIL`
+  - `TIMEZONE`
 
 ## Supported Commands
 
@@ -97,6 +115,6 @@ sl-emails/
 
 ## Notes
 
-- Firestore is the operational source of truth for sports email weeks.
+- Firestore is the operational source of truth for sports email weeks, admin allowlists, and app-side audit records.
 - Historical `sports-emails/<week>/...html` output is optional preview/archive output only.
 - The legacy Firestore REST publish path remains in the repo for manual tooling compatibility, but it is no longer the production scheduler path.

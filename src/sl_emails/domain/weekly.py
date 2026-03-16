@@ -166,6 +166,7 @@ class WeeklyDraftRecord:
     sent: dict[str, Any] = field(default_factory=default_sent_state)
     notes: str = ""
     events: list[WeeklyEventRecord] = field(default_factory=list)
+    metadata: dict[str, Any] = field(default_factory=dict)
     created_at: str = ""
     updated_at: str = ""
 

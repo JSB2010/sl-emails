@@ -19,7 +19,9 @@
     <span class="topbar-dot">·</span>
     <span class="topbar-product">Weekly Email Review</span>
     <div class="topbar-spacer"></div>
-    <span class="topbar-label">Student Leadership Media</span>
+    <a class="topbar-link" href="{{ auth.settings }}">Settings</a>
+    <span class="topbar-user">{{ current_user_name or current_user_email }}</span>
+    <a class="topbar-link topbar-link-muted" href="{{ auth.logout }}">Sign Out</a>
   </header>
 
   <!-- ── Command bar ─────────────────────────────────────── -->
@@ -149,6 +151,37 @@
 
     <!-- Right: preview -->
     <section class="preview-column">
+      <section class="panel panel-status">
+        <div class="panel-head">
+          <div>
+            <h2>System Status</h2>
+            <p class="panel-subtitle">Automation and delivery history for the selected week.</p>
+          </div>
+        </div>
+        <dl class="status-grid">
+          <div class="status-card">
+            <dt>Scheduled Ingest</dt>
+            <dd id="status-ingest">No automation run recorded yet.</dd>
+          </div>
+          <div class="status-card">
+            <dt>Manual Refresh</dt>
+            <dd id="status-refresh">No manual refresh recorded yet.</dd>
+          </div>
+          <div class="status-card">
+            <dt>Review Notification</dt>
+            <dd id="status-review-email">No review notification recorded yet.</dd>
+          </div>
+          <div class="status-card">
+            <dt>Approval</dt>
+            <dd id="status-approval">Week has not been approved yet.</dd>
+          </div>
+          <div class="status-card">
+            <dt>Send Status</dt>
+            <dd id="status-send">No send claim or completion recorded yet.</dd>
+          </div>
+        </dl>
+      </section>
+
       <section class="panel panel-preview">
         <div class="panel-head">
           <div>
@@ -187,7 +220,12 @@
   <div id="flash" class="flash-toast" role="status" aria-live="polite"></div>
 
   <script>
-    window.__EMAIL_REVIEW_DEFAULTS__ = {{ {"weekId": default_week_id, "endDate": default_end}|tojson }};
+    window.__EMAIL_REVIEW_DEFAULTS__ = {{ {
+      "weekId": default_week_id,
+      "endDate": default_end,
+      "currentUser": {"email": current_user_email, "name": current_user_name},
+      "auth": auth
+    }|tojson }};
   </script>
   <script src="/static/emails.js"></script>
 </body>

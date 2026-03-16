@@ -42,6 +42,18 @@ class WeeklyEmailStore(Protocol):
 
     def reset_week_send(self, week_id: str) -> WeeklyDraftRecord: ...
 
+    def update_week_metadata(self, week_id: str, metadata: dict[str, Any]) -> WeeklyDraftRecord: ...
+
+
+def merge_metadata(base: dict[str, Any] | None, patch: dict[str, Any] | None) -> dict[str, Any]:
+    result = dict(base or {})
+    for key, value in (patch or {}).items():
+        if isinstance(value, dict) and isinstance(result.get(key), dict):
+            result[key] = merge_metadata(result.get(key), value)
+        else:
+            result[key] = value
+    return result
+
 
 def normalize_event_payload(
     payload: dict[str, Any],
@@ -142,6 +154,7 @@ def normalize_week_payload(
         sent=normalize_sent_state(existing.sent if existing else None),
         notes=str(payload.get("notes") or (existing.notes if existing else "")).strip(),
         events=events,
+        metadata=merge_metadata(existing.metadata if existing else {}, payload.get("metadata") if isinstance(payload.get("metadata"), dict) else {}),
         created_at=existing.created_at if existing else timestamp,
         updated_at=timestamp,
     )
@@ -165,6 +178,7 @@ class MemoryWeeklyEmailStore:
             sent=normalize_sent_state(week.sent),
             notes=week.notes,
             events=[WeeklyEventRecord.from_dict(event.to_dict()) for event in week.events],
+            metadata=dict(week.metadata),
             created_at=week.created_at,
             updated_at=week.updated_at,
         )
@@ -239,6 +253,15 @@ class MemoryWeeklyEmailStore:
         self._weeks[week_id] = week
         return self.get_week(week_id)  # type: ignore[return-value]
 
+    def update_week_metadata(self, week_id: str, metadata: dict[str, Any]) -> WeeklyDraftRecord:
+        week = self._weeks.get(week_id)
+        if week is None:
+            raise KeyError(week_id)
+        week.metadata = merge_metadata(week.metadata, metadata)
+        week.updated_at = utc_now_iso()
+        self._weeks[week_id] = week
+        return self.get_week(week_id)  # type: ignore[return-value]
+
 
 class FirestoreWeeklyEmailStore:
     def __init__(
@@ -296,6 +319,7 @@ class FirestoreWeeklyEmailStore:
             sent=normalize_sent_state(data.get("sent")),
             notes=str(data.get("notes") or ""),
             events=events,
+            metadata=data.get("metadata") if isinstance(data.get("metadata"), dict) else {},
             created_at=str(data.get("created_at") or ""),
             updated_at=str(data.get("updated_at") or ""),
         )
@@ -375,4 +399,13 @@ class FirestoreWeeklyEmailStore:
             return week
         timestamp = utc_now_iso()
         self._week_ref(week_id).set({"sent": default_sent_state(), "updated_at": timestamp}, merge=True)
+        return self.get_week(week_id)  # type: ignore[return-value]
+
+    def update_week_metadata(self, week_id: str, metadata: dict[str, Any]) -> WeeklyDraftRecord:
+        week = self.get_week(week_id)
+        if week is None:
+            raise KeyError(week_id)
+        merged = merge_metadata(week.metadata, metadata)
+        timestamp = utc_now_iso()
+        self._week_ref(week_id).set({"metadata": merged, "updated_at": timestamp}, merge=True)
         return self.get_week(week_id)  # type: ignore[return-value]

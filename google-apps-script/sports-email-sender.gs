@@ -3,46 +3,166 @@
  *
  * Google Apps Script owns the sports email cron flow:
  * 1. Sunday 8:00 AM MT: create or confirm the weekly draft in the web app.
- * 2. Email the admin a review link to /emails?week=<YYYY-MM-DD>.
+ * 2. Email the admin/ops list a review link to /emails?week=<YYYY-MM-DD>.
  * 3. Sunday 4:00 PM MT: send only approved payloads.
+ *
+ * Required Script Properties:
+ * - API_BASE_URL
+ * - AUTOMATION_API_KEY
+ * - ADMIN_NOTIFICATION_EMAILS
+ * - MIDDLE_SCHOOL_TO
+ * - MIDDLE_SCHOOL_BCC
+ * - UPPER_SCHOOL_TO
+ * - UPPER_SCHOOL_BCC
+ *
+ * Optional Script Properties:
+ * - EMAIL_FROM_NAME
+ * - API_ACTOR
+ * - REPLY_TO_EMAIL
+ * - TIMEZONE
  */
 
 const CONFIG = {
-  API_BASE_URL: '',
   API_ACTOR: 'google-apps-script',
-  AUTOMATION_API_KEY: '',
-  ADMIN_EMAIL: 'jbarkin28@kentdenver.org',
   REQUEST_TIMEOUT_MS: 30000,
   EMAIL_FROM_NAME: 'Student Leadership',
-  TIMEZONE: 'America/Denver',
-
-  EMAIL_RECIPIENTS: {
-    MIDDLE_SCHOOL: {
-      to: '',
-      bcc: ['allmiddleschoolstudents@kentdenver.org', 'middleschoolteachers@kentdenver.org']
-    },
-    UPPER_SCHOOL: {
-      to: '',
-      bcc: ['allupperschoolstudents@kentdenver.org', 'upperschoolteachers@kentdenver.org']
-    }
-  }
+  REPLY_TO_EMAIL: 'studentleader@kentdenver.org',
+  TIMEZONE: 'America/Denver'
 };
 
 const MANAGED_TRIGGER_FUNCTIONS = ['runSundayDraftCycle', 'sendSportsEmails'];
 
+function getScriptProperties() {
+  return PropertiesService.getScriptProperties();
+}
+
+function getRawProperty(name) {
+  return String(getScriptProperties().getProperty(name) || '').trim();
+}
+
+function getRequiredProperty(name) {
+  const value = getRawProperty(name);
+  if (!value) {
+    throw new Error(`Missing required Script Property: ${name}`);
+  }
+  return value;
+}
+
+function parseEmailList(value) {
+  return String(value || '')
+    .split(/[,\n;]/)
+    .map(item => item.trim())
+    .filter(Boolean);
+}
+
+function getEffectiveConfig() {
+  const apiBaseUrl = getRequiredProperty('API_BASE_URL').replace(/\/+$/, '');
+  const automationApiKey = getRequiredProperty('AUTOMATION_API_KEY');
+  const adminNotificationEmails = parseEmailList(getRequiredProperty('ADMIN_NOTIFICATION_EMAILS'));
+  const middleSchoolTo = getRequiredProperty('MIDDLE_SCHOOL_TO');
+  const upperSchoolTo = getRequiredProperty('UPPER_SCHOOL_TO');
+  const middleSchoolBcc = parseEmailList(getRequiredProperty('MIDDLE_SCHOOL_BCC'));
+  const upperSchoolBcc = parseEmailList(getRequiredProperty('UPPER_SCHOOL_BCC'));
+
+  if (!adminNotificationEmails.length) {
+    throw new Error('ADMIN_NOTIFICATION_EMAILS must contain at least one email address');
+  }
+
+  return {
+    API_BASE_URL: apiBaseUrl,
+    API_ACTOR: getRawProperty('API_ACTOR') || CONFIG.API_ACTOR,
+    AUTOMATION_API_KEY: automationApiKey,
+    ADMIN_NOTIFICATION_EMAILS: adminNotificationEmails,
+    REQUEST_TIMEOUT_MS: CONFIG.REQUEST_TIMEOUT_MS,
+    EMAIL_FROM_NAME: getRawProperty('EMAIL_FROM_NAME') || CONFIG.EMAIL_FROM_NAME,
+    REPLY_TO_EMAIL: getRawProperty('REPLY_TO_EMAIL') || CONFIG.REPLY_TO_EMAIL,
+    TIMEZONE: getRawProperty('TIMEZONE') || CONFIG.TIMEZONE,
+    EMAIL_RECIPIENTS: {
+      MIDDLE_SCHOOL: {
+        to: middleSchoolTo,
+        bcc: middleSchoolBcc
+      },
+      UPPER_SCHOOL: {
+        to: upperSchoolTo,
+        bcc: upperSchoolBcc
+      }
+    }
+  };
+}
+
+function validateConfiguration(options) {
+  let config;
+  try {
+    config = getEffectiveConfig();
+  } catch (error) {
+    const missingMatch = String(error && error.message || '').match(/Missing required Script Property: (.+)$/);
+    return {
+      ok: false,
+      missing: missingMatch ? [missingMatch[1]] : ['unknown'],
+      config: {
+        API_BASE_URL: getRawProperty('API_BASE_URL'),
+        ADMIN_NOTIFICATION_EMAILS: parseEmailList(getRawProperty('ADMIN_NOTIFICATION_EMAILS')),
+        EMAIL_RECIPIENTS: {
+          MIDDLE_SCHOOL: { to: getRawProperty('MIDDLE_SCHOOL_TO'), bcc: parseEmailList(getRawProperty('MIDDLE_SCHOOL_BCC')) },
+          UPPER_SCHOOL: { to: getRawProperty('UPPER_SCHOOL_TO'), bcc: parseEmailList(getRawProperty('UPPER_SCHOOL_BCC')) }
+        }
+      }
+    };
+  }
+  const missing = [];
+
+  if (!config.API_BASE_URL) missing.push('API_BASE_URL');
+  if (!config.AUTOMATION_API_KEY) missing.push('AUTOMATION_API_KEY');
+  if (!config.ADMIN_NOTIFICATION_EMAILS.length) missing.push('ADMIN_NOTIFICATION_EMAILS');
+  if (!(options && options.skipRecipients)) {
+    if (!config.EMAIL_RECIPIENTS.MIDDLE_SCHOOL.to) missing.push('MIDDLE_SCHOOL_TO');
+    if (!config.EMAIL_RECIPIENTS.UPPER_SCHOOL.to) missing.push('UPPER_SCHOOL_TO');
+  }
+
+  return {
+    ok: missing.length === 0,
+    missing,
+    config
+  };
+}
+
+function assertConfigured(options) {
+  const result = validateConfiguration(options);
+  if (!result.ok) {
+    throw new Error(`Missing required Script Properties: ${result.missing.join(', ')}`);
+  }
+  return result.config;
+}
+
 function runSundayDraftCycle() {
+  const config = assertConfigured({ skipRecipients: true });
   const weekId = getCurrentWeekId();
 
   try {
     console.log(`📥 Starting Sunday draft cycle for ${weekId}...`);
-    assertAutomationApiKeyConfigured();
-
-    const ingestResult = triggerScheduledIngest(weekId);
-    sendAdminReviewNotification(weekId, ingestResult);
+    const ingestResult = triggerScheduledIngest(weekId, config);
+    sendAdminReviewNotification(weekId, ingestResult, config);
+    reportAutomationActivity(
+      weekId,
+      'review_notification',
+      'success',
+      `Sent review notification for ${weekId}`,
+      { recipients: config.ADMIN_NOTIFICATION_EMAILS, ingest_action: ingestResult.action }
+    );
     logEmailActivity('DRAFT', `Weekly draft cycle ${ingestResult.action} for ${weekId}`);
   } catch (error) {
     console.error('❌ Error in runSundayDraftCycle:', error);
-    sendErrorNotification(`Error running Sunday draft cycle for ${weekId}: ${error.message}`);
+    try {
+      sendErrorNotification(`Error running Sunday draft cycle for ${weekId}: ${error.message}`, config);
+      reportAutomationActivity(
+        weekId,
+        'review_notification',
+        'failed',
+        `Sunday draft cycle failed for ${weekId}: ${error.message}`
+      );
+    } catch (notificationError) {
+      console.error('❌ Error while notifying ops about Sunday draft cycle failure:', notificationError);
+    }
     logEmailActivity('ERROR', `Draft cycle failed for ${weekId}: ${error.message}`);
   }
 }
@@ -52,6 +172,7 @@ function runSundayDraftCycleManual() {
 }
 
 function sendSportsEmails() {
+  const config = assertConfigured();
   let weekId = 'unknown';
   let sendClaimed = false;
 
@@ -61,14 +182,14 @@ function sendSportsEmails() {
     weekId = getCurrentWeekId();
     console.log(`📅 Looking for approved emails for week: ${weekId}`);
 
-    const payload = fetchApprovedEmailPayloads(weekId);
+    const payload = fetchApprovedEmailPayloads(weekId, config);
 
     if (!ensureWeekCanSend(payload.sent, weekId)) {
       return;
     }
 
     const emails = normalizeApprovedOutputs(payload, weekId);
-    const sendClaim = claimWeekSend(weekId);
+    const sendClaim = claimWeekSend(weekId, config);
 
     if (sendClaim && sendClaim.sent) {
       console.warn(`⚠️ Week ${weekId} was marked sent before this run could claim it.`);
@@ -84,22 +205,12 @@ function sendSportsEmails() {
     let sentCount = 0;
     const totalEmails = 2;
 
-    const middleSchoolSent = sendEmail(
-      CONFIG.EMAIL_RECIPIENTS.MIDDLE_SCHOOL,
-      emails.middleSchool.subject,
-      emails.middleSchool.html
-    );
-    if (!middleSchoolSent) {
+    if (!sendEmail(config.EMAIL_RECIPIENTS.MIDDLE_SCHOOL, emails.middleSchool.subject, emails.middleSchool.html, config)) {
       throw new Error(`Failed to send middle-school email for ${weekId}`);
     }
     sentCount++;
 
-    const upperSchoolSent = sendEmail(
-      CONFIG.EMAIL_RECIPIENTS.UPPER_SCHOOL,
-      emails.upperSchool.subject,
-      emails.upperSchool.html
-    );
-    if (!upperSchoolSent) {
+    if (!sendEmail(config.EMAIL_RECIPIENTS.UPPER_SCHOOL, emails.upperSchool.subject, emails.upperSchool.html, config)) {
       throw new Error(`Failed to send upper-school email for ${weekId}`);
     }
     sentCount++;
@@ -108,7 +219,7 @@ function sendSportsEmails() {
       throw new Error(`Expected to send ${totalEmails} emails but only sent ${sentCount}`);
     }
 
-    const sentState = markWeekSent(weekId);
+    const sentState = markWeekSent(weekId, config);
 
     console.log(`✅ Successfully sent ${sentCount} approved sports emails for week ${weekId}!`);
     console.log(`📝 Backend sent-state recorded: ${JSON.stringify(sentState)}`);
@@ -118,7 +229,8 @@ function sendSportsEmails() {
     const errorMessage = sendClaimed
       ? `Error sending sports emails: ${error.message}\n\nWeek ${weekId} remains claimed as sending to prevent duplicate reruns. Verify whether any audience emails were delivered before resolving the backend sent-state.`
       : `Error sending sports emails: ${error.message}`;
-    sendErrorNotification(errorMessage);
+    sendErrorNotification(errorMessage, config);
+    reportAutomationActivity(weekId, 'send', 'failed', errorMessage);
     logEmailActivity('ERROR', errorMessage);
   }
 }
@@ -147,25 +259,41 @@ function getTargetMondayDate() {
 }
 
 function getCurrentWeekId() {
-  return Utilities.formatDate(getTargetMondayDate(), CONFIG.TIMEZONE, 'yyyy-MM-dd');
+  return Utilities.formatDate(getTargetMondayDate(), getEffectiveConfig().TIMEZONE, 'yyyy-MM-dd');
 }
 
 function getCurrentWeekFolder() {
-  return Utilities.formatDate(getTargetMondayDate(), CONFIG.TIMEZONE, 'MMMdd').toLowerCase();
+  return Utilities.formatDate(getTargetMondayDate(), getEffectiveConfig().TIMEZONE, 'MMMdd').toLowerCase();
 }
 
-function fetchApprovedEmailPayloads(weekId) {
-  const apiBaseUrl = getApiBaseUrl();
-  const url = `${apiBaseUrl}/api/emails/weeks/${encodeURIComponent(weekId)}/sender-output`;
+function fetchApprovedEmailPayloads(weekId, config) {
+  const url = `${config.API_BASE_URL}/api/emails/weeks/${encodeURIComponent(weekId)}/sender-output`;
   console.log(`📥 Fetching approved sender payloads from: ${url}`);
-  return fetchJson(url, { method: 'GET' });
+  return fetchJson(url, { method: 'GET' }, config);
 }
 
-function triggerScheduledIngest(weekId) {
-  const apiBaseUrl = getApiBaseUrl();
-  const url = `${apiBaseUrl}/api/emails/automation/weeks/${encodeURIComponent(weekId)}/scheduled-ingest`;
+function triggerScheduledIngest(weekId, config) {
+  const url = `${config.API_BASE_URL}/api/emails/automation/weeks/${encodeURIComponent(weekId)}/scheduled-ingest`;
   console.log(`📥 Triggering scheduled ingest at: ${url}`);
-  return fetchJson(url, { method: 'POST' });
+  return fetchJson(url, { method: 'POST' }, config);
+}
+
+function reportAutomationActivity(weekId, eventType, status, message, details) {
+  try {
+    const config = assertConfigured({ skipRecipients: true });
+    const url = `${config.API_BASE_URL}/api/emails/automation/weeks/${encodeURIComponent(weekId)}/activity`;
+    fetchJson(url, {
+      method: 'POST',
+      payload: JSON.stringify({
+        event_type: eventType,
+        status,
+        message,
+        details: details || {}
+      })
+    }, config);
+  } catch (error) {
+    console.error(`Failed to record automation activity (${eventType}/${status}) for ${weekId}:`, error);
+  }
 }
 
 function normalizeApprovedOutputs(payload, weekId) {
@@ -207,19 +335,15 @@ function ensureWeekCanSend(sentState, weekId) {
   return true;
 }
 
-function fetchJson(url, options) {
+function fetchJson(url, options, config) {
   const requestOptions = Object.assign(
     {
       muteHttpExceptions: true,
       contentType: 'application/json; charset=UTF-8',
-      headers: buildApiHeaders()
+      headers: buildApiHeaders(config)
     },
     options || {}
   );
-
-  if (!requestOptions.headers['X-Email-Actor'] && CONFIG.API_ACTOR) {
-    requestOptions.headers['X-Email-Actor'] = CONFIG.API_ACTOR;
-  }
 
   const response = UrlFetchApp.fetch(url, requestOptions);
   const status = response.getResponseCode();
@@ -240,56 +364,40 @@ function fetchJson(url, options) {
   throw new Error(message);
 }
 
-function buildApiHeaders() {
-  const headers = {
+function buildApiHeaders(config) {
+  return {
     'User-Agent': 'Kent Denver Sports Email Bot',
-    'X-Email-Actor': CONFIG.API_ACTOR
+    'X-Email-Actor': config.API_ACTOR,
+    'X-Automation-Key': config.AUTOMATION_API_KEY
   };
-
-  if (String(CONFIG.AUTOMATION_API_KEY || '').trim()) {
-    headers['X-Automation-Key'] = String(CONFIG.AUTOMATION_API_KEY).trim();
-  }
-
-  return headers;
 }
 
 function getApiBaseUrl() {
-  const rawValue = String(CONFIG.API_BASE_URL || '').trim();
-  if (!rawValue) {
-    throw new Error('CONFIG.API_BASE_URL must be set to the deployed /emails host before sending');
-  }
-  return rawValue.replace(/\/+$/, '');
+  return assertConfigured({ skipRecipients: true }).API_BASE_URL;
 }
 
 function getReviewUrl(weekId) {
   return `${getApiBaseUrl()}/emails?week=${encodeURIComponent(weekId)}`;
 }
 
-function assertAutomationApiKeyConfigured() {
-  if (!String(CONFIG.AUTOMATION_API_KEY || '').trim()) {
-    throw new Error('CONFIG.AUTOMATION_API_KEY must be set before running the Sunday draft cycle');
-  }
+function claimWeekSend(weekId, config) {
+  return updateWeekSendState(weekId, 'sending', config);
 }
 
-function claimWeekSend(weekId) {
-  return updateWeekSendState(weekId, 'sending');
+function markWeekSent(weekId, config) {
+  return updateWeekSendState(weekId, 'sent', config);
 }
 
-function markWeekSent(weekId) {
-  return updateWeekSendState(weekId, 'sent');
-}
-
-function updateWeekSendState(weekId, state) {
-  const apiBaseUrl = getApiBaseUrl();
-  const url = `${apiBaseUrl}/api/emails/weeks/${encodeURIComponent(weekId)}/sent`;
+function updateWeekSendState(weekId, state, config) {
+  const url = `${config.API_BASE_URL}/api/emails/weeks/${encodeURIComponent(weekId)}/sent`;
   const payload = fetchJson(url, {
     method: 'POST',
     payload: JSON.stringify({ week_id: weekId, state })
-  });
+  }, config);
   return payload.sent || (payload.week && payload.week.sent) || null;
 }
 
-function sendEmail(recipientConfig, subject, htmlContent) {
+function sendEmail(recipientConfig, subject, htmlContent, config) {
   try {
     console.log(`📧 Sending email to: ${recipientConfig.to}`);
     if (recipientConfig.bcc && recipientConfig.bcc.length > 0) {
@@ -300,8 +408,8 @@ function sendEmail(recipientConfig, subject, htmlContent) {
       to: recipientConfig.to,
       subject: subject,
       htmlBody: htmlContent,
-      name: CONFIG.EMAIL_FROM_NAME,
-      replyTo: 'studentleader@kentdenver.org',
+      name: config.EMAIL_FROM_NAME,
+      replyTo: config.REPLY_TO_EMAIL,
       charset: 'UTF-8',
       noReply: false
     };
@@ -320,7 +428,7 @@ function sendEmail(recipientConfig, subject, htmlContent) {
   }
 }
 
-function sendAdminReviewNotification(weekId, ingestResult) {
+function sendAdminReviewNotification(weekId, ingestResult, config) {
   const reviewUrl = getReviewUrl(weekId);
   const sourceSummary = ingestResult && ingestResult.source_summary ? ingestResult.source_summary : {};
   const totalEvents = Number(sourceSummary.total_events || 0);
@@ -338,7 +446,7 @@ function sendAdminReviewNotification(weekId, ingestResult) {
     : 'Existing draft preserved. Open the review link to continue editing and approval.';
 
   MailApp.sendEmail({
-    to: CONFIG.ADMIN_EMAIL,
+    to: config.ADMIN_NOTIFICATION_EMAILS.join(','),
     subject,
     body:
       `${statusLine}\n\n` +
@@ -348,17 +456,20 @@ function sendAdminReviewNotification(weekId, ingestResult) {
       `<p>${statusLine}</p>` +
       `<p>${countsLine}</p>` +
       `<p><a href="${reviewUrl}">Open weekly review</a></p>`,
-    name: CONFIG.EMAIL_FROM_NAME,
+    name: config.EMAIL_FROM_NAME,
+    replyTo: config.REPLY_TO_EMAIL,
     charset: 'UTF-8'
   });
 }
 
-function sendErrorNotification(errorMessage) {
+function sendErrorNotification(errorMessage, config) {
   try {
     MailApp.sendEmail({
-      to: CONFIG.ADMIN_EMAIL,
-      subject: '🚨 Sports Email Automation Error',
+      to: config.ADMIN_NOTIFICATION_EMAILS.join(','),
+      subject: 'Sports Email Automation Error',
       body: `The sports email automation encountered an error:\n\n${errorMessage}\n\nTime: ${new Date()}\n\nPlease check the logs and fix the issue.`,
+      name: config.EMAIL_FROM_NAME,
+      replyTo: config.REPLY_TO_EMAIL,
       charset: 'UTF-8'
     });
   } catch (error) {
@@ -375,6 +486,7 @@ function logEmailActivity(status, message) {
 }
 
 function setupTriggers() {
+  assertConfigured();
   removeTriggers();
 
   ScriptApp.newTrigger('runSundayDraftCycle')
@@ -406,15 +518,16 @@ function removeTriggers() {
 }
 
 function testApprovedApiAccess() {
+  const config = assertConfigured();
   const today = new Date();
   const upcomingMonday = getTargetMondayDate();
   const weekId = getCurrentWeekId();
 
-  console.log(`📅 Today: ${Utilities.formatDate(today, CONFIG.TIMEZONE, 'EEEE, MMMM dd, yyyy')}`);
-  console.log(`📅 Upcoming Monday: ${Utilities.formatDate(upcomingMonday, CONFIG.TIMEZONE, 'EEEE, MMMM dd, yyyy')}`);
+  console.log(`📅 Today: ${Utilities.formatDate(today, config.TIMEZONE, 'EEEE, MMMM dd, yyyy')}`);
+  console.log(`📅 Upcoming Monday: ${Utilities.formatDate(upcomingMonday, config.TIMEZONE, 'EEEE, MMMM dd, yyyy')}`);
   console.log(`🧪 Testing approved API access for week: ${weekId}`);
 
-  const payload = fetchApprovedEmailPayloads(weekId);
+  const payload = fetchApprovedEmailPayloads(weekId, config);
   const emails = normalizeApprovedOutputs(payload, weekId);
 
   console.log('Middle School email found:', !!emails.middleSchool);

@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Sports Email Settings</title>
+  <link rel="icon" href="/static/kd-logo.png" type="image/png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Crimson+Pro:wght@500;600;700&family=Red+Hat+Text:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: #edf2f8;
+      color: #132a45;
+      font-family: "Red Hat Text", Arial, sans-serif;
+    }
+    header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 18px 22px;
+      background: #041e42;
+      color: #fff;
+    }
+    header img {
+      width: 32px;
+      height: 32px;
+      border-radius: 8px;
+    }
+    header .spacer {
+      flex: 1;
+    }
+    header a {
+      color: rgba(255,255,255,0.88);
+      text-decoration: none;
+      font-weight: 700;
+    }
+    main {
+      max-width: 1040px;
+      margin: 0 auto;
+      padding: 24px 20px 48px;
+      display: grid;
+      gap: 18px;
+    }
+    .hero h1 {
+      margin: 0 0 6px;
+      font-family: "Crimson Pro", Georgia, serif;
+      font-size: 40px;
+    }
+    .hero p {
+      margin: 0;
+      color: #536983;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+      gap: 18px;
+    }
+    .card {
+      background: #fff;
+      border-radius: 18px;
+      border: 1px solid rgba(8, 32, 65, 0.12);
+      box-shadow: 0 10px 28px rgba(8, 32, 65, 0.06);
+      padding: 22px;
+    }
+    .card h2 {
+      margin: 0 0 6px;
+      font-family: "Crimson Pro", Georgia, serif;
+      font-size: 28px;
+    }
+    .card p {
+      color: #536983;
+      margin: 0 0 14px;
+    }
+    textarea {
+      width: 100%;
+      min-height: 180px;
+      border-radius: 12px;
+      border: 1px solid rgba(8, 32, 65, 0.18);
+      padding: 12px;
+      font: inherit;
+      background: #f9fbfe;
+    }
+    button {
+      margin-top: 12px;
+      padding: 12px 16px;
+      border-radius: 12px;
+      border: 0;
+      background: #041e42;
+      color: #fff;
+      font: inherit;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .flash {
+      min-height: 22px;
+      font-size: 14px;
+      color: #536983;
+    }
+    .flash.error {
+      color: #7f1d1d;
+    }
+    .meta {
+      font-size: 13px;
+      color: #536983;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <img src="/static/kd-logo.png" alt="Kent Denver" />
+    <strong>Sports Email Settings</strong>
+    <div class="spacer"></div>
+    <span>{{ current_user_name or current_user_email }}</span>
+    <a href="{{ review_url }}">Weekly Review</a>
+    <a href="{{ auth.logout }}">Sign Out</a>
+  </header>
+  <main>
+    <section class="hero">
+      <h1>Admin Access and Notifications</h1>
+      <p>Manage the Google account allowlist and the operations notification recipients used by the sports email workflow.</p>
+    </section>
+    <div class="grid">
+      <section class="card">
+        <h2>Allowed Admin Emails</h2>
+        <p>One email per line. These accounts can sign in, review drafts, approve weeks, reset send state, and edit settings.</p>
+        <textarea id="allowed-admins"></textarea>
+        <button id="save-admins" type="button">Save Allowlist</button>
+      </section>
+      <section class="card">
+        <h2>Ops Notification Emails</h2>
+        <p>One email per line. Keep this list aligned with the Apps Script notification recipients for automation alerts.</p>
+        <textarea id="ops-notifications"></textarea>
+        <button id="save-notifications" type="button">Save Notification List</button>
+      </section>
+    </div>
+    <div class="card">
+      <h2>Change Metadata</h2>
+      <p class="meta" id="settings-meta">No settings metadata available yet.</p>
+      <div class="flash" id="settings-flash" aria-live="polite"></div>
+    </div>
+  </main>
+  <script>
+    window.__EMAIL_SETTINGS_DEFAULTS__ = {{ {
+      "settings": settings_payload,
+      "currentUser": {"email": current_user_email, "name": current_user_name}
+    }|tojson }};
+  </script>
+  <script src="/static/emails-settings.js"></script>
+</body>
+</html>

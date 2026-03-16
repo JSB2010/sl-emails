@@ -51,6 +51,11 @@
     usCount: document.getElementById('us-count'),
     msFrame: document.getElementById('preview-middle-school'),
     usFrame: document.getElementById('preview-upper-school'),
+    statusIngest: document.getElementById('status-ingest'),
+    statusRefresh: document.getElementById('status-refresh'),
+    statusReviewEmail: document.getElementById('status-review-email'),
+    statusApproval: document.getElementById('status-approval'),
+    statusSend: document.getElementById('status-send'),
   };
 
   function escapeHtml(value) {
@@ -244,10 +249,35 @@
 
     const response = await fetch(url, { ...options, headers });
     const data = await response.json().catch(() => null);
+    if (response.status === 401 && data && data.login_url) {
+      window.location.href = data.login_url;
+      throw new Error('Authentication required');
+    }
+    if (response.status === 403 && data && data.access_denied_url) {
+      window.location.href = data.access_denied_url;
+      throw new Error('Access denied');
+    }
     if (!response.ok || (data && data.ok === false)) {
       throw new Error((data && data.error) || `Request failed (${response.status})`);
     }
     return data || {};
+  }
+
+  function formatActivity(activity, emptyText) {
+    if (!activity || typeof activity !== 'object') return emptyText;
+    const status = String(activity.status || '').trim();
+    const actor = String(activity.actor || '').trim();
+    const occurredAt = String(activity.occurred_at || '').trim();
+    const message = String(activity.message || '').trim();
+    const parts = [];
+    if (status) parts.push(status);
+    if (actor) parts.push(`by ${actor}`);
+    if (occurredAt) parts.push(`at ${occurredAt}`);
+    if (message) parts.push(message);
+    if (activity.source_summary && Number(activity.source_summary.total_events || 0) > 0) {
+      parts.push(`${Number(activity.source_summary.total_events || 0)} imported events`);
+    }
+    return parts.length ? parts.join(' · ') : emptyText;
   }
 
   function applyWeek(week) {
@@ -332,6 +362,33 @@
   function renderPreview() {
     renderPreviewAudience(state.outputs?.['middle-school'], els.msSubject, els.msCount, els.msFrame);
     renderPreviewAudience(state.outputs?.['upper-school'], els.usSubject, els.usCount, els.usFrame);
+  }
+
+  function renderStatus() {
+    const week = state.week;
+    if (!week) {
+      els.statusIngest.textContent = 'No week loaded yet.';
+      els.statusRefresh.textContent = 'No week loaded yet.';
+      els.statusReviewEmail.textContent = 'No week loaded yet.';
+      els.statusApproval.textContent = 'No week loaded yet.';
+      els.statusSend.textContent = 'No week loaded yet.';
+      return;
+    }
+
+    const metadata = week.metadata || {};
+    els.statusIngest.textContent = formatActivity(metadata.scheduled_ingest, 'No automation run recorded yet.');
+    els.statusRefresh.textContent = formatActivity(metadata.manual_refresh, 'No manual refresh recorded yet.');
+    els.statusReviewEmail.textContent = formatActivity(metadata.review_notification, 'No review notification recorded yet.');
+    els.statusApproval.textContent = week.approval?.approved
+      ? `approved by ${week.approval.approved_by || 'admin'} at ${week.approval.approved_at || 'unknown time'}`
+      : 'Week has not been approved yet.';
+    if (week.sent?.sent) {
+      els.statusSend.textContent = `sent by ${week.sent.sent_by || 'automation'} at ${week.sent.sent_at || 'unknown time'}`;
+    } else if (week.sent?.sending) {
+      els.statusSend.textContent = `claimed for sending by ${week.sent.sending_by || 'automation'} at ${week.sent.sending_at || 'unknown time'}`;
+    } else {
+      els.statusSend.textContent = formatActivity(metadata.send, 'No send claim or completion recorded yet.');
+    }
   }
 
   function renderFilters() {
@@ -449,6 +506,7 @@
     renderFilters();
     renderRows();
     renderPreview();
+    renderStatus();
 
     const isSent = Boolean(state.week?.sent?.sent);
     const isSending = Boolean(state.week?.sent?.sending);

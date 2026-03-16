@@ -18,6 +18,12 @@ Configure these on the deployed app:
 - `FIREBASE_SERVICE_ACCOUNT_JSON`
 - `FIRESTORE_COLLECTION=emailWeeks` (or your chosen collection)
 - `EMAILS_AUTOMATION_KEY=<shared secret for Apps Script>`
+- `EMAILS_SESSION_SECRET=<stable Flask session secret>`
+- `GOOGLE_OAUTH_CLIENT_ID=<Google OAuth web client ID>`
+- `GOOGLE_OAUTH_CLIENT_SECRET=<Google OAuth web client secret>`
+- `GOOGLE_OAUTH_CALLBACK_URL=https://<your-host>/auth/google/callback`
+- `EMAILS_BOOTSTRAP_ALLOWED_EMAILS=appdev@kentdenver.org,studentleader@kentdenver.org`
+- `EMAILS_BOOTSTRAP_NOTIFICATION_EMAILS=appdev@kentdenver.org,studentleader@kentdenver.org`
 
 Local-only:
 
@@ -25,15 +31,24 @@ Local-only:
 
 ## Required Apps Script Configuration
 
-Update `google-apps-script/sports-email-sender.gs` with:
+Set these Script Properties in the Apps Script project:
 
-- `CONFIG.API_BASE_URL`
-- `CONFIG.AUTOMATION_API_KEY`
-- `CONFIG.ADMIN_EMAIL`
-- `CONFIG.EMAIL_RECIPIENTS`
-- `CONFIG.EMAIL_FROM_NAME`
+- `API_BASE_URL`
+- `AUTOMATION_API_KEY`
+- `ADMIN_NOTIFICATION_EMAILS`
+- `MIDDLE_SCHOOL_TO`
+- `MIDDLE_SCHOOL_BCC`
+- `UPPER_SCHOOL_TO`
+- `UPPER_SCHOOL_BCC`
 
-`CONFIG.AUTOMATION_API_KEY` must exactly match the app's `EMAILS_AUTOMATION_KEY`.
+Optional Script Properties:
+
+- `EMAIL_FROM_NAME`
+- `API_ACTOR`
+- `REPLY_TO_EMAIL`
+- `TIMEZONE`
+
+`AUTOMATION_API_KEY` must exactly match the app's `EMAILS_AUTOMATION_KEY`.
 
 ## Key Endpoints
 
@@ -44,6 +59,9 @@ Update `google-apps-script/sports-email-sender.gs` with:
 - `POST /api/emails/weeks/<week-id>/source-refresh`
   - Manual admin refresh
   - Replaces source events, preserves custom events/heading/notes, resets review/send state
+- `POST /api/emails/automation/weeks/<week-id>/activity`
+  - Protected by `X-Automation-Key`
+  - Records review-notification/send failure audit entries from Apps Script
 - `GET /api/emails/weeks/<week-id>/sender-output`
   - Approved-only payloads for Apps Script delivery
 
@@ -58,25 +76,33 @@ Update `google-apps-script/sports-email-sender.gs` with:
 ## Operator Checklist
 
 1. Deploy the app to Cloud Run and keep Firebase Hosting pointed at it.
-2. Set `EMAILS_AUTOMATION_KEY` in the runtime environment.
-3. Update Apps Script config values, especially `API_BASE_URL` and `AUTOMATION_API_KEY`.
-4. Run `setupTriggers()` in Apps Script once production config is correct.
-5. Run `runSundayDraftCycleManual()` and confirm:
-   - the backend returns a created or skipped result
-   - the admin receives the review email
-   - the review link opens `/emails?week=<week-id>`
-6. Approve a test week in `/emails`.
-7. Run `testApprovedApiAccess()` and then `sendSportsEmailsManual()`.
+2. Set the auth/runtime env vars, especially `EMAILS_AUTOMATION_KEY`, `EMAILS_SESSION_SECRET`, and the Google OAuth client credentials.
+3. Configure the Google OAuth consent/client so the callback URL matches `/auth/google/callback`.
+4. Add any additional admin emails in `/emails/settings` after the first sign-in bootstrap.
+5. Update Apps Script Script Properties, especially `API_BASE_URL` and `AUTOMATION_API_KEY`.
+6. Paste `google-apps-script/sports-email-sender.gs` and `google-apps-script/troubleshooting-functions.gs` into the Apps Script project.
+7. Run `debugConfiguration()` and `debugScheduledIngestAccess()` in Apps Script.
+8. Run `setupTriggers()` in Apps Script once production config is correct.
+9. Run `runSundayDraftCycleManual()` and confirm:
+- the backend returns a created or skipped result
+- the ops/admin list receives the review email
+- the review link opens `/emails?week=<week-id>` after Google sign-in
+10. Approve a test week in `/emails`.
+11. Run `testApprovedApiAccess()` and then `sendSportsEmailsManual()`.
 
 ## Troubleshooting
 
 - If Sunday morning ingest fails:
   - check Cloud Run logs for `/api/emails/automation/weeks/<week-id>/scheduled-ingest`
-  - confirm `EMAILS_AUTOMATION_KEY` matches `CONFIG.AUTOMATION_API_KEY`
+  - confirm `EMAILS_AUTOMATION_KEY` matches the Apps Script `AUTOMATION_API_KEY` Script Property
   - run `debugScheduledIngestAccess()` in Apps Script
+- If admins cannot sign in:
+  - confirm the deployed app has `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET`, and `EMAILS_SESSION_SECRET`
+  - confirm the OAuth callback URL matches `https://<host>/auth/google/callback`
+  - confirm the Google account is on the allowlist in `/emails/settings`
 - If the review UI needs a manual rebuild:
   - open `/emails?week=<week-id>`
-  - click `Refresh Source Events`
+  - click `Refresh Events`
 - If send fails:
   - run `debugApprovedApiAccess()`
   - inspect the week's approval/sent state in `/emails`

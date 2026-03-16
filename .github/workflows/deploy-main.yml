@@ -18,6 +18,9 @@ concurrency:
 #   It must be able to run Cloud Build, deploy Cloud Run, act as the runtime
 #   service account, and deploy Firebase Hosting.
 # - EMAILS_AUTOMATION_KEY: shared secret for Apps Script scheduled-ingest calls.
+# - EMAILS_SESSION_SECRET: Flask session signing secret for Google-authenticated admin sessions.
+# - GOOGLE_OAUTH_CLIENT_ID: Google OAuth client ID for the sports email admin UI.
+# - GOOGLE_OAUTH_CLIENT_SECRET: Google OAuth client secret for the sports email admin UI.
 # Optional repository variables (defaults match current production):
 # - GCP_PROJECT_ID (default: student-leadership-media)
 # - GCP_REGION (default: us-central1)
@@ -27,6 +30,11 @@ concurrency:
 # - ARTIFACT_REGISTRY_REPOSITORY (default: sl-emails)
 # - FIRESTORE_COLLECTION (default: emailWeeks)
 # - FIREBASE_HOSTING_URL (default smoke target: https://<project-id>.web.app)
+# - GOOGLE_OAUTH_CALLBACK_URL (default: https://<project-id>.web.app/auth/google/callback)
+# - EMAILS_BOOTSTRAP_ALLOWED_EMAILS
+#   (default: appdev@kentdenver.org,studentleader@kentdenver.org)
+# - EMAILS_BOOTSTRAP_NOTIFICATION_EMAILS
+#   (default: appdev@kentdenver.org,studentleader@kentdenver.org)
 
 env:
   PYTHON_VERSION: "3.11"
@@ -38,6 +46,12 @@ env:
   FIRESTORE_COLLECTION: ${{ vars.FIRESTORE_COLLECTION || 'emailWeeks' }}
   FIREBASE_HOSTING_URL: ${{ vars.FIREBASE_HOSTING_URL || '' }}
   EMAILS_AUTOMATION_KEY: ${{ secrets.EMAILS_AUTOMATION_KEY }}
+  EMAILS_SESSION_SECRET: ${{ secrets.EMAILS_SESSION_SECRET || '' }}
+  GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.GOOGLE_OAUTH_CLIENT_ID || '' }}
+  GOOGLE_OAUTH_CLIENT_SECRET: ${{ secrets.GOOGLE_OAUTH_CLIENT_SECRET || '' }}
+  GOOGLE_OAUTH_CALLBACK_URL: ${{ vars.GOOGLE_OAUTH_CALLBACK_URL || '' }}
+  EMAILS_BOOTSTRAP_ALLOWED_EMAILS: ${{ vars.EMAILS_BOOTSTRAP_ALLOWED_EMAILS || 'appdev@kentdenver.org,studentleader@kentdenver.org' }}
+  EMAILS_BOOTSTRAP_NOTIFICATION_EMAILS: ${{ vars.EMAILS_BOOTSTRAP_NOTIFICATION_EMAILS || 'appdev@kentdenver.org,studentleader@kentdenver.org' }}
 
 jobs:
   deploy:
@@ -137,7 +151,7 @@ jobs:
               --region "${GCP_REGION}" \
               --service-account "${CLOUD_RUN_RUNTIME_SERVICE_ACCOUNT}" \
               --allow-unauthenticated \
-              --set-env-vars "FIREBASE_PROJECT_ID=${GCP_PROJECT_ID},FIRESTORE_COLLECTION=${FIRESTORE_COLLECTION},EMAILS_AUTOMATION_KEY=${EMAILS_AUTOMATION_KEY}" \
+              --set-env-vars "FIREBASE_PROJECT_ID=${GCP_PROJECT_ID},FIRESTORE_COLLECTION=${FIRESTORE_COLLECTION},EMAILS_AUTOMATION_KEY=${EMAILS_AUTOMATION_KEY},EMAILS_SESSION_SECRET=${EMAILS_SESSION_SECRET},GOOGLE_OAUTH_CLIENT_ID=${GOOGLE_OAUTH_CLIENT_ID},GOOGLE_OAUTH_CLIENT_SECRET=${GOOGLE_OAUTH_CLIENT_SECRET},GOOGLE_OAUTH_CALLBACK_URL=${GOOGLE_OAUTH_CALLBACK_URL},EMAILS_BOOTSTRAP_ALLOWED_EMAILS=${EMAILS_BOOTSTRAP_ALLOWED_EMAILS},EMAILS_BOOTSTRAP_NOTIFICATION_EMAILS=${EMAILS_BOOTSTRAP_NOTIFICATION_EMAILS}" \
               --format='value(status.url)' \
               --quiet
           )"
@@ -186,7 +200,7 @@ jobs:
 
             check_path "$base_url" "/_health" "$label" '"ok"'
             check_path "$base_url" "/" "$label"
-            check_path "$base_url" "/emails" "$label"
+            check_path "$base_url" "/login" "$label"
           }
 
           smoke_target "$CLOUD_RUN_URL" "Cloud Run"

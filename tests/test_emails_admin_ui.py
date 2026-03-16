@@ -1,27 +1,40 @@
 import unittest
 
+from sl_emails.services.activity_log import MemoryActivityLogStore
+from sl_emails.services.admin_settings import MemoryAdminSettingsStore
 from sl_emails.services.weekly_store import MemoryWeeklyEmailStore
 from sl_emails.web import create_app
 
 
 class EmailsAdminUiTests(unittest.TestCase):
     def setUp(self):
-        app = create_app({"TESTING": True, "EMAILS_STORE": MemoryWeeklyEmailStore()})
+        app = create_app(
+            {
+                "TESTING": True,
+                "SESSION_COOKIE_SECURE": False,
+                "EMAILS_STORE": MemoryWeeklyEmailStore(),
+                "EMAILS_SETTINGS_STORE": MemoryAdminSettingsStore(),
+                "EMAILS_ACTIVITY_STORE": MemoryActivityLogStore(),
+            }
+        )
         self.client = app.test_client()
+        with self.client.session_transaction() as session:
+            session["auth_user"] = {"email": "appdev@kentdenver.org", "name": "App Dev"}
 
     def test_emails_page_exposes_dashboard_filters(self):
         response = self.client.get("/emails")
 
         self.assertEqual(response.status_code, 200)
         body = response.get_data(as_text=True)
-        self.assertIn("Filter large weeks", body)
+        self.assertIn("System Status", body)
         self.assertIn('id="event-search"', body)
         self.assertIn('id="event-source-filter"', body)
         self.assertIn('id="event-visibility-filter"', body)
         self.assertIn("Actions", body)
         self.assertIn('id="mark-unsent"', body)
         self.assertIn("Mark Unsent", body)
-        self.assertIn("Refresh Source Events", body)
+        self.assertIn("Refresh Events", body)
+        self.assertIn("Settings", body)
 
     def test_emails_script_includes_mark_unsent_ui_state_handling(self):
         response = self.client.get("/static/emails.js")
@@ -35,6 +48,7 @@ class EmailsAdminUiTests(unittest.TestCase):
         self.assertIn("const isSendLocked = isSent || isSending;", body)
         self.assertIn("/source-refresh", body)
         self.assertIn("window.confirm", body)
+        self.assertIn("status-review-email", body)
 
     def test_hidden_events_are_excluded_from_preview_outputs(self):
         self.client.put(

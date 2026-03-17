@@ -81,7 +81,7 @@
         <div class="panel-head">
           <div>
             <h2>Email Content</h2>
-            <p class="panel-subtitle">Heading and optional team notes for this week's draft.</p>
+            <p class="panel-subtitle">Customize the heading, intro note, and subject lines for this week's email.</p>
           </div>
           <p id="save-hint" class="save-hint">Saving edits will return an approved week to draft.</p>
         </div>
@@ -90,9 +90,17 @@
             Email Heading
             <input id="week-heading" type="text" value="This Week at Kent Denver" maxlength="80" />
           </label>
+          <label class="editor-span-2">
+            Intro Note
+            <textarea id="week-notes" rows="3" placeholder="Optional intro note shown in the email above the schedule."></textarea>
+          </label>
           <label>
-            Notes for the team
-            <textarea id="week-notes" rows="3" placeholder="Optional notes for the weekly draft."></textarea>
+            Middle School Subject
+            <input id="week-subject-ms" type="text" maxlength="140" placeholder="Uses the default subject unless you customize it." />
+          </label>
+          <label>
+            Upper School Subject
+            <input id="week-subject-us" type="text" maxlength="140" placeholder="Uses the default subject unless you customize it." />
           </label>
         </div>
       </section>
@@ -223,6 +231,7 @@
     window.__EMAIL_REVIEW_DEFAULTS__ = {{ {
       "weekId": default_week_id,
       "endDate": default_end,
+      "iconOptions": icon_options,
       "currentUser": {"email": current_user_email, "name": current_user_name},
       "auth": auth
     }|tojson }};

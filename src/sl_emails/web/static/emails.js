@@ -1,5 +1,6 @@
 (() => {
   const defaults = window.__EMAIL_REVIEW_DEFAULTS__ || {};
+  const ICON_OPTIONS = Array.isArray(defaults.iconOptions) ? defaults.iconOptions : [];
   const SOURCE_COLORS = {
     athletics: '#0C3A6B',
     arts: '#A11919',
@@ -31,6 +32,8 @@
     exportBtn: document.getElementById('export-csv'),
     heading: document.getElementById('week-heading'),
     notes: document.getElementById('week-notes'),
+    msSubjectInput: document.getElementById('week-subject-ms'),
+    usSubjectInput: document.getElementById('week-subject-us'),
     eventSearch: document.getElementById('event-search'),
     sourceFilter: document.getElementById('event-source-filter'),
     visibilityFilter: document.getElementById('event-visibility-filter'),
@@ -72,6 +75,27 @@
     if (Number.isNaN(date.getTime())) return startValue;
     date.setDate(date.getDate() + 6);
     return date.toISOString().slice(0, 10);
+  }
+
+  function dateRangeLabel(startValue, endValue) {
+    const start = new Date(`${startValue}T00:00:00`);
+    const end = new Date(`${endValue}T00:00:00`);
+    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return '';
+
+    const startMonth = start.toLocaleDateString('en-US', { month: 'long' });
+    const endMonth = end.toLocaleDateString('en-US', { month: 'long' });
+    const startDay = start.getDate();
+    const endDay = end.getDate();
+    const startYear = start.getFullYear();
+    const endYear = end.getFullYear();
+
+    if (startMonth === endMonth && startYear === endYear) {
+      return `${startMonth} ${startDay}\u2013${endDay}, ${startYear}`;
+    }
+    if (startYear === endYear) {
+      return `${startMonth} ${startDay}\u2013${endMonth} ${endDay}, ${startYear}`;
+    }
+    return `${startMonth} ${startDay}, ${startYear}\u2013${endMonth} ${endDay}, ${endYear}`;
   }
 
   function normalizeAudiences(raw) {
@@ -181,6 +205,7 @@
       link: String(event.link || '').trim(),
       description: String(event.description || '').trim(),
       badge: String(event.badge || (source === 'custom' ? 'SPECIAL' : 'EVENT')).trim() || 'EVENT',
+      icon: String(event.icon || '').trim(),
       priority: Number(event.priority || 3),
       accent: String(event.accent || defaultAccent(source)).trim() || defaultAccent(source),
       team: String(event.team || title).trim(),
@@ -203,6 +228,7 @@
       approval: { approved: false, approved_at: '', approved_by: '' },
       sent: { sent: false, sent_at: '', sent_by: '', sending: false, sending_at: '', sending_by: '' },
       notes: '',
+      subject_overrides: {},
       events: [],
     };
   }
@@ -280,10 +306,52 @@
     return parts.length ? parts.join(' · ') : emptyText;
   }
 
+  function defaultSubjectForAudience(audience) {
+    const week = state.week;
+    if (!week) return 'Sports This Week';
+    const visibleEvents = (week.events || []).filter((event) => event.status !== 'hidden' && (event.audiences || []).includes(audience));
+    const hasArts = visibleEvents.some((event) => event.kind !== 'game');
+    const base = hasArts ? 'Sports and Performances This Week' : 'Sports This Week';
+    const dateRange = dateRangeLabel(week.start_date, week.end_date);
+    return dateRange ? `${base}: ${dateRange.replace('\u2013', ' - ').replace(/, \d{4}$/, '')}` : base;
+  }
+
+  function resolveSubjectInputValue(audience) {
+    const override = String((state.week?.subject_overrides || {})[audience] || '').trim();
+    if (override) return override;
+    const previewDefault = String((state.outputs?.[audience] || {}).default_subject || '').trim();
+    if (previewDefault) return previewDefault;
+    return defaultSubjectForAudience(audience);
+  }
+
+  function buildIconOptionsMarkup(selectedValue) {
+    const knownValues = new Set();
+    const markup = ['<option value="">Auto (preset)</option>'];
+    ICON_OPTIONS.forEach((group) => {
+      const groupLabel = escapeHtml(group.label || 'Icons');
+      const options = Array.isArray(group.options) ? group.options : [];
+      const groupOptions = options.map((option) => {
+        const value = String(option.value || '').trim();
+        if (!value) return '';
+        knownValues.add(value);
+        const label = escapeHtml(option.label || value);
+        return `<option value="${escapeHtml(value)}" ${selectedValue === value ? 'selected' : ''}>${label}</option>`;
+      }).join('');
+      if (groupOptions) {
+        markup.push(`<optgroup label="${groupLabel}">${groupOptions}</optgroup>`);
+      }
+    });
+    if (selectedValue && !knownValues.has(selectedValue)) {
+      markup.unshift(`<option value="${escapeHtml(selectedValue)}" selected>${escapeHtml(selectedValue)}</option>`);
+    }
+    return markup.join('');
+  }
+
   function applyWeek(week) {
     resetFilters();
     state.week = {
       ...week,
+      subject_overrides: typeof week.subject_overrides === 'object' && week.subject_overrides ? week.subject_overrides : {},
       events: (week.events || []).map(normalizeEvent),
     };
     state.weekId = state.week.week_id;
@@ -425,6 +493,9 @@
             <input class="mini-input" type="text" data-field="title" value="${escapeHtml(event.title)}" placeholder="Title" />
             <input class="mini-input" type="text" data-field="subtitle" value="${escapeHtml(event.subtitle)}" placeholder="Subtitle or opponent" />
             <input class="mini-input" type="text" data-field="category" value="${escapeHtml(event.category)}" placeholder="Category" />
+            <select class="mini-select" data-field="icon">
+              ${buildIconOptionsMarkup(event.icon)}
+            </select>
           </div>
         </td>
         <td>
@@ -502,6 +573,8 @@
     els.weekId.value = state.weekId;
     els.heading.value = state.week?.heading || 'This Week at Kent Denver';
     els.notes.value = state.week?.notes || '';
+    els.msSubjectInput.value = resolveSubjectInputValue('middle-school');
+    els.usSubjectInput.value = resolveSubjectInputValue('upper-school');
     renderMeta();
     renderFilters();
     renderRows();
@@ -531,6 +604,14 @@
     if (!state.week) return;
     state.week.heading = els.heading.value.trim() || 'This Week at Kent Denver';
     state.week.notes = els.notes.value.trim();
+    const nextSubjects = {};
+    const middleValue = els.msSubjectInput.value.trim();
+    const upperValue = els.usSubjectInput.value.trim();
+    const middleDefault = defaultSubjectForAudience('middle-school');
+    const upperDefault = defaultSubjectForAudience('upper-school');
+    if (middleValue && middleValue !== middleDefault) nextSubjects['middle-school'] = middleValue;
+    if (upperValue && upperValue !== upperDefault) nextSubjects['upper-school'] = upperValue;
+    state.week.subject_overrides = nextSubjects;
   }
 
   async function loadWeek() {
@@ -571,6 +652,7 @@
       category: event.category,
       audiences: event.audiences,
       badge: event.badge,
+      icon: event.icon,
       priority: event.priority,
       accent: event.accent,
       team: event.team || event.title,
@@ -598,6 +680,7 @@
       status: event.status,
       link: event.link,
       description: event.description,
+      icon: event.icon,
       badge: event.badge,
       priority: event.priority,
       accent: event.accent,
@@ -618,6 +701,7 @@
       end_date: state.week.end_date,
       heading: state.week.heading,
       notes: state.week.notes,
+      subject_overrides: state.week.subject_overrides,
       events: state.week.events.map(serializeEvent),
     };
   }
@@ -632,7 +716,7 @@
     const hasExistingDraft = Boolean(state.week.events?.length);
     const isApproved = Boolean(state.week.approval?.approved);
     const confirmationMessage = hasExistingDraft
-      ? 'Refresh imported source events for this week? Custom events and notes will be kept, but imported events will be replaced and approval will reset.'
+      ? 'Refresh imported source events for this week? Custom events, intro text, and subject lines will be kept, but imported rows and their icon/link/note edits will be replaced and approval will reset.'
       : 'Fetch source events and create the weekly draft for this week?';
     if (hasExistingDraft && typeof window.confirm === 'function' && !window.confirm(confirmationMessage)) {
       return;
@@ -779,7 +863,7 @@
     if (!state.week || !state.week.events.length) return;
 
     const week = state.week;
-    const headers = ['Date', 'Day', 'End Date', 'Time', 'Title', 'Subtitle', 'Category', 'Source', 'Location', 'Audience', 'Status', 'Link', 'Description'];
+    const headers = ['Date', 'Day', 'End Date', 'Time', 'Title', 'Subtitle', 'Category', 'Source', 'Location', 'Audience', 'Status', 'Link', 'Description', 'Icon'];
 
     const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
@@ -803,6 +887,7 @@
       csvCell(event.status === 'hidden' ? 'Hidden' : 'Visible'),
       csvCell(event.link),
       csvCell(event.description),
+      csvCell(event.icon),
     ]);
 
     const csv = [headers.join(','), ...rows.map((r) => r.join(','))].join('\r\n');
@@ -955,6 +1040,8 @@
     els.addBtn.addEventListener('click', addCustomEvent);
     els.heading.addEventListener('input', onHeadingInput);
     els.notes.addEventListener('input', onHeadingInput);
+    els.msSubjectInput.addEventListener('input', onHeadingInput);
+    els.usSubjectInput.addEventListener('input', onHeadingInput);
     els.eventSearch.addEventListener('input', onFilterInput);
     els.sourceFilter.addEventListener('change', onFilterInput);
     els.visibilityFilter.addEventListener('change', onFilterInput);

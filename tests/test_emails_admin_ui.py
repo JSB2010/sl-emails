@@ -35,6 +35,9 @@ class EmailsAdminUiTests(unittest.TestCase):
         self.assertIn("Mark Unsent", body)
         self.assertIn("Refresh Events", body)
         self.assertIn("Settings", body)
+        self.assertIn('id="week-subject-ms"', body)
+        self.assertIn('id="week-subject-us"', body)
+        self.assertIn('"iconOptions"', body)
 
     def test_emails_script_includes_mark_unsent_ui_state_handling(self):
         response = self.client.get("/static/emails.js")

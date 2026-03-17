@@ -7,6 +7,7 @@ from datetime import datetime
 from flask import Blueprint, render_template, request
 
 from sl_emails.domain.dates import iso_to_date, week_end_for
+from sl_emails.domain.email_presets import CURATED_ICON_GROUPS
 from sl_emails.poster.carousel import get_week_bounds
 
 from ..support import auth_urls, current_user, require_emails_admin
@@ -38,5 +39,6 @@ def emails_index():
         default_end=end.isoformat(),
         current_user_email=str(user.get("email") or ""),
         current_user_name=str(user.get("name") or ""),
+        icon_options=CURATED_ICON_GROUPS,
         auth=auth_urls(),
     )

@@ -32,6 +32,7 @@ def _build_source_payload(
     week_id: str,
     heading: str,
     notes: str,
+    subject_overrides: dict[str, str],
     preserved_events: list[dict[str, Any]],
 ) -> tuple[dict[str, Any], dict[str, int]]:
     start_date = iso_to_date(week_id)
@@ -46,6 +47,7 @@ def _build_source_payload(
             "end_date": end_date.isoformat(),
             "heading": heading,
             "notes": notes,
+            "subject_overrides": subject_overrides,
             "events": [*preserved_events, *source_events],
         },
         _source_summary(fetched_events),
@@ -67,6 +69,7 @@ def scheduled_ingest_week(store: WeeklyEmailStore, week_id: str) -> WeeklyIngest
         week_id=week_id,
         heading="This Week at Kent Denver",
         notes="",
+        subject_overrides={},
         preserved_events=[],
     )
     week = store.save_week(week_id, payload)
@@ -84,12 +87,14 @@ def source_refresh_week(store: WeeklyEmailStore, week_id: str) -> WeeklyIngestRe
     preserved_events: list[dict[str, Any]] = []
     heading = "This Week at Kent Denver"
     notes = ""
+    subject_overrides: dict[str, str] = {}
     action = "created"
     reason = "created_from_sources"
 
     if existing is not None:
         heading = existing.heading
         notes = existing.notes
+        subject_overrides = dict(existing.subject_overrides)
         preserved_events = [event.to_dict() for event in existing.events if event.source == "custom"]
         action = "refreshed"
         reason = "replaced_source_events_preserved_custom"
@@ -99,6 +104,7 @@ def source_refresh_week(store: WeeklyEmailStore, week_id: str) -> WeeklyIngestRe
         week_id=week_id,
         heading=heading,
         notes=notes,
+        subject_overrides=subject_overrides,
         preserved_events=preserved_events,
     )
     week = store.save_week(week_id, payload)
@@ -109,4 +115,3 @@ def source_refresh_week(store: WeeklyEmailStore, week_id: str) -> WeeklyIngestRe
         week=week,
         source_summary=source_summary,
     )
-

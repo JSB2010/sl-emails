@@ -31,6 +31,9 @@ def renderable_events_for_audience(
                         location=event.location,
                         is_home=event.is_home,
                         sport=event.category,
+                        description=event.description,
+                        link=event.link,
+                        icon=event.icon,
                     )
                 )
             else:
@@ -41,22 +44,29 @@ def renderable_events_for_audience(
                         time=event.time_text,
                         location=event.location,
                         category=event.category,
+                        description=event.description,
+                        link=event.link,
+                        icon=event.icon,
                     )
                 )
     return rendered
 
 
+def default_subject_for_date_range(date_range: str, *, has_arts: bool) -> str:
+    base = "Sports and Performances This Week" if has_arts else "Sports This Week"
+    cleaned_range = re.sub(r",\s*\d{4}$", "", date_range).replace("–", " - ")
+    return f"{base}: {cleaned_range}"
+
+
 def extract_subject(html: str) -> str:
     has_arts = bool(re.search(r'<meta name="has-arts-events" content="true"', html, flags=re.IGNORECASE))
-    base = "Sports and Performances This Week" if has_arts else "Sports This Week"
     title_match = re.search(r"<title>(.*?)</title>", html, flags=re.IGNORECASE | re.DOTALL)
     if not title_match:
-        return base
+        return default_subject_for_date_range("", has_arts=has_arts).rstrip(": ")
     date_match = re.search(r"\(([^)]+)\)", title_match.group(1))
     if not date_match:
-        return base
-    cleaned_range = re.sub(r",\s*\d{4}$", "", date_match.group(1)).replace("–", " - ")
-    return f"{base}: {cleaned_range}"
+        return title_match.group(1).strip()
+    return default_subject_for_date_range(date_match.group(1), has_arts=has_arts)
 
 
 def build_weekly_email_outputs(week: WeeklyDraftRecord, *, generate_games_module: Any) -> dict[str, dict[str, Any]]:
@@ -67,10 +77,24 @@ def build_weekly_email_outputs(week: WeeklyDraftRecord, *, generate_games_module
         grouped = generate_games_module.group_games_by_date(renderable_events)
         sport_labels = sorted({item.sport for item in renderable_events if getattr(item, "sport", "")})
         sports_list = ", ".join(label.title() for label in sport_labels) or "School Events"
-        html = generate_games_module.generate_html_email(grouped, date_range, sports_list, week.start_date, week.end_date, school_level)
+        has_arts = any(getattr(item, "event_type", "") == "arts" for item in renderable_events)
+        default_subject = default_subject_for_date_range(date_range, has_arts=has_arts)
+        subject = str(week.subject_overrides.get(audience) or "").strip() or default_subject
+        html = generate_games_module.generate_html_email(
+            grouped,
+            date_range,
+            sports_list,
+            week.start_date,
+            week.end_date,
+            school_level,
+            heading=week.heading,
+            intro_note=week.notes,
+            email_subject=subject,
+        )
         outputs[audience] = {
             "audience": audience,
-            "subject": extract_subject(html),
+            "subject": subject,
+            "default_subject": default_subject,
             "html": html,
             "source_event_count": sum(
                 1

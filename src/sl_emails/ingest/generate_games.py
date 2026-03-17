@@ -27,6 +27,7 @@ Version: 3.0 - Added arts events integration via iCal feed
 """
 
 import argparse
+import html
 import requests
 from bs4 import BeautifulSoup
 from datetime import datetime, timedelta
@@ -37,6 +38,7 @@ import os
 from icalendar import Calendar
 
 from sl_emails.config import FirestoreDraftPublishConfig
+from sl_emails.domain.email_presets import ARTS_CONFIG, DEFAULT_ARTS_CONFIG, DEFAULT_SCHOOL_EVENT_CONFIG, DEFAULT_SPORT_CONFIG, SCHOOL_EVENT_CONFIG, SPORT_CONFIG
 from .firestore_drafts import build_week_draft_document, upsert_week_draft
 
 ATHLETICS_SCHEDULE_URL = "https://www.kentdenver.org/athletics-wellness/schedules-and-scores"
@@ -52,58 +54,87 @@ KDS_PRIMARY_LOGO_URL = (
     "https://askthekidz.smmall.cloud/_next/image?url=https%3A%2F%2Fnational.smmallcdn.net%2Faskthekidz%2F1773077145056%2FWhiteOutlineKD-Clear.png&w=3840&q=75"
 )
 
-# Sport icon and color mappings
-SPORT_CONFIG = {
-    'soccer': {'icon': 'futbol', 'border_color': '#0066ff', 'accent_color': '#0066ff'},
-    'football': {'icon': 'football', 'border_color': '#a11919', 'accent_color': '#a11919'},
-    'tennis': {'icon': 'table-tennis-paddle-ball', 'border_color': '#13cf97', 'accent_color': '#13cf97'},
-    'golf': {'icon': 'golf-ball-tee', 'border_color': '#f2b900', 'accent_color': '#f2b900'},
-    'cross country': {'icon': 'person-hiking', 'border_color': '#8b5cf6', 'accent_color': '#8b5cf6'},
-    'field hockey': {'icon': 'hockey-puck', 'border_color': '#ec4899', 'accent_color': '#ec4899'},
-    'volleyball': {'icon': 'volleyball', 'border_color': '#f59e0b', 'accent_color': '#f59e0b'},
-    'basketball': {'icon': 'basketball', 'border_color': '#f97316', 'accent_color': '#f97316'},
-    'lacrosse': {'icon': 'helmet-safety', 'border_color': '#10b981', 'accent_color': '#10b981'},
-    'baseball': {'icon': 'baseball', 'border_color': '#3b82f6', 'accent_color': '#3b82f6'},
-    'swimming': {'icon': 'person-swimming', 'border_color': '#06b6d4', 'accent_color': '#06b6d4'},
-    'track': {'icon': 'person-running', 'border_color': '#8b5cf6', 'accent_color': '#8b5cf6'},
-    'ice hockey': {'icon': 'hockey-puck', 'border_color': '#64748b', 'accent_color': '#64748b'},
-}
-
-# Arts event icon and color mappings
-ARTS_CONFIG = {
-    'dance': {'icon': 'person-walking', 'border_color': '#ec4899', 'accent_color': '#ec4899'},
-    'music': {'icon': 'music', 'border_color': '#8b5cf6', 'accent_color': '#8b5cf6'},
-    'theater': {'icon': 'masks-theater', 'border_color': '#f59e0b', 'accent_color': '#f59e0b'},
-    'theatre': {'icon': 'masks-theater', 'border_color': '#f59e0b', 'accent_color': '#f59e0b'},
-    'visual': {'icon': 'palette', 'border_color': '#06b6d4', 'accent_color': '#06b6d4'},
-    'art': {'icon': 'palette', 'border_color': '#06b6d4', 'accent_color': '#06b6d4'},
-    'concert': {'icon': 'music', 'border_color': '#8b5cf6', 'accent_color': '#8b5cf6'},
-    'performance': {'icon': 'microphone-lines', 'border_color': '#f97316', 'accent_color': '#f97316'},
-    'showcase': {'icon': 'star', 'border_color': '#eab308', 'accent_color': '#eab308'},
-    'exhibit': {'icon': 'palette', 'border_color': '#06b6d4', 'accent_color': '#06b6d4'},
-}
-
 def build_icon_html(icon_name: Optional[str], alt_text: str, size: int = 20) -> str:
     """Return inline HTML for a small icon (Font Awesome CDN or letter fallback)."""
+    safe_alt_text = escape_html(alt_text)
     if icon_name:
         icon_url = f"{ICON_CDN_BASE}/{icon_name}.svg"
         return (
-            f'<img src="{icon_url}" width="{size}" height="{size}" alt="{alt_text}" '
+            f'<img src="{icon_url}" width="{size}" height="{size}" alt="{safe_alt_text}" '
             'style="display:inline-block;vertical-align:middle;" border="0" />'
         )
 
     fallback_letter = (alt_text[:1] if alt_text else "?").upper()
     return (
-        f'<span role="img" aria-label="{alt_text}" '
+        f'<span role="img" aria-label="{safe_alt_text}" '
         f"style=\"display:inline-block;width:{size}px;height:{size}px;border-radius:50%;"
         "background:#041e42;color:#ffffff;font-family:'Red Hat Text', Arial, sans-serif;"
         f"font-size:{max(11, int(size*0.55))}px;line-height:{size}px;text-align:center;font-weight:700;\">"
         f"{fallback_letter}</span>"
     )
 
+
+def escape_html(value: object) -> str:
+    return html.escape(str(value or ""), quote=True)
+
+
+def format_copy_html(value: str) -> str:
+    escaped = escape_html(value)
+    return escaped.replace("\n", "<br />")
+
+
+def render_optional_details_html(description: str, link: str, *, accent_color: str) -> str:
+    clean_description = str(description or "").strip()
+    clean_link = str(link or "").strip()
+    if not clean_description and not clean_link:
+        return ""
+
+    parts: list[str] = []
+    if clean_description:
+        parts.append(
+            f"""
+                                              <p style="margin:8px 0 0 0;color:#4b5563;font-size:13px;line-height:20px;font-family:'Red Hat Text',Arial,sans-serif;">
+                                                {format_copy_html(clean_description)}
+                                              </p>"""
+        )
+    if clean_link:
+        safe_link = escape_html(clean_link)
+        parts.append(
+            f"""
+                                              <p style="margin:8px 0 0 0;font-size:13px;line-height:18px;font-family:'Red Hat Text',Arial,sans-serif;">
+                                                <a href="{safe_link}" style="color:{accent_color};text-decoration:underline;font-weight:600;">More details</a>
+                                              </p>"""
+        )
+    return "".join(parts)
+
+
+def render_optional_list_details_html(description: str, link: str, *, accent_color: str) -> str:
+    clean_description = str(description or "").strip()
+    clean_link = str(link or "").strip()
+    if not clean_description and not clean_link:
+        return ""
+
+    parts: list[str] = []
+    if clean_description:
+        parts.append(
+            f"""
+                                        <div class="text-secondary" style="margin-top:4px;color:#4b5563;font-size:12px;line-height:18px;font-family:'Red Hat Text',Arial,sans-serif;">
+                                          {format_copy_html(clean_description)}
+                                        </div>"""
+        )
+    if clean_link:
+        safe_link = escape_html(clean_link)
+        parts.append(
+            f"""
+                                        <div style="margin-top:4px;font-size:12px;line-height:18px;font-family:'Red Hat Text',Arial,sans-serif;">
+                                          <a href="{safe_link}" style="color:{accent_color};text-decoration:underline;font-weight:600;">More details</a>
+                                        </div>"""
+        )
+    return "".join(parts)
+
 class Game:
     def __init__(self, team: str, opponent: str, date: str, time: str, location: str,
-                 is_home: bool, sport: str):
+                 is_home: bool, sport: str, description: str = "", link: str = "", icon: str = ""):
         self.team = team
         self.opponent = opponent
         self.date = date
@@ -111,15 +142,24 @@ class Game:
         self.location = location
         self.is_home = is_home
         self.sport = sport.lower()
+        self.description = description
+        self.link = link
+        self.icon = icon
         self.event_type = 'game'  # To distinguish from arts events
 
     def get_sport_config(self) -> Dict[str, str]:
         """Get icon and color for the sport"""
         for sport_key, config in SPORT_CONFIG.items():
             if sport_key in self.sport:
-                return config
+                resolved = dict(config)
+                if self.icon:
+                    resolved['icon'] = self.icon
+                return resolved
         # Default fallback
-        return {'icon': 'trophy', 'border_color': '#6b7280'}
+        resolved = dict(DEFAULT_SPORT_CONFIG)
+        if self.icon:
+            resolved['icon'] = self.icon
+        return resolved
 
     def get_home_away_style(self) -> Dict[str, str]:
         """Get styling for home/away badge"""
@@ -138,12 +178,15 @@ class Game:
 
 class Event:
     """Class for arts and performance events"""
-    def __init__(self, title: str, date: str, time: str, location: str, category: str):
+    def __init__(self, title: str, date: str, time: str, location: str, category: str, description: str = "", link: str = "", icon: str = ""):
         self.title = title
         self.date = date
         self.time = time
         self.location = location
         self.category = category.lower()
+        self.description = description
+        self.link = link
+        self.icon = icon
         self.event_type = 'arts'  # To distinguish from games
         # For compatibility with game functions
         self.team = title
@@ -154,9 +197,21 @@ class Event:
         """Get icon and color for the arts event category"""
         for category_key, config in ARTS_CONFIG.items():
             if category_key in self.category:
-                return config
-        # Default fallback for arts events
-        return {'icon': 'star', 'border_color': '#a11919'}
+                resolved = dict(config)
+                if self.icon:
+                    resolved['icon'] = self.icon
+                return resolved
+        for category_key, config in SCHOOL_EVENT_CONFIG.items():
+            if category_key in self.category:
+                resolved = dict(config)
+                if self.icon:
+                    resolved['icon'] = self.icon
+                return resolved
+        # Default fallback for arts and school events
+        resolved = dict(DEFAULT_ARTS_CONFIG if self.event_type == 'arts' else DEFAULT_SCHOOL_EVENT_CONFIG)
+        if self.icon:
+            resolved['icon'] = self.icon
+        return resolved
 
     def get_home_away_style(self) -> Dict[str, str]:
         """Get styling for event badge (always 'Event')"""
@@ -562,6 +617,7 @@ def generate_featured_event_card_html(event: Event) -> str:
     event_config = event.get_sport_config()
     category_label = event.category.title()
     icon_html = build_icon_html(event_config.get('icon'), f"{category_label} icon", size=22)
+    details_html = render_optional_details_html(event.description, event.link, accent_color=event_config['border_color'])
 
     return f'''
                               <tr>
@@ -579,9 +635,9 @@ def generate_featured_event_card_html(event: Event) -> str:
                                             </td>
                                             <td style="padding-left:12px;">
                                               <span style="display:inline-block;padding:3px 10px;border-radius:4px;background:#e0e7ff;color:#3730a3;font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;font-family:'Red Hat Text',Arial,sans-serif;">Event</span>
-                                              <div class="text-primary" style="margin:8px 0 4px 0;color:#041e42;font-family:'Crimson Pro',Georgia,'Times New Roman',serif;font-size:18px;line-height:22px;font-weight:700;">{event.title}</div>
-                                              <p class="text-secondary" style="margin:0;color:#4b5563;font-size:14px;line-height:20px;font-family:'Red Hat Text',Arial,sans-serif;">{category_label}</p>
-                                              <p style="margin:6px 0 0 0;color:#6b7280;font-size:13px;line-height:18px;font-family:'Red Hat Text',Arial,sans-serif;">{event.time} &middot; {event.location}</p>
+                                              <div class="text-primary" style="margin:8px 0 4px 0;color:#041e42;font-family:'Crimson Pro',Georgia,'Times New Roman',serif;font-size:18px;line-height:22px;font-weight:700;">{escape_html(event.title)}</div>
+                                              <p class="text-secondary" style="margin:0;color:#4b5563;font-size:14px;line-height:20px;font-family:'Red Hat Text',Arial,sans-serif;">{escape_html(category_label)}</p>
+                                              <p style="margin:6px 0 0 0;color:#6b7280;font-size:13px;line-height:18px;font-family:'Red Hat Text',Arial,sans-serif;">{escape_html(event.time)} &middot; {escape_html(event.location)}</p>{details_html}
                                             </td>
                                           </tr>
                                         </table>
@@ -596,6 +652,7 @@ def generate_featured_game_card_html(game: Game) -> str:
     sport_config = game.get_sport_config()
     icon_html = build_icon_html(sport_config.get('icon'), f"{game.sport.title()} icon", size=22)
     is_varsity = is_varsity_game(game.team)
+    details_html = render_optional_details_html(game.description, game.link, accent_color=sport_config['border_color'])
 
     # Home/Away badge
     if game.is_home:
@@ -626,9 +683,9 @@ def generate_featured_game_card_html(game: Game) -> str:
                                               <table role="presentation" cellpadding="0" cellspacing="0"><tr><td>
                                                 <span style="display:inline-block;padding:3px 10px;border-radius:4px;background:{badge_bg};color:{badge_color};font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;font-family:'Red Hat Text',Arial,sans-serif;">{badge_text}</span>{varsity_badge}
                                               </td></tr></table>
-                                              <div class="text-primary" style="margin:8px 0 4px 0;color:#041e42;font-family:'Crimson Pro',Georgia,'Times New Roman',serif;font-size:18px;line-height:22px;font-weight:700;">{game.team}</div>
-                                              <p class="text-secondary" style="margin:0;color:#4b5563;font-size:14px;line-height:20px;font-family:'Red Hat Text',Arial,sans-serif;">vs. {game.opponent}</p>
-                                              <p style="margin:6px 0 0 0;color:#6b7280;font-size:13px;line-height:18px;font-family:'Red Hat Text',Arial,sans-serif;">{game.time} &middot; {game.location}</p>
+                                              <div class="text-primary" style="margin:8px 0 4px 0;color:#041e42;font-family:'Crimson Pro',Georgia,'Times New Roman',serif;font-size:18px;line-height:22px;font-weight:700;">{escape_html(game.team)}</div>
+                                              <p class="text-secondary" style="margin:0;color:#4b5563;font-size:14px;line-height:20px;font-family:'Red Hat Text',Arial,sans-serif;">vs. {escape_html(game.opponent)}</p>
+                                              <p style="margin:6px 0 0 0;color:#6b7280;font-size:13px;line-height:18px;font-family:'Red Hat Text',Arial,sans-serif;">{escape_html(game.time)} &middot; {escape_html(game.location)}</p>{details_html}
                                             </td>
                                           </tr>
                                         </table>
@@ -642,6 +699,7 @@ def generate_other_event_list_item_html(event: Event) -> str:
     '''Generate HTML for an arts event in the compact list format'''
     event_config = event.get_sport_config()
     category_label = event.category.title()
+    details_html = render_optional_list_details_html(event.description, event.link, accent_color=event_config['border_color'])
 
     return f'''
                               <tr>
@@ -652,11 +710,11 @@ def generate_other_event_list_item_html(event: Event) -> str:
                                         <div style="width:8px;height:8px;border-radius:50%;background:{event_config['border_color']};margin:0 auto;" role="img" aria-label="{category_label}"></div>
                                       </td>
                                       <td style="padding-left:8px;vertical-align:top;">
-                                        <div class="text-primary" style="color:#041e42;font-family:'Crimson Pro',Georgia,'Times New Roman',serif;font-weight:600;font-size:15px;line-height:20px;">{event.title}</div>
-                                        <div class="text-secondary" style="margin-top:2px;color:#6b7280;font-size:13px;line-height:18px;font-family:'Red Hat Text',Arial,sans-serif;">{category_label} &middot; {event.location}</div>
+                                        <div class="text-primary" style="color:#041e42;font-family:'Crimson Pro',Georgia,'Times New Roman',serif;font-weight:600;font-size:15px;line-height:20px;">{escape_html(event.title)}</div>
+                                        <div class="text-secondary" style="margin-top:2px;color:#6b7280;font-size:13px;line-height:18px;font-family:'Red Hat Text',Arial,sans-serif;">{escape_html(category_label)} &middot; {escape_html(event.location)}</div>{details_html}
                                       </td>
                                       <td style="text-align:right;vertical-align:top;white-space:nowrap;padding-left:12px;">
-                                        <span class="text-primary" style="color:#041e42;font-size:13px;font-weight:600;font-family:'Red Hat Text',Arial,sans-serif;">{event.time}</span>
+                                        <span class="text-primary" style="color:#041e42;font-size:13px;font-weight:600;font-family:'Red Hat Text',Arial,sans-serif;">{escape_html(event.time)}</span>
                                       </td>
                                     </tr>
                                   </table>
@@ -667,6 +725,7 @@ def generate_other_game_list_item_html(game: Game) -> str:
     '''Generate HTML for a game in the compact list format'''
     sport_config = game.get_sport_config()
     home_away = "Home" if game.is_home else "Away"
+    details_html = render_optional_list_details_html(game.description, game.link, accent_color=sport_config['border_color'])
 
     return f'''
                               <tr>
@@ -677,11 +736,11 @@ def generate_other_game_list_item_html(game: Game) -> str:
                                         <div style="width:8px;height:8px;border-radius:50%;background:{sport_config['border_color']};margin:0 auto;" role="img" aria-label="{game.sport.title()}"></div>
                                       </td>
                                       <td style="padding-left:8px;vertical-align:top;">
-                                        <div class="text-primary" style="color:#041e42;font-family:'Crimson Pro',Georgia,'Times New Roman',serif;font-weight:600;font-size:15px;line-height:20px;">{game.team}</div>
-                                        <div class="text-secondary" style="margin-top:2px;color:#6b7280;font-size:13px;line-height:18px;font-family:'Red Hat Text',Arial,sans-serif;">vs. {game.opponent} &middot; {home_away} &middot; {game.location}</div>
+                                        <div class="text-primary" style="color:#041e42;font-family:'Crimson Pro',Georgia,'Times New Roman',serif;font-weight:600;font-size:15px;line-height:20px;">{escape_html(game.team)}</div>
+                                        <div class="text-secondary" style="margin-top:2px;color:#6b7280;font-size:13px;line-height:18px;font-family:'Red Hat Text',Arial,sans-serif;">vs. {escape_html(game.opponent)} &middot; {home_away} &middot; {escape_html(game.location)}</div>{details_html}
                                       </td>
                                       <td style="text-align:right;vertical-align:top;white-space:nowrap;padding-left:12px;">
-                                        <span class="text-primary" style="color:#041e42;font-size:13px;font-weight:600;font-family:'Red Hat Text',Arial,sans-serif;">{game.time}</span>
+                                        <span class="text-primary" style="color:#041e42;font-size:13px;font-weight:600;font-family:'Red Hat Text',Arial,sans-serif;">{escape_html(game.time)}</span>
                                       </td>
                                     </tr>
                                   </table>
@@ -1200,8 +1259,18 @@ Examples:
     elif args.firestore_draft:
         print("\n🎉 Draft ingest complete! Firestore now holds the review draft for this week.")
 
-def generate_html_email(games_by_date: Dict[str, List[Game]], date_range: str,
-                       sports_list: str, start_date: str, end_date: str, school_level: str = "") -> str:
+def generate_html_email(
+    games_by_date: Dict[str, List[Game]],
+    date_range: str,
+    sports_list: str,
+    start_date: str,
+    end_date: str,
+    school_level: str = "",
+    *,
+    heading: str = "",
+    intro_note: str = "",
+    email_subject: str = "",
+) -> str:
     """Generate the complete HTML email"""
 
     # Check if there are any arts events
@@ -1256,6 +1325,36 @@ def generate_html_email(games_by_date: Dict[str, List[Game]], date_range: str,
     title_suffix = f" — {school_level}" if school_level else ""
     # Determine title based on whether there are arts events
     title_type = "Games and Performances This Week" if has_arts_events else "Games This Week"
+    hero_heading = escape_html(heading or text_variations['title_text'])
+    note_html = (
+        f'''
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" class="body-bg" style="background:#f5f5f5;">
+            <tr>
+              <td>
+                <table role="presentation" class="inner" align="center" width="720" cellpadding="0" cellspacing="0" style="width:92%;max-width:720px;margin:0 auto;">
+                  <tr>
+                    <td style="padding:0 0 26px 0;">
+                      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" class="card-bg" style="border:1px solid #e5e7eb;border-radius:10px;background:#ffffff;">
+                        <tr>
+                          <td style="padding:20px 24px;">
+                            <div style="font-size:11px;letter-spacing:.18em;color:#165191;text-transform:uppercase;font-family:'Red Hat Text',Arial,sans-serif;font-weight:700;margin-bottom:8px;">Additional note</div>
+                            <p class="text-secondary" style="margin:0;color:#4b5563;font-size:14px;line-height:22px;font-family:'Red Hat Text',Arial,sans-serif;">
+                              {format_copy_html(intro_note.strip())}
+                            </p>
+                          </td>
+                        </tr>
+                      </table>
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+          </table>
+'''
+        if str(intro_note or "").strip()
+        else ""
+    )
+    title_text = escape_html(email_subject or f"Kent Denver — {title_type} ({date_range}){title_suffix}")
 
     html = f'''<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
 <html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en" style="margin:0;padding:0;">
@@ -1267,7 +1366,7 @@ def generate_html_email(games_by_date: Dict[str, List[Game]], date_range: str,
     <meta name="color-scheme" content="light dark" />
     <meta name="supported-color-schemes" content="light dark" />
     <meta name="has-arts-events" content="{str(has_arts_events).lower()}" />
-    <title>Kent Denver — {title_type} ({date_range}){title_suffix}</title>
+    <title>{title_text}</title>
     <!--[if !mso]><!-->
     <link href="https://fonts.googleapis.com/css2?family=Crimson+Pro:wght@400;600;700&family=Red+Hat+Text:wght@400;500;600;700&display=swap" rel="stylesheet">
     <!--<![endif]-->
@@ -1342,10 +1441,10 @@ def generate_html_email(games_by_date: Dict[str, List[Game]], date_range: str,
                       <img src="{KDS_PRIMARY_LOGO_URL}" alt="Kent Denver School logo" width="160" style="display:block;margin-bottom:16px;" border="0" />
                       <div style="font-size:11px;letter-spacing:.28em;color:#f2b900;text-transform:uppercase;margin-bottom:8px;font-family:'Red Hat Text',Arial,sans-serif;font-weight:600;">Weekly Update</div>
                       <h1 class="hero-title fallback-font" style="margin:0 0 12px 0;color:#ffffff;font-weight:700;">
-                        {text_variations['title_text']}{title_suffix}
+                        {hero_heading}{escape_html(title_suffix)}
                       </h1>
                       <p style="margin:0;color:#cbd5e1;font-size:15px;line-height:24px;font-family:'Red Hat Text',Arial,sans-serif;">
-                        {text_variations['hero_text'].format(sport_count=total_events)}
+                        {escape_html(text_variations['hero_text'].format(sport_count=total_events))}
                       </p>
                       <div style="margin-top:20px;">
                         <span style="display:inline-block;padding:8px 16px;border-radius:999px;background:#f2b900;color:#041e42;font-size:12px;font-weight:700;letter-spacing:.2em;text-transform:uppercase;font-family:'Red Hat Text',Arial,sans-serif;">
@@ -1392,7 +1491,7 @@ def generate_html_email(games_by_date: Dict[str, List[Game]], date_range: str,
                               This week at a glance
                             </h2>
                             <p class="text-secondary" style="margin:0;color:#4b5563;font-size:14px;line-height:22px;font-family:'Red Hat Text',Arial,sans-serif;">
-                              {text_variations['intro_text']}
+                              {escape_html(text_variations['intro_text'])}
                             </p>
                           </td>
                         </tr>
@@ -1403,6 +1502,7 @@ def generate_html_email(games_by_date: Dict[str, List[Game]], date_range: str,
               </td>
             </tr>
           </table>
+{note_html}
 '''
 
     # Generate content for each day with prioritized sections

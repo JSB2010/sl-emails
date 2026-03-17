@@ -24,6 +24,7 @@ from ..domain.weekly import (
     default_approval_state,
     infer_audiences,
     normalize_sent_state,
+    normalize_subject_overrides,
 )
 
 
@@ -102,6 +103,7 @@ def normalize_event_payload(
         subtitle=str(payload.get("subtitle") or subtitle_default).strip(),
         description=str(payload.get("description", "")).strip(),
         link=str(payload.get("link", "")).strip(),
+        icon=str(payload.get("icon", "")).strip(),
         badge=str(payload.get("badge") or badge_default).strip().upper() or badge_default,
         priority=max(1, min(int(payload.get("priority", 3)), 5)),
         accent=str(payload.get("accent") or accent_default).strip() or accent_default,
@@ -153,6 +155,11 @@ def normalize_week_payload(
         approval=default_approval_state(),
         sent=normalize_sent_state(existing.sent if existing else None),
         notes=str(payload.get("notes") or (existing.notes if existing else "")).strip(),
+        subject_overrides=normalize_subject_overrides(
+            payload.get("subject_overrides")
+            if isinstance(payload.get("subject_overrides"), dict)
+            else (existing.subject_overrides if existing else {})
+        ),
         events=events,
         metadata=merge_metadata(existing.metadata if existing else {}, payload.get("metadata") if isinstance(payload.get("metadata"), dict) else {}),
         created_at=existing.created_at if existing else timestamp,
@@ -177,6 +184,7 @@ class MemoryWeeklyEmailStore:
             approval=dict(week.approval),
             sent=normalize_sent_state(week.sent),
             notes=week.notes,
+            subject_overrides=dict(week.subject_overrides),
             events=[WeeklyEventRecord.from_dict(event.to_dict()) for event in week.events],
             metadata=dict(week.metadata),
             created_at=week.created_at,
@@ -318,6 +326,7 @@ class FirestoreWeeklyEmailStore:
             approval=data.get("approval") if isinstance(data.get("approval"), dict) else default_approval_state(),
             sent=normalize_sent_state(data.get("sent")),
             notes=str(data.get("notes") or ""),
+            subject_overrides=normalize_subject_overrides(data.get("subject_overrides")),
             events=events,
             metadata=data.get("metadata") if isinstance(data.get("metadata"), dict) else {},
             created_at=str(data.get("created_at") or ""),

@@ -53,6 +53,7 @@ def build_week_draft_document(
             "approval": default_approval_state(),
             "sent": default_sent_state(include_sending=False),
             "notes": "",
+            "subject_overrides": {},
             "created_at": timestamp,
             "updated_at": timestamp,
             "week_label": format_email_date_range(start_date, end_date),

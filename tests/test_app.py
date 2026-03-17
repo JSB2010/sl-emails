@@ -325,6 +325,10 @@ class AppApiTests(unittest.TestCase):
                 "end_date": "2026-03-15",
                 "heading": "Original Heading",
                 "notes": "Keep these notes",
+                "subject_overrides": {
+                    "middle-school": "Middle School Athletics Update",
+                    "upper-school": "Upper School Athletics Update",
+                },
                 "events": [
                     {
                         "id": "legacy-athletics",
@@ -372,6 +376,8 @@ class AppApiTests(unittest.TestCase):
         self.assertEqual(payload["reason"], "replaced_source_events_preserved_custom")
         self.assertEqual(payload["week"]["heading"], "Original Heading")
         self.assertEqual(payload["week"]["notes"], "Keep these notes")
+        self.assertEqual(payload["week"]["subject_overrides"]["middle-school"], "Middle School Athletics Update")
+        self.assertEqual(payload["week"]["subject_overrides"]["upper-school"], "Upper School Athletics Update")
         self.assertFalse(payload["week"]["approval"]["approved"])
         self.assertFalse(payload["week"]["sent"]["sent"])
         self.assertFalse(payload["week"]["sent"]["sending"])
@@ -499,6 +505,63 @@ class AppApiTests(unittest.TestCase):
         sender_after_payload = sender_after_sent.get_json()
         assert sender_after_payload is not None
         self.assertTrue(sender_after_payload["sent"]["sent"])
+
+    def test_preview_and_sender_output_include_subject_overrides_notes_links_and_icons(self):
+        save_response = self.client.put(
+            "/api/emails/weeks/2026-03-09",
+            json={
+                "start_date": "2026-03-09",
+                "end_date": "2026-03-15",
+                "heading": "Championship Week",
+                "notes": "Families can use the links below for details and campus logistics.",
+                "subject_overrides": {
+                    "middle-school": "Middle School Weekly Highlights",
+                    "upper-school": "Upper School Weekly Highlights",
+                },
+                "events": [
+                    {
+                        "id": "community-night",
+                        "kind": "event",
+                        "source": "custom",
+                        "title": "Community Night",
+                        "start_date": "2026-03-11",
+                        "end_date": "2026-03-11",
+                        "time_text": "6:30 PM",
+                        "location": "Campus Center",
+                        "category": "Community",
+                        "audiences": ["middle-school", "upper-school"],
+                        "description": "Bring a canned good for the service drive.",
+                        "link": "https://www.kentdenver.org/community-night",
+                        "icon": "calendar-days",
+                    }
+                ],
+            },
+        )
+
+        self.assertEqual(save_response.status_code, 200)
+
+        preview_response = self.client.post("/api/emails/weeks/2026-03-09/preview")
+
+        self.assertEqual(preview_response.status_code, 200)
+        preview_payload = preview_response.get_json()
+        assert preview_payload is not None
+        middle_output = preview_payload["outputs"]["middle-school"]
+        self.assertEqual(middle_output["subject"], "Middle School Weekly Highlights")
+        self.assertEqual(middle_output["default_subject"], "Sports and Performances This Week: March 9 - 15")
+        self.assertIn("Championship Week", middle_output["html"])
+        self.assertIn("Families can use the links below for details and campus logistics.", middle_output["html"])
+        self.assertIn("Bring a canned good for the service drive.", middle_output["html"])
+        self.assertIn("https://www.kentdenver.org/community-night", middle_output["html"])
+        self.assertIn("calendar-days.svg", middle_output["html"])
+
+        self.client.post("/api/emails/weeks/2026-03-09/approve", headers={"X-Email-Actor": "tester"})
+        sender_response = self.client.get("/api/emails/weeks/2026-03-09/sender-output?audience=upper-school")
+
+        self.assertEqual(sender_response.status_code, 200)
+        sender_payload = sender_response.get_json()
+        assert sender_payload is not None
+        self.assertEqual(sender_payload["output"]["subject"], "Upper School Weekly Highlights")
+        self.assertIn("calendar-days.svg", sender_payload["output"]["html"])
 
     def test_weekly_save_infers_middle_school_audience_for_source_imports(self):
         save_response = self.client.put(

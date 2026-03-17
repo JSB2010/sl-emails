@@ -392,6 +392,10 @@ body {
   gap: 12px;
 }
 
+.editor-span-2 {
+  grid-column: 1 / -1;
+}
+
 /* ── Save hint ───────────────────────────────────────────── */
 
 .save-hint {

@@ -64,6 +64,22 @@ def normalize_audiences(raw: Any) -> list[str]:
     return normalized
 
 
+def normalize_subject_overrides(raw: Any) -> dict[str, str]:
+    if not isinstance(raw, dict):
+        return {}
+
+    normalized: dict[str, str] = {}
+    for key, value in raw.items():
+        audience_matches = normalize_audiences(key)
+        if not audience_matches:
+            continue
+        text = str(value or "").strip()
+        if not text:
+            continue
+        normalized[audience_matches[0]] = text
+    return normalized
+
+
 def looks_middle_school(label: str) -> bool:
     value = label.lower()
     indicators = ["middle school", " ms ", " 6th", " 7th", " 8th", "sixth", "seventh", "eighth"]
@@ -106,6 +122,7 @@ class WeeklyEventRecord:
     subtitle: str = ""
     description: str = ""
     link: str = ""
+    icon: str = ""
     badge: str = "EVENT"
     priority: int = 3
     accent: str = SOURCE_ACCENTS["custom"]
@@ -141,6 +158,7 @@ class WeeklyEventRecord:
             subtitle=str(data.get("subtitle", "")).strip(),
             description=str(data.get("description", "")).strip(),
             link=str(data.get("link", "")).strip(),
+            icon=str(data.get("icon", "")).strip(),
             badge=str(data.get("badge", "EVENT")).strip().upper() or "EVENT",
             priority=max(1, min(int(data.get("priority", 3)), 5)),
             accent=str(data.get("accent", SOURCE_ACCENTS["custom"])).strip() or SOURCE_ACCENTS["custom"],
@@ -165,6 +183,7 @@ class WeeklyDraftRecord:
     approval: dict[str, Any] = field(default_factory=default_approval_state)
     sent: dict[str, Any] = field(default_factory=default_sent_state)
     notes: str = ""
+    subject_overrides: dict[str, str] = field(default_factory=dict)
     events: list[WeeklyEventRecord] = field(default_factory=list)
     metadata: dict[str, Any] = field(default_factory=dict)
     created_at: str = ""

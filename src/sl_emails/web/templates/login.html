@@ -3,103 +3,289 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Kent Denver Sports Email Login</title>
+  <title>Kent Denver — Admin Sign-In</title>
   <link rel="icon" href="/static/kd-logo.png" type="image/png" />
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Crimson+Pro:wght@500;600;700&family=Red+Hat+Text:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Crimson+Pro:ital,wght@0,500;0,600;0,700;1,500&family=Red+Hat+Text:wght@400;500;600;700&display=swap" rel="stylesheet">
   <style>
+    *, *::before, *::after { box-sizing: border-box; }
+
     body {
       margin: 0;
       min-height: 100vh;
       display: grid;
-      place-items: center;
-      background: radial-gradient(circle at top, #eff5fc 0%, #dde8f4 45%, #d1dfef 100%);
-      color: #132a45;
+      grid-template-columns: 1fr 1fr;
       font-family: "Red Hat Text", Arial, sans-serif;
+      color: #0d1f36;
     }
-    .auth-card {
-      width: min(520px, calc(100vw - 32px));
-      background: rgba(255, 255, 255, 0.96);
-      border: 1px solid rgba(8, 32, 65, 0.12);
-      border-radius: 22px;
-      padding: 32px;
-      box-shadow: 0 16px 48px rgba(8, 32, 65, 0.12);
+
+    /* ── Left panel ── */
+    .auth-brand-panel {
+      background: #041e42;
+      padding: 56px 52px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      position: relative;
+      overflow: hidden;
     }
-    h1 {
-      margin: 0 0 10px;
-      font-family: "Crimson Pro", Georgia, serif;
-      font-size: 40px;
+
+    /* Subtle decorative chevron shapes */
+    .auth-brand-panel::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background:
+        radial-gradient(ellipse at 110% 110%, rgba(161, 25, 25, 0.18) 0%, transparent 55%),
+        radial-gradient(ellipse at -10% -10%, rgba(22, 81, 145, 0.4) 0%, transparent 50%);
+      pointer-events: none;
     }
-    p {
-      margin: 0 0 14px;
-      line-height: 1.6;
-      color: #536983;
+
+    .brand-panel-top {
+      position: relative;
+      z-index: 1;
     }
-    .brand {
+
+    .brand-logo-wrap {
       display: flex;
       align-items: center;
-      gap: 12px;
-      margin-bottom: 22px;
+      gap: 14px;
+      margin-bottom: 48px;
+    }
+
+    .brand-logo-wrap img {
+      width: 44px;
+      height: 44px;
+      border-radius: 10px;
+      background: rgba(255, 255, 255, 0.1);
+      padding: 4px;
+    }
+
+    .brand-logo-name {
+      font-size: 13px;
       font-weight: 800;
-      letter-spacing: 0.04em;
+      letter-spacing: 0.12em;
       text-transform: uppercase;
-      color: #041e42;
+      color: rgba(255, 255, 255, 0.9);
     }
-    .brand img {
-      width: 36px;
-      height: 36px;
-      border-radius: 8px;
+
+    .brand-headline {
+      margin: 0 0 16px;
+      font-family: "Crimson Pro", Georgia, serif;
+      font-size: clamp(36px, 4vw, 52px);
+      font-weight: 600;
+      line-height: 1.05;
+      color: #fff;
     }
-    .google-btn {
-      display: inline-flex;
+
+    .brand-headline em {
+      font-style: italic;
+      color: rgba(255, 255, 255, 0.65);
+    }
+
+    .brand-rule {
+      width: 48px;
+      height: 4px;
+      background: #a11919;
+      border-radius: 2px;
+      margin-bottom: 20px;
+    }
+
+    .brand-tagline {
+      margin: 0;
+      font-size: 15px;
+      color: rgba(255, 255, 255, 0.55);
+      line-height: 1.7;
+      max-width: 320px;
+    }
+
+    .brand-panel-foot {
+      position: relative;
+      z-index: 1;
+    }
+
+    .brand-foot-label {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: rgba(255, 255, 255, 0.28);
+    }
+
+    /* ── Right panel ── */
+    .auth-form-panel {
+      background: #f0f5fb;
+      display: flex;
       align-items: center;
       justify-content: center;
-      width: 100%;
-      margin-top: 16px;
-      padding: 14px 18px;
-      border-radius: 12px;
-      border: 1px solid rgba(8, 32, 65, 0.14);
-      background: #041e42;
-      color: #fff;
-      text-decoration: none;
+      padding: 48px 40px;
+    }
+
+    .auth-card {
+      width: min(460px, 100%);
+      background: #fff;
+      border: 1px solid rgba(4, 30, 66, 0.11);
+      border-radius: 22px;
+      padding: 36px;
+      box-shadow: 0 4px 24px rgba(4, 30, 66, 0.09), 0 1px 4px rgba(4, 30, 66, 0.06);
+    }
+
+    .auth-card-eyebrow {
+      font-size: 11px;
       font-weight: 700;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: #a11919;
+      margin: 0 0 10px;
     }
-    .google-btn:hover {
-      background: #0d3566;
+
+    .auth-card h1 {
+      margin: 0 0 10px;
+      font-family: "Crimson Pro", Georgia, serif;
+      font-size: 38px;
+      font-weight: 600;
+      line-height: 1.05;
+      color: #0d1f36;
     }
-    .notice {
-      margin-top: 18px;
-      padding: 12px 14px;
-      border-radius: 12px;
-      background: #f6f9fd;
-      border: 1px solid rgba(8, 32, 65, 0.1);
+
+    .auth-card p {
+      margin: 0 0 10px;
+      line-height: 1.65;
+      color: #52697f;
       font-size: 14px;
     }
+
+    .auth-divider {
+      height: 1px;
+      background: rgba(4, 30, 66, 0.1);
+      margin: 20px 0;
+    }
+
+    .google-btn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      width: 100%;
+      padding: 14px 20px;
+      border-radius: 12px;
+      border: 1px solid transparent;
+      background: linear-gradient(135deg, #041e42 0%, #0c3a6b 100%);
+      color: #fff;
+      text-decoration: none;
+      font-family: "Red Hat Text", Arial, sans-serif;
+      font-weight: 700;
+      font-size: 14px;
+      letter-spacing: 0.02em;
+      box-shadow: 0 4px 14px rgba(4, 30, 66, 0.22);
+      transition: transform 0.1s, box-shadow 0.1s, background 0.1s;
+    }
+
+    .google-btn:hover {
+      background: linear-gradient(135deg, #062554 0%, #0f4785 100%);
+      box-shadow: 0 6px 20px rgba(4, 30, 66, 0.3);
+      transform: translateY(-1px);
+    }
+
+    .google-btn-icon {
+      width: 18px;
+      height: 18px;
+      background: #fff;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+
+    .notice {
+      margin-top: 14px;
+      padding: 12px 14px;
+      border-radius: 12px;
+      background: #f5f8fd;
+      border: 1px solid rgba(4, 30, 66, 0.09);
+      font-size: 13px;
+      line-height: 1.55;
+      color: #52697f;
+    }
+
     .notice.error {
       background: #fff5f5;
-      border-color: rgba(161, 25, 25, 0.18);
-      color: #7f1d1d;
+      border-color: rgba(161, 25, 25, 0.2);
+      color: #7a1818;
+    }
+
+    /* ── Responsive ── */
+    @media (max-width: 860px) {
+      body {
+        grid-template-columns: 1fr;
+        grid-template-rows: auto 1fr;
+      }
+
+      .auth-brand-panel {
+        padding: 32px 28px 28px;
+      }
+
+      .brand-headline {
+        font-size: 32px;
+      }
+
+      .brand-tagline { display: none; }
+
+      .brand-panel-foot { display: none; }
+
+      .auth-form-panel {
+        padding: 32px 20px 48px;
+        align-items: flex-start;
+      }
     }
   </style>
 </head>
 <body>
-  <main class="auth-card">
-    <div class="brand">
-      <img src="/static/kd-logo.png" alt="Kent Denver" />
-      <span>Kent Denver Sports Emails</span>
+
+  <!-- ── Left: Brand panel ── -->
+  <div class="auth-brand-panel">
+    <div class="brand-panel-top">
+      <div class="brand-logo-wrap">
+        <img src="/static/kd-logo.png" alt="Kent Denver" />
+        <span class="brand-logo-name">Kent Denver</span>
+      </div>
+      <div class="brand-rule"></div>
+      <h2 class="brand-headline">Weekly Email<br><em>Review System</em></h2>
+      <p class="brand-tagline">Manage weekly sports and arts communications for Middle School and Upper School audiences.</p>
     </div>
-    <h1>Admin Sign-In</h1>
-    <p>Use your Kent Denver Google account to access the weekly sports email dashboard.</p>
-    <p>Only allowlisted email addresses can open the review tools, settings, and send controls.</p>
-    {% if auth_error %}
-    <div class="notice error">{{ auth_error }}</div>
-    {% elif not google_oauth_configured %}
-    <div class="notice error">Google sign-in has not been configured for this deployment yet.</div>
-    {% else %}
-    <a class="google-btn" href="{{ start_url }}">Continue with Google</a>
-    {% endif %}
-    <div class="notice">If your Google account is valid but not on the allowlist, you will see the access denied screen after sign-in.</div>
-  </main>
+    <div class="brand-panel-foot">
+      <p class="brand-foot-label">Student Leadership Media</p>
+    </div>
+  </div>
+
+  <!-- ── Right: Login card ── -->
+  <div class="auth-form-panel">
+    <main class="auth-card">
+      <p class="auth-card-eyebrow">Admin Access</p>
+      <h1>Sign In</h1>
+      <p>Use your Kent Denver Google account to access the weekly email dashboard, review tools, and send controls.</p>
+      <p>Only allowlisted addresses can sign in.</p>
+
+      <div class="auth-divider"></div>
+
+      {% if auth_error %}
+        <div class="notice error">{{ auth_error }}</div>
+      {% elif not google_oauth_configured %}
+        <div class="notice error">Google sign-in has not been configured for this deployment yet.</div>
+      {% else %}
+        <a class="google-btn" href="{{ start_url }}">
+          <svg class="google-btn-icon" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+            <path d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844a4.14 4.14 0 01-1.796 2.716v2.259h2.908c1.702-1.567 2.684-3.875 2.684-6.615z" fill="#4285F4"/>
+            <path d="M9 18c2.43 0 4.467-.806 5.956-2.18l-2.908-2.259c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332A8.997 8.997 0 009 18z" fill="#34A853"/>
+            <path d="M3.964 10.71A5.41 5.41 0 013.682 9c0-.593.102-1.17.282-1.71V4.958H.957A8.996 8.996 0 000 9c0 1.452.348 2.827.957 4.042l3.007-2.332z" fill="#FBBC05"/>
+            <path d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 00.957 4.958L3.964 7.29C4.672 5.163 6.656 3.58 9 3.58z" fill="#EA4335"/>
+          </svg>
+          Continue with Google
+        </a>
+      {% endif %}
+
+      <div class="notice">If your Google account is valid but not on the allowlist, you'll see the access denied screen after sign-in. Contact an existing admin to request access.</div>
+    </main>
+  </div>
+
 </body>
 </html>

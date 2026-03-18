@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Kent Denver Weekly Email Review</title>
+  <title>Kent Denver — Weekly Email Review</title>
   <link rel="icon" href="/static/kd-logo.png" type="image/png" />
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -12,7 +12,7 @@
 </head>
 <body>
 
-  <!-- ── Topbar ──────────────────────────────────────────── -->
+  <!-- ── Topbar ───────────────────────────────────────── -->
   <header class="app-topbar">
     <img src="/static/kd-logo.png" alt="Kent Denver" class="topbar-logo" />
     <span class="topbar-brand">Kent Denver</span>
@@ -24,7 +24,7 @@
     <a class="topbar-link topbar-link-muted" href="{{ auth.logout }}">Sign Out</a>
   </header>
 
-  <!-- ── Command bar ─────────────────────────────────────── -->
+  <!-- ── Command bar ──────────────────────────────────── -->
   <div class="cmd-bar">
     <div class="cmd-inner">
 
@@ -60,7 +60,7 @@
     </div>
   </div>
 
-  <!-- ── Status strip ────────────────────────────────────── -->
+  <!-- ── Status strip ─────────────────────────────────── -->
   <div id="state-banner" class="state-banner state-draft">
     <div class="state-banner-inner">
       <strong id="state-title">Draft</strong>
@@ -70,7 +70,7 @@
     </div>
   </div>
 
-  <!-- ── Main layout ─────────────────────────────────────── -->
+  <!-- ── Main layout ──────────────────────────────────── -->
   <main class="app-shell">
 
     <!-- Left: workspace -->
@@ -105,6 +105,7 @@
         </div>
       </section>
 
+      <!-- Submission queue -->
       <section class="panel panel-requests">
         <div class="panel-head">
           <div>
@@ -172,6 +173,8 @@
 
     <!-- Right: preview -->
     <section class="preview-column">
+
+      <!-- System status -->
       <section class="panel panel-status">
         <div class="panel-head">
           <div>
@@ -203,6 +206,7 @@
         </dl>
       </section>
 
+      <!-- Audience preview -->
       <section class="panel panel-preview">
         <div class="panel-head">
           <div>
@@ -237,7 +241,7 @@
 
   </main>
 
-  <!-- ── Toast notification ──────────────────────────────── -->
+  <!-- ── Toast ────────────────────────────────────────── -->
   <div id="flash" class="flash-toast" role="status" aria-live="polite"></div>
 
   <script>

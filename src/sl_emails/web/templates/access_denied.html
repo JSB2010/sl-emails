@@ -3,46 +3,129 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Access Denied</title>
+  <title>Access Denied — Kent Denver</title>
+  <link rel="icon" href="/static/kd-logo.png" type="image/png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Crimson+Pro:wght@500;600;700&family=Red+Hat+Text:wght@400;500;600;700&display=swap" rel="stylesheet">
   <style>
+    *, *::before, *::after { box-sizing: border-box; }
+
     body {
       margin: 0;
       min-height: 100vh;
       display: grid;
       place-items: center;
-      background: #edf2f8;
-      color: #132a45;
-      font-family: Arial, sans-serif;
+      background: #edf2f9;
+      color: #0d1f36;
+      font-family: "Red Hat Text", Arial, sans-serif;
+      padding: 24px;
     }
-    main {
-      width: min(560px, calc(100vw - 32px));
+
+    .denied-card {
+      width: min(540px, 100%);
       background: #fff;
+      border: 1px solid rgba(4, 30, 66, 0.11);
+      border-top: 4px solid #a11919;
       border-radius: 20px;
-      border: 1px solid rgba(8, 32, 65, 0.12);
-      padding: 28px;
-      box-shadow: 0 14px 36px rgba(8, 32, 65, 0.08);
+      padding: 36px;
+      box-shadow: 0 4px 24px rgba(4, 30, 66, 0.09), 0 1px 4px rgba(4, 30, 66, 0.06);
     }
-    h1 {
-      margin: 0 0 12px;
-      font-size: 34px;
-      color: #7f1d1d;
+
+    .denied-brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 24px;
     }
-    p {
-      line-height: 1.6;
-      color: #41556f;
+
+    .denied-brand img {
+      width: 32px;
+      height: 32px;
+      border-radius: 7px;
+      background: rgba(4, 30, 66, 0.06);
+      padding: 3px;
     }
-    a {
-      color: #0d3566;
+
+    .denied-brand-name {
+      font-size: 12px;
+      font-weight: 800;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: #041e42;
+    }
+
+    .denied-eyebrow {
+      font-size: 11px;
       font-weight: 700;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: #a11919;
+      margin: 0 0 8px;
+    }
+
+    h1 {
+      margin: 0 0 16px;
+      font-family: "Crimson Pro", Georgia, serif;
+      font-size: 38px;
+      font-weight: 600;
+      color: #0d1f36;
+      line-height: 1.05;
+    }
+
+    p {
+      margin: 0 0 12px;
+      line-height: 1.65;
+      color: #52697f;
+      font-size: 14px;
+    }
+
+    .divider {
+      height: 1px;
+      background: rgba(4, 30, 66, 0.09);
+      margin: 20px 0;
+    }
+
+    a.back-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      color: #041e42;
+      font-weight: 700;
+      font-size: 14px;
+      text-decoration: none;
+      padding: 10px 18px;
+      border: 1px solid rgba(4, 30, 66, 0.2);
+      border-radius: 9px;
+      background: linear-gradient(160deg, #fff 0%, #f4f8ff 100%);
+      transition: border-color 0.12s, transform 0.1s, box-shadow 0.1s;
+    }
+
+    a.back-link:hover {
+      border-color: #0c3a6b;
+      transform: translateY(-1px);
+      box-shadow: 0 2px 8px rgba(4, 30, 66, 0.1);
     }
   </style>
 </head>
 <body>
-  <main>
+  <main class="denied-card">
+    <div class="denied-brand">
+      <img src="/static/kd-logo.png" alt="Kent Denver" />
+      <span class="denied-brand-name">Kent Denver</span>
+    </div>
+
+    <p class="denied-eyebrow">Authentication Error</p>
     <h1>Access Denied</h1>
+
     <p>Your Google account signed in successfully, but it is not currently on the sports email admin allowlist.</p>
-    <p>If you should have access, contact an existing sports email admin to add your email address in the app settings.</p>
-    <p><a href="/logout">Sign out and try another account</a></p>
+    <p>If you should have access, contact an existing admin to add your email address in the app settings.</p>
+
+    <div class="divider"></div>
+
+    <a class="back-link" href="/logout">
+      ← Try another account
+    </a>
   </main>
 </body>
 </html>

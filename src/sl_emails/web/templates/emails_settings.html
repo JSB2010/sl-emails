@@ -3,145 +3,184 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Sports Email Settings</title>
+  <title>Kent Denver — Email Settings</title>
   <link rel="icon" href="/static/kd-logo.png" type="image/png" />
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Crimson+Pro:wght@500;600;700&family=Red+Hat+Text:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/emails.css" />
   <style>
-    body {
-      margin: 0;
-      min-height: 100vh;
-      background: #edf2f8;
-      color: #132a45;
-      font-family: "Red Hat Text", Arial, sans-serif;
-    }
-    header {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      padding: 18px 22px;
-      background: #041e42;
-      color: #fff;
-    }
-    header img {
-      width: 32px;
-      height: 32px;
-      border-radius: 8px;
-    }
-    header .spacer {
-      flex: 1;
-    }
-    header a {
-      color: rgba(255,255,255,0.88);
-      text-decoration: none;
-      font-weight: 700;
-    }
-    main {
-      max-width: 1040px;
+    /* Settings-specific layout */
+    .settings-shell {
+      max-width: 1100px;
       margin: 0 auto;
-      padding: 24px 20px 48px;
+      padding: 28px 24px 56px;
       display: grid;
-      gap: 18px;
+      gap: 20px;
     }
-    .hero h1 {
-      margin: 0 0 6px;
+
+    .settings-hero {
+      padding: 6px 0 2px;
+    }
+
+    .settings-eyebrow {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--brand-red);
+      margin: 0 0 8px;
+    }
+
+    .settings-hero h1 {
+      margin: 0 0 8px;
       font-family: "Crimson Pro", Georgia, serif;
       font-size: 40px;
+      font-weight: 600;
+      line-height: 1.05;
+      color: var(--ink);
     }
-    .hero p {
+
+    .settings-hero p {
       margin: 0;
-      color: #536983;
+      color: var(--muted);
+      font-size: 15px;
+      line-height: 1.6;
     }
-    .grid {
+
+    .settings-grid {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-      gap: 18px;
+      gap: 20px;
     }
-    .card {
-      background: #fff;
-      border-radius: 18px;
-      border: 1px solid rgba(8, 32, 65, 0.12);
-      box-shadow: 0 10px 28px rgba(8, 32, 65, 0.06);
-      padding: 22px;
-    }
-    .card h2 {
-      margin: 0 0 6px;
-      font-family: "Crimson Pro", Georgia, serif;
-      font-size: 28px;
-    }
-    .card p {
-      color: #536983;
-      margin: 0 0 14px;
-    }
-    textarea {
+
+    .settings-textarea {
       width: 100%;
-      min-height: 180px;
+      min-height: 200px;
+      border: 1px solid rgba(4, 30, 66, 0.18);
       border-radius: 12px;
-      border: 1px solid rgba(8, 32, 65, 0.18);
-      padding: 12px;
+      background: #fbfcff;
+      color: var(--ink);
+      padding: 14px;
       font: inherit;
-      background: #f9fbfe;
+      font-size: 14px;
+      resize: vertical;
+      transition: border-color 0.12s, box-shadow 0.12s;
+      box-sizing: border-box;
     }
-    button {
-      margin-top: 12px;
-      padding: 12px 16px;
-      border-radius: 12px;
-      border: 0;
-      background: #041e42;
+
+    .settings-textarea:focus-visible {
+      outline: none;
+      border-color: var(--brand-mid);
+      box-shadow: 0 0 0 3px rgba(12, 58, 107, 0.14);
+    }
+
+    .settings-save-btn {
+      margin-top: 14px;
+      padding: 10px 20px;
+      border-radius: 10px;
+      border: none;
+      background: linear-gradient(135deg, var(--brand) 0%, var(--brand-mid) 100%);
       color: #fff;
       font: inherit;
+      font-size: 13px;
       font-weight: 700;
       cursor: pointer;
+      box-shadow: 0 4px 14px rgba(4, 30, 66, 0.2);
+      transition: transform 0.1s, box-shadow 0.1s, background 0.1s;
     }
-    .flash {
+
+    .settings-save-btn:hover {
+      background: linear-gradient(135deg, #062554 0%, #0f4785 100%);
+      box-shadow: 0 6px 18px rgba(4, 30, 66, 0.28);
+      transform: translateY(-1px);
+    }
+
+    .settings-flash {
       min-height: 22px;
-      font-size: 14px;
-      color: #536983;
-    }
-    .flash.error {
-      color: #7f1d1d;
-    }
-    .meta {
+      margin-top: 10px;
       font-size: 13px;
-      color: #536983;
+      color: var(--muted);
+    }
+
+    .settings-flash.error { color: #7a1818; }
+
+    .settings-meta-text {
+      font-size: 13px;
+      color: var(--muted);
+      line-height: 1.6;
+    }
+
+    @media (max-width: 640px) {
+      .settings-shell { padding: 20px 16px 40px; }
+      .settings-grid { grid-template-columns: 1fr; }
     }
   </style>
 </head>
 <body>
-  <header>
-    <img src="/static/kd-logo.png" alt="Kent Denver" />
-    <strong>Sports Email Settings</strong>
-    <div class="spacer"></div>
-    <span>{{ current_user_name or current_user_email }}</span>
-    <a href="{{ review_url }}">Weekly Review</a>
-    <a href="{{ auth.logout }}">Sign Out</a>
+
+  <!-- ── Topbar (matches main app) ── -->
+  <header class="app-topbar">
+    <img src="/static/kd-logo.png" alt="Kent Denver" class="topbar-logo" />
+    <span class="topbar-brand">Kent Denver</span>
+    <span class="topbar-dot">·</span>
+    <span class="topbar-product">Email Settings</span>
+    <div class="topbar-spacer"></div>
+    <span class="topbar-user">{{ current_user_name or current_user_email }}</span>
+    <a class="topbar-link" href="{{ review_url }}">Weekly Review</a>
+    <a class="topbar-link topbar-link-muted" href="{{ auth.logout }}">Sign Out</a>
   </header>
-  <main>
-    <section class="hero">
-      <h1>Admin Access and Notifications</h1>
-      <p>Manage the Google account allowlist and the operations notification recipients used by the sports email workflow.</p>
+
+  <div class="settings-shell">
+
+    <!-- Hero -->
+    <section class="settings-hero">
+      <p class="settings-eyebrow">Admin Configuration</p>
+      <h1>Access &amp; Notifications</h1>
+      <p>Manage the Google account allowlist and operations notification recipients used by the sports email workflow.</p>
     </section>
-    <div class="grid">
-      <section class="card">
-        <h2>Allowed Admin Emails</h2>
-        <p>One email per line. These accounts can sign in, review drafts, approve weeks, reset send state, and edit settings.</p>
-        <textarea id="allowed-admins"></textarea>
-        <button id="save-admins" type="button">Save Allowlist</button>
+
+    <!-- Settings cards -->
+    <div class="settings-grid">
+
+      <section class="panel panel-content">
+        <div class="panel-head">
+          <div>
+            <h2>Admin Allowlist</h2>
+            <p class="panel-subtitle">One email per line. These accounts can sign in, review drafts, approve weeks, and edit settings.</p>
+          </div>
+        </div>
+        <textarea id="allowed-admins" class="settings-textarea" placeholder="admin@kentdenver.org&#10;another@kentdenver.org"></textarea>
+        <button id="save-admins" type="button" class="settings-save-btn">Save Allowlist</button>
       </section>
-      <section class="card">
-        <h2>Ops Notification Emails</h2>
-        <p>One email per line. Keep this list aligned with the Apps Script notification recipients for automation alerts.</p>
-        <textarea id="ops-notifications"></textarea>
-        <button id="save-notifications" type="button">Save Notification List</button>
+
+      <section class="panel panel-events">
+        <div class="panel-head">
+          <div>
+            <h2>Ops Notifications</h2>
+            <p class="panel-subtitle">One email per line. Keep aligned with Apps Script notification recipients for automation alerts.</p>
+          </div>
+        </div>
+        <textarea id="ops-notifications" class="settings-textarea" placeholder="ops@kentdenver.org"></textarea>
+        <button id="save-notifications" type="button" class="settings-save-btn">Save Notification List</button>
       </section>
+
     </div>
-    <div class="card">
-      <h2>Change Metadata</h2>
-      <p class="meta" id="settings-meta">No settings metadata available yet.</p>
-      <div class="flash" id="settings-flash" aria-live="polite"></div>
-    </div>
-  </main>
+
+    <!-- Metadata card -->
+    <section class="panel panel-status">
+      <div class="panel-head">
+        <div>
+          <h2>Change Metadata</h2>
+          <p class="panel-subtitle">Last modification info for this settings document.</p>
+        </div>
+      </div>
+      <p class="settings-meta-text" id="settings-meta">No settings metadata available yet.</p>
+      <div class="settings-flash" id="settings-flash" aria-live="polite"></div>
+    </section>
+
+  </div>
+
   <script>
     window.__EMAIL_SETTINGS_DEFAULTS__ = {{ {
       "settings": settings_payload,

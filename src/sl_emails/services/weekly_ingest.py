@@ -72,7 +72,20 @@ def scheduled_ingest_week(store: WeeklyEmailStore, week_id: str) -> WeeklyIngest
         subject_overrides={},
         preserved_events=[],
     )
-    week = store.save_week(week_id, payload)
+    created_week = store.create_week_if_missing(week_id, payload)
+    if created_week is None:
+        existing = store.get_week(week_id)
+        if existing is None:
+            raise RuntimeError(f"Weekly draft {week_id} could not be loaded after create-if-missing")
+        return WeeklyIngestResult(
+            week_id=week_id,
+            action="skipped",
+            reason="existing_draft",
+            week=existing,
+            source_summary={"athletics_events": 0, "arts_events": 0, "total_events": 0},
+        )
+
+    week = created_week
     return WeeklyIngestResult(
         week_id=week_id,
         action="created",

@@ -20,9 +20,28 @@ from .routes import register_routes
 from .support import STATIC_DIR, TEMPLATE_DIR
 
 
+def _validate_runtime_config(app: Flask) -> None:
+    if app.config.get("TESTING"):
+        app.config["SECRET_KEY"] = str(app.config.get("SECRET_KEY") or "sl-emails-test-session-secret")
+        return
+
+    required = {
+        EMAILS_SESSION_SECRET_ENV: str(app.config.get("SECRET_KEY") or "").strip(),
+        EMAILS_AUTOMATION_KEY_ENV: str(app.config.get("EMAILS_AUTOMATION_KEY") or "").strip(),
+        GOOGLE_OAUTH_CLIENT_ID_ENV: str(app.config.get("GOOGLE_OAUTH_CLIENT_ID") or "").strip(),
+        GOOGLE_OAUTH_CLIENT_SECRET_ENV: str(app.config.get("GOOGLE_OAUTH_CLIENT_SECRET") or "").strip(),
+        GOOGLE_OAUTH_CALLBACK_URL_ENV: str(app.config.get("GOOGLE_OAUTH_CALLBACK_URL") or "").strip(),
+    }
+    missing = [name for name, value in required.items() if not value]
+    if missing:
+        raise RuntimeError(
+            "Missing required runtime configuration: " + ", ".join(missing)
+        )
+
+
 def create_app(config: dict[str, Any] | None = None) -> Flask:
     app = Flask(__name__, template_folder=str(TEMPLATE_DIR), static_folder=str(STATIC_DIR))
-    app.config["SECRET_KEY"] = os.getenv(EMAILS_SESSION_SECRET_ENV, "").strip() or "sl-emails-dev-session-secret"
+    app.config["SECRET_KEY"] = os.getenv(EMAILS_SESSION_SECRET_ENV, "").strip()
     app.config["EMAILS_AUTOMATION_KEY"] = os.getenv(EMAILS_AUTOMATION_KEY_ENV, "").strip()
     app.config["GOOGLE_OAUTH_CLIENT_ID"] = os.getenv(GOOGLE_OAUTH_CLIENT_ID_ENV, "").strip()
     app.config["GOOGLE_OAUTH_CLIENT_SECRET"] = os.getenv(GOOGLE_OAUTH_CLIENT_SECRET_ENV, "").strip()
@@ -38,6 +57,7 @@ def create_app(config: dict[str, Any] | None = None) -> Flask:
     if config:
         app.config.update(config)
 
+    _validate_runtime_config(app)
     init_google_oauth(app)
     register_routes(app)
     return app

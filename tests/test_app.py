@@ -8,7 +8,13 @@ from sl_emails.services.request_store import MemoryEventRequestStore
 from sl_emails.services import weekly_ingest
 from sl_emails.services.weekly_store import MemoryWeeklyEmailStore
 from sl_emails.web import create_app
+from sl_emails.web.request_protection import PublicRequestProtector
 from sl_emails.web.routes import poster_api
+
+
+class _FailingReviewRequestStore(MemoryEventRequestStore):
+    def review_request(self, *args, **kwargs):
+        raise RuntimeError("review storage unavailable")
 
 
 class AppApiTests(unittest.TestCase):
@@ -54,6 +60,18 @@ class AppApiTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn("Admin Sign-In", response.get_data(as_text=True))
         self.assertEqual(self.client.application.config["SESSION_COOKIE_NAME"], "__session")
+
+    def test_create_app_requires_runtime_configuration_outside_testing(self):
+        with self.assertRaises(RuntimeError):
+            create_app(
+                {
+                    "SECRET_KEY": "",
+                    "EMAILS_AUTOMATION_KEY": "",
+                    "GOOGLE_OAUTH_CLIENT_ID": "",
+                    "GOOGLE_OAUTH_CLIENT_SECRET": "",
+                    "GOOGLE_OAUTH_CALLBACK_URL": "",
+                }
+            )
 
     def test_emails_route_serves_review_ui(self):
         response = self.client.get("/emails")
@@ -114,6 +132,50 @@ class AppApiTests(unittest.TestCase):
         self.assertEqual(payload["request"]["week_id"], "2026-03-09")
         self.assertIn("March 9", payload["week_label"])
         self.assertIn("2026", payload["week_label"])
+        self.assertTrue(payload["request"]["metadata"]["submission"]["ip_hash"])
+        self.assertTrue(payload["request"]["metadata"]["submission"]["user_agent_hash"])
+
+    def test_public_request_submission_blocks_honeypot_payloads(self):
+        self.logout()
+
+        response = self.client.post(
+            "/api/emails/requests",
+            json={
+                "title": "Robotics Night",
+                "start_date": "2026-03-11",
+                "requester_name": "Jordan Smith",
+                "requester_email": "jordan@kentdenver.org",
+                "website": "https://spam.example.test",
+            },
+        )
+
+        self.assertEqual(response.status_code, 400)
+
+    def test_public_request_submission_rate_limits_repeat_attempts(self):
+        self.logout()
+        self.client.application.config["EMAILS_REQUEST_PROTECTOR"] = PublicRequestProtector(max_attempts=1, window_seconds=3600)
+
+        first = self.client.post(
+            "/api/emails/requests",
+            json={
+                "title": "Robotics Night",
+                "start_date": "2026-03-11",
+                "requester_name": "Jordan Smith",
+                "requester_email": "jordan@kentdenver.org",
+            },
+        )
+        second = self.client.post(
+            "/api/emails/requests",
+            json={
+                "title": "Second Robotics Night",
+                "start_date": "2026-03-11",
+                "requester_name": "Jordan Smith",
+                "requester_email": "jordan@kentdenver.org",
+            },
+        )
+
+        self.assertEqual(first.status_code, 201)
+        self.assertEqual(second.status_code, 429)
 
     def test_non_allowlisted_user_is_redirected_to_access_denied(self):
         self.logout()
@@ -668,6 +730,24 @@ class AppApiTests(unittest.TestCase):
         assert payload is not None
         self.assertIn("approved", payload["error"].lower())
 
+    def test_mark_sent_requires_send_claim(self):
+        self.client.put(
+            "/api/emails/weeks/2026-03-09",
+            json={"start_date": "2026-03-09", "end_date": "2026-03-15", "events": []},
+        )
+        self.client.post("/api/emails/weeks/2026-03-09/approve", headers={"X-Email-Actor": "reviewer"})
+
+        response = self.client.post(
+            "/api/emails/weeks/2026-03-09/sent",
+            json={"state": "sent"},
+            headers={"X-Email-Actor": "sender-bot"},
+        )
+
+        self.assertEqual(response.status_code, 409)
+        payload = response.get_json()
+        assert payload is not None
+        self.assertIn("claimed for sending", payload["error"].lower())
+
     def test_mark_unsent_clears_sent_state_and_preserves_approval(self):
         self.client.put(
             "/api/emails/weeks/2026-03-09",
@@ -767,6 +847,28 @@ class AppApiTests(unittest.TestCase):
         self.assertFalse(save_payload["week"]["sent"]["sent"])
         self.assertFalse(save_payload["week"]["sent"]["sending"])
 
+    def test_save_week_rejects_send_locked_week(self):
+        self.client.put(
+            "/api/emails/weeks/2026-03-09",
+            json={"start_date": "2026-03-09", "end_date": "2026-03-15", "events": []},
+        )
+        self.client.post("/api/emails/weeks/2026-03-09/approve", headers={"X-Email-Actor": "reviewer"})
+        self.client.post(
+            "/api/emails/weeks/2026-03-09/sent",
+            json={"state": "sending"},
+            headers={"X-Email-Actor": "sender-bot"},
+        )
+
+        response = self.client.put(
+            "/api/emails/weeks/2026-03-09",
+            json={"start_date": "2026-03-09", "end_date": "2026-03-15", "heading": "Edited", "events": []},
+        )
+
+        self.assertEqual(response.status_code, 409)
+        payload = response.get_json()
+        assert payload is not None
+        self.assertIn("mark it unsent", payload["error"].lower())
+
     def test_create_custom_event_resets_approval(self):
         self.client.put(
             "/api/emails/weeks/2026-03-09",
@@ -831,6 +933,44 @@ class AppApiTests(unittest.TestCase):
         self.assertFalse(payload["week"]["approval"]["approved"])
         self.assertEqual(payload["week"]["events"][0]["source"], "custom")
         self.assertEqual(payload["week"]["events"][0]["metadata"]["request_id"], request_id)
+
+    def test_approving_event_request_rolls_back_week_if_review_write_fails(self):
+        self.client.application.config["EMAILS_REQUEST_STORE"] = _FailingReviewRequestStore()
+        failing_store = self.client.application.config["EMAILS_REQUEST_STORE"]
+        request_record = failing_store.submit_request(
+            {
+                "title": "Admissions Night",
+                "start_date": "2026-03-12",
+                "end_date": "2026-03-12",
+                "time_text": "6:00 PM",
+                "location": "Welcome Center",
+                "category": "Admissions",
+                "requester_name": "Jordan Smith",
+                "requester_email": "jordan@kentdenver.org",
+            }
+        )
+
+        self.client.put(
+            "/api/emails/weeks/2026-03-09",
+            json={
+                "start_date": "2026-03-09",
+                "end_date": "2026-03-15",
+                "heading": "Original Heading",
+                "events": [],
+            },
+        )
+
+        response = self.client.post(
+            f"/api/emails/weeks/2026-03-09/requests/{request_record.request_id}/approve",
+            json={"reviewer_notes": "Looks good for this week."},
+        )
+
+        self.assertEqual(response.status_code, 503)
+        week_response = self.client.get("/api/emails/weeks/2026-03-09")
+        self.assertEqual(week_response.status_code, 200)
+        week_payload = week_response.get_json()
+        assert week_payload is not None
+        self.assertEqual(week_payload["week"]["events"], [])
 
     def test_denying_event_request_records_review_without_creating_event(self):
         request_response = self.client.post(

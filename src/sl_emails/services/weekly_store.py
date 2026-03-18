@@ -11,6 +11,12 @@ except ImportError:  # pragma: no cover
     credentials = None
     firestore = None
 
+try:
+    from google.api_core.exceptions import AlreadyExists
+except ImportError:  # pragma: no cover
+    class AlreadyExists(Exception):
+        """Fallback exception when google-api-core is unavailable."""
+
 from ..contracts.firestore_week_shape import EMAIL_WEEKS_COLLECTION, EVENTS_SUBCOLLECTION
 from ..config import RuntimeFirestoreConfig
 from ..domain.dates import iso_to_date, time_sort_key, utc_now_iso, week_end_for
@@ -30,6 +36,8 @@ from ..domain.weekly import (
 
 class WeeklyEmailStore(Protocol):
     def get_week(self, week_id: str) -> WeeklyDraftRecord | None: ...
+
+    def create_week_if_missing(self, week_id: str, payload: dict[str, Any]) -> WeeklyDraftRecord | None: ...
 
     def save_week(self, week_id: str, payload: dict[str, Any]) -> WeeklyDraftRecord: ...
 
@@ -54,6 +62,18 @@ def merge_metadata(base: dict[str, Any] | None, patch: dict[str, Any] | None) ->
         else:
             result[key] = value
     return result
+
+
+def is_send_locked(sent_state: Any) -> bool:
+    normalized = normalize_sent_state(sent_state)
+    return bool(normalized.get("sent") or normalized.get("sending"))
+
+
+def assert_week_editable(existing: WeeklyDraftRecord | None) -> None:
+    if existing is None:
+        return
+    if is_send_locked(existing.sent):
+        raise ValueError("Week is locked for sending. Mark it unsent before editing the draft.")
 
 
 def normalize_event_payload(
@@ -153,7 +173,7 @@ def normalize_week_payload(
         heading=str(payload.get("heading") or (existing.heading if existing else DEFAULT_HEADING)).strip() or DEFAULT_HEADING,
         status=DEFAULT_STATUS,
         approval=default_approval_state(),
-        sent=normalize_sent_state(existing.sent if existing else None),
+        sent=default_sent_state(),
         notes=str(payload.get("notes") or (existing.notes if existing else "")).strip(),
         subject_overrides=normalize_subject_overrides(
             payload.get("subject_overrides")
@@ -191,8 +211,17 @@ class MemoryWeeklyEmailStore:
             updated_at=week.updated_at,
         )
 
+    def create_week_if_missing(self, week_id: str, payload: dict[str, Any]) -> WeeklyDraftRecord | None:
+        if week_id in self._weeks:
+            return None
+        week = normalize_week_payload(week_id, payload)
+        self._weeks[week_id] = week
+        return self.get_week(week_id)  # type: ignore[return-value]
+
     def save_week(self, week_id: str, payload: dict[str, Any]) -> WeeklyDraftRecord:
-        week = normalize_week_payload(week_id, payload, existing=self._weeks.get(week_id))
+        existing = self._weeks.get(week_id)
+        assert_week_editable(existing)
+        week = normalize_week_payload(week_id, payload, existing=existing)
         self._weeks[week_id] = week
         return self.get_week(week_id)  # type: ignore[return-value]
 
@@ -208,6 +237,8 @@ class MemoryWeeklyEmailStore:
         week = self._weeks.get(week_id)
         if week is None:
             raise KeyError(week_id)
+        if is_send_locked(week.sent):
+            raise ValueError("Week is locked for sending. Mark it unsent before approving again.")
         timestamp = utc_now_iso()
         week.status = "approved"
         week.approval = {"approved": True, "approved_at": timestamp, "approved_by": approved_by}
@@ -241,8 +272,11 @@ class MemoryWeeklyEmailStore:
             raise KeyError(week_id)
         if not week.approval.get("approved"):
             raise ValueError("Week must be approved before it can be marked sent")
-        if normalize_sent_state(week.sent).get("sent"):
+        sent_state = normalize_sent_state(week.sent)
+        if sent_state.get("sent"):
             return self.get_week(week_id)  # type: ignore[return-value]
+        if not sent_state.get("sending"):
+            raise ValueError("Week must be claimed for sending before it can be marked sent")
         timestamp = utc_now_iso()
         week.sent = {"sent": True, "sent_at": timestamp, "sent_by": sent_by, "sending": False, "sending_at": "", "sending_by": ""}
         week.updated_at = timestamp
@@ -309,9 +343,15 @@ class FirestoreWeeklyEmailStore:
     def _week_ref(self, week_id: str):
         return self._get_client().collection(self.collection_name).document(week_id)
 
+    def _week_snapshot(self, week_id: str, *, transaction: Any | None = None):
+        week_ref = self._week_ref(week_id)
+        if transaction is None:
+            return week_ref.get()
+        return week_ref.get(transaction=transaction)
+
     def get_week(self, week_id: str) -> WeeklyDraftRecord | None:
         week_ref = self._week_ref(week_id)
-        snapshot = week_ref.get()
+        snapshot = self._week_snapshot(week_id)
         if not snapshot.exists:
             return None
         data = snapshot.to_dict() or {}
@@ -333,8 +373,22 @@ class FirestoreWeeklyEmailStore:
             updated_at=str(data.get("updated_at") or ""),
         )
 
+    def create_week_if_missing(self, week_id: str, payload: dict[str, Any]) -> WeeklyDraftRecord | None:
+        week = normalize_week_payload(week_id, payload)
+        week_ref = self._week_ref(week_id)
+        batch = self._get_client().batch()
+        batch.create(week_ref, week.to_firestore())
+        for event in week.events:
+            batch.set(week_ref.collection(EVENTS_SUBCOLLECTION).document(event.id), event.to_firestore())
+        try:
+            batch.commit()
+        except AlreadyExists:
+            return None
+        return self.get_week(week_id)  # type: ignore[return-value]
+
     def save_week(self, week_id: str, payload: dict[str, Any]) -> WeeklyDraftRecord:
         existing = self.get_week(week_id)
+        assert_week_editable(existing)
         week = normalize_week_payload(week_id, payload, existing=existing)
         week_ref = self._week_ref(week_id)
         current_ids = {item.id for item in (existing.events if existing else [])}
@@ -357,64 +411,138 @@ class FirestoreWeeklyEmailStore:
         return self.save_week(week_id, base_payload)
 
     def approve_week(self, week_id: str, approved_by: str = "open-access") -> WeeklyDraftRecord:
-        week = self.get_week(week_id)
-        if week is None:
-            raise KeyError(week_id)
-        timestamp = utc_now_iso()
-        week.status = "approved"
-        week.approval = {"approved": True, "approved_at": timestamp, "approved_by": approved_by}
-        week.updated_at = timestamp
-        self._week_ref(week_id).set(week.to_firestore(), merge=True)
+        transaction = self._get_client().transaction()
+        week_ref = self._week_ref(week_id)
+
+        @firestore.transactional
+        def apply(transaction: Any) -> None:
+            snapshot = self._week_snapshot(week_id, transaction=transaction)
+            if not snapshot.exists:
+                raise KeyError(week_id)
+            data = snapshot.to_dict() or {}
+            if is_send_locked(data.get("sent")):
+                raise ValueError("Week is locked for sending. Mark it unsent before approving again.")
+            timestamp = utc_now_iso()
+            transaction.set(
+                week_ref,
+                {
+                    "status": "approved",
+                    "approval": {"approved": True, "approved_at": timestamp, "approved_by": approved_by},
+                    "updated_at": timestamp,
+                },
+                merge=True,
+            )
+
+        apply(transaction)
         return self.get_week(week_id)  # type: ignore[return-value]
 
     def claim_week_send(self, week_id: str, sending_by: str = "open-access") -> WeeklyDraftRecord:
-        week = self.get_week(week_id)
-        if week is None:
-            raise KeyError(week_id)
-        if not week.approval.get("approved"):
-            raise ValueError("Week must be approved before it can be claimed for sending")
-        sent_state = normalize_sent_state(week.sent)
-        if sent_state.get("sent"):
-            return week
-        if sent_state.get("sending"):
-            raise ValueError(
-                f"Week is already claimed for sending by {sent_state.get('sending_by') or 'unknown actor'} "
-                f"at {sent_state.get('sending_at') or 'unknown time'}"
+        transaction = self._get_client().transaction()
+        week_ref = self._week_ref(week_id)
+
+        @firestore.transactional
+        def apply(transaction: Any) -> None:
+            snapshot = self._week_snapshot(week_id, transaction=transaction)
+            if not snapshot.exists:
+                raise KeyError(week_id)
+            data = snapshot.to_dict() or {}
+            approval = data.get("approval") if isinstance(data.get("approval"), dict) else default_approval_state()
+            if not approval.get("approved"):
+                raise ValueError("Week must be approved before it can be claimed for sending")
+            sent_state = normalize_sent_state(data.get("sent"))
+            if sent_state.get("sent"):
+                return
+            if sent_state.get("sending"):
+                raise ValueError(
+                    f"Week is already claimed for sending by {sent_state.get('sending_by') or 'unknown actor'} "
+                    f"at {sent_state.get('sending_at') or 'unknown time'}"
+                )
+            timestamp = utc_now_iso()
+            transaction.set(
+                week_ref,
+                {
+                    "sent": {
+                        "sent": False,
+                        "sent_at": "",
+                        "sent_by": "",
+                        "sending": True,
+                        "sending_at": timestamp,
+                        "sending_by": sending_by,
+                    },
+                    "updated_at": timestamp,
+                },
+                merge=True,
             )
-        timestamp = utc_now_iso()
-        sent = {"sent": False, "sent_at": "", "sent_by": "", "sending": True, "sending_at": timestamp, "sending_by": sending_by}
-        self._week_ref(week_id).set({"sent": sent, "updated_at": timestamp}, merge=True)
+
+        apply(transaction)
         return self.get_week(week_id)  # type: ignore[return-value]
 
     def mark_week_sent(self, week_id: str, sent_by: str = "open-access") -> WeeklyDraftRecord:
-        week = self.get_week(week_id)
-        if week is None:
-            raise KeyError(week_id)
-        if not week.approval.get("approved"):
-            raise ValueError("Week must be approved before it can be marked sent")
-        if normalize_sent_state(week.sent).get("sent"):
-            return week
-        timestamp = utc_now_iso()
-        sent = {"sent": True, "sent_at": timestamp, "sent_by": sent_by, "sending": False, "sending_at": "", "sending_by": ""}
-        self._week_ref(week_id).set({"sent": sent, "updated_at": timestamp}, merge=True)
+        transaction = self._get_client().transaction()
+        week_ref = self._week_ref(week_id)
+
+        @firestore.transactional
+        def apply(transaction: Any) -> None:
+            snapshot = self._week_snapshot(week_id, transaction=transaction)
+            if not snapshot.exists:
+                raise KeyError(week_id)
+            data = snapshot.to_dict() or {}
+            approval = data.get("approval") if isinstance(data.get("approval"), dict) else default_approval_state()
+            if not approval.get("approved"):
+                raise ValueError("Week must be approved before it can be marked sent")
+            sent_state = normalize_sent_state(data.get("sent"))
+            if sent_state.get("sent"):
+                return
+            if not sent_state.get("sending"):
+                raise ValueError("Week must be claimed for sending before it can be marked sent")
+            timestamp = utc_now_iso()
+            transaction.set(
+                week_ref,
+                {
+                    "sent": {
+                        "sent": True,
+                        "sent_at": timestamp,
+                        "sent_by": sent_by,
+                        "sending": False,
+                        "sending_at": "",
+                        "sending_by": "",
+                    },
+                    "updated_at": timestamp,
+                },
+                merge=True,
+            )
+
+        apply(transaction)
         return self.get_week(week_id)  # type: ignore[return-value]
 
     def reset_week_send(self, week_id: str) -> WeeklyDraftRecord:
-        week = self.get_week(week_id)
-        if week is None:
-            raise KeyError(week_id)
-        sent_state = normalize_sent_state(week.sent)
-        if not sent_state.get("sent") and not sent_state.get("sending"):
-            return week
-        timestamp = utc_now_iso()
-        self._week_ref(week_id).set({"sent": default_sent_state(), "updated_at": timestamp}, merge=True)
+        transaction = self._get_client().transaction()
+        week_ref = self._week_ref(week_id)
+
+        @firestore.transactional
+        def apply(transaction: Any) -> None:
+            snapshot = self._week_snapshot(week_id, transaction=transaction)
+            if not snapshot.exists:
+                raise KeyError(week_id)
+            timestamp = utc_now_iso()
+            transaction.set(week_ref, {"sent": default_sent_state(), "updated_at": timestamp}, merge=True)
+
+        apply(transaction)
         return self.get_week(week_id)  # type: ignore[return-value]
 
     def update_week_metadata(self, week_id: str, metadata: dict[str, Any]) -> WeeklyDraftRecord:
-        week = self.get_week(week_id)
-        if week is None:
-            raise KeyError(week_id)
-        merged = merge_metadata(week.metadata, metadata)
-        timestamp = utc_now_iso()
-        self._week_ref(week_id).set({"metadata": merged, "updated_at": timestamp}, merge=True)
+        transaction = self._get_client().transaction()
+        week_ref = self._week_ref(week_id)
+
+        @firestore.transactional
+        def apply(transaction: Any) -> None:
+            snapshot = self._week_snapshot(week_id, transaction=transaction)
+            if not snapshot.exists:
+                raise KeyError(week_id)
+            data = snapshot.to_dict() or {}
+            merged = merge_metadata(data.get("metadata") if isinstance(data.get("metadata"), dict) else {}, metadata)
+            timestamp = utc_now_iso()
+            transaction.set(week_ref, {"metadata": merged, "updated_at": timestamp}, merge=True)
+
+        apply(transaction)
         return self.get_week(week_id)  # type: ignore[return-value]

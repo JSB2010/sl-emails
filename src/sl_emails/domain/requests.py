@@ -57,6 +57,7 @@ class EventRequestRecord:
     team: str = ""
     opponent: str = ""
     is_home: bool = True
+    metadata: dict[str, Any] = field(default_factory=dict)
     status: str = "pending"
     review: dict[str, Any] = field(default_factory=default_request_review)
     submitted_at: str = ""
@@ -93,6 +94,7 @@ class EventRequestRecord:
             team=str(data.get("team") or title).strip(),
             opponent=str(data.get("opponent") or "").strip(),
             is_home=bool(data.get("is_home", True)),
+            metadata=data.get("metadata") if isinstance(data.get("metadata"), dict) else {},
             status=str(data.get("status") or "pending").strip().lower() or "pending",
             review=normalize_request_review(data.get("review")),
             submitted_at=str(data.get("submitted_at") or "").strip(),

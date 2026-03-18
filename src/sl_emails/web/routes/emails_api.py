@@ -11,8 +11,9 @@ from sl_emails.ingest import generate_games
 from sl_emails.services.request_store import event_payload_for_request
 from sl_emails.services.weekly_ingest import WeeklyIngestResult, scheduled_ingest_week, source_refresh_week
 from sl_emails.services.weekly_outputs import build_weekly_email_outputs as render_weekly_email_outputs
+from sl_emails.web.request_protection import HONEYPOT_FIELD, RequestProtectionError, first_forwarded_ip
 
-from ..support import current_user_email, get_emails_store, get_request_store, json_error, require_automation_key, require_emails_admin, require_emails_operator, write_activity
+from ..support import current_user_email, get_emails_store, get_request_protector, get_request_store, json_error, require_automation_key, require_emails_admin, require_emails_operator, write_activity
 
 
 blueprint = Blueprint("emails_api", __name__, url_prefix="/api/emails")
@@ -44,9 +45,43 @@ def update_week_status(week_id: str, patch: dict[str, Any]) -> Any:
     return get_emails_store().update_week_metadata(week_id, patch)
 
 
+def value_error_status(exc: ValueError) -> int:
+    message = str(exc).lower()
+    if any(
+        token in message
+        for token in (
+            "locked for sending",
+            "already claimed for sending",
+            "must be approved before",
+            "claimed for sending before it can be marked sent",
+            "only pending requests can be reviewed",
+        )
+    ):
+        return 409
+    return 400
+
+
 @blueprint.post("/requests")
 def submit_event_request() -> Any:
     payload = request.get_json(silent=True) or {}
+    protector = get_request_protector()
+    remote_addr = first_forwarded_ip(request.headers.get("X-Forwarded-For", ""), request.remote_addr or "")
+    user_agent = str(request.headers.get("User-Agent") or "").strip()
+    try:
+        protector.validate_honeypot(payload)
+        protector.check_rate_limit(f"{remote_addr}|{user_agent[:128]}")
+    except RequestProtectionError as exc:
+        return json_error(str(exc), status=getattr(exc, "status_code", 400))
+
+    payload.pop(HONEYPOT_FIELD, None)
+    payload["metadata"] = {
+        **(payload.get("metadata") if isinstance(payload.get("metadata"), dict) else {}),
+        "submission": protector.submission_metadata(
+            remote_addr=remote_addr,
+            user_agent=user_agent,
+            referrer=str(request.headers.get("Referer") or "").strip(),
+        ),
+    }
     try:
         record = get_request_store().submit_request(payload)
     except ValueError as exc:
@@ -88,7 +123,7 @@ def save_week(week_id: str) -> Any:
     try:
         week = get_emails_store().save_week(week_id, payload)
     except ValueError as exc:
-        return json_error(str(exc), status=400)
+        return json_error(str(exc), status=value_error_status(exc))
     except RuntimeError as exc:
         return json_error(str(exc), status=503)
 
@@ -141,7 +176,7 @@ def create_custom_event(week_id: str) -> Any:
     try:
         week = get_emails_store().add_event(week_id, payload)
     except ValueError as exc:
-        return json_error(str(exc), status=400)
+        return json_error(str(exc), status=value_error_status(exc))
     except RuntimeError as exc:
         return json_error(str(exc), status=503)
 
@@ -164,25 +199,56 @@ def list_week_requests(week_id: str) -> Any:
 def approve_event_request(week_id: str, request_id: str) -> Any:
     actor = actor_for_request()
     payload = request.get_json(silent=True) or {}
-    request_record = get_request_store().get_request(week_id, request_id)
+    request_store = get_request_store()
+    emails_store = get_emails_store()
+    request_record = request_store.get_request(week_id, request_id)
     if request_record is None:
         return json_error("No event request found for that week", status=404)
     if request_record.status != "pending":
         return json_error("Only pending requests can be reviewed", status=409)
 
-    event_payload = event_payload_for_request(request_record)
     try:
-        week = get_emails_store().add_event(week_id, event_payload)
-        updated_request = get_request_store().review_request(
-            week_id,
-            request_id,
-            decision="approved",
-            reviewed_by=actor,
-            reviewer_notes=str(payload.get("reviewer_notes") or "").strip(),
-            resolved_event_id=str(event_payload["id"]),
-        )
+        approve_into_week = getattr(request_store, "approve_request_into_week", None)
+        if callable(approve_into_week):
+            try:
+                updated_request, week = approve_into_week(
+                    week_id,
+                    request_id,
+                    reviewed_by=actor,
+                    reviewer_notes=str(payload.get("reviewer_notes") or "").strip(),
+                )
+            except NotImplementedError:
+                existing_week = emails_store.get_week(week_id)
+                event_payload = event_payload_for_request(request_record)
+                week = emails_store.add_event(week_id, event_payload)
+                try:
+                    updated_request = request_store.review_request(
+                        week_id,
+                        request_id,
+                        decision="approved",
+                        reviewed_by=actor,
+                        reviewer_notes=str(payload.get("reviewer_notes") or "").strip(),
+                        resolved_event_id=str(event_payload["id"]),
+                    )
+                except Exception:
+                    if existing_week is not None:
+                        emails_store.save_week(week_id, existing_week.to_dict())
+                    raise
+        else:
+            event_payload = event_payload_for_request(request_record)
+            week = emails_store.add_event(week_id, event_payload)
+            updated_request = request_store.review_request(
+                week_id,
+                request_id,
+                decision="approved",
+                reviewed_by=actor,
+                reviewer_notes=str(payload.get("reviewer_notes") or "").strip(),
+                resolved_event_id=str(event_payload["id"]),
+            )
     except ValueError as exc:
-        return json_error(str(exc), status=400)
+        return json_error(str(exc), status=value_error_status(exc))
+    except KeyError:
+        return json_error("No event request found for that week", status=404)
     except RuntimeError as exc:
         return json_error(str(exc), status=503)
 
@@ -266,6 +332,8 @@ def approve_week(week_id: str) -> Any:
         )
     except KeyError:
         return json_error(f"No weekly draft found for {week_id}", status=404)
+    except ValueError as exc:
+        return json_error(str(exc), status=value_error_status(exc))
     except RuntimeError as exc:
         return json_error(str(exc), status=503)
 

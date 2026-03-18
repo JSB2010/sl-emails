@@ -18,6 +18,7 @@ from sl_emails.services.activity_log import FirestoreActivityLogStore
 from sl_emails.services.admin_settings import DEFAULT_ALLOWED_ADMIN_EMAILS, FirestoreAdminSettingsStore, normalize_email_list
 from sl_emails.services.request_store import FirestoreEventRequestStore
 from sl_emails.services.weekly_store import FirestoreWeeklyEmailStore
+from sl_emails.web.request_protection import PublicRequestProtector
 
 
 def get_emails_store() -> FirestoreWeeklyEmailStore:
@@ -50,6 +51,14 @@ def get_activity_store() -> FirestoreActivityLogStore:
         store = FirestoreActivityLogStore()
         current_app.config["EMAILS_ACTIVITY_STORE"] = store
     return store
+
+
+def get_request_protector() -> PublicRequestProtector:
+    protector = current_app.config.get("EMAILS_REQUEST_PROTECTOR")
+    if protector is None:
+        protector = PublicRequestProtector()
+        current_app.config["EMAILS_REQUEST_PROTECTOR"] = protector
+    return protector
 
 
 def bootstrap_admin_emails() -> list[str]:
@@ -208,6 +217,7 @@ __all__ = [
     "get_activity_store",
     "get_emails_store",
     "get_request_store",
+    "get_request_protector",
     "get_settings_store",
     "is_authenticated_admin",
     "json_error",

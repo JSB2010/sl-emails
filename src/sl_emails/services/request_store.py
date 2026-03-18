@@ -2,12 +2,18 @@ from __future__ import annotations
 
 from typing import Any, Protocol
 
+try:
+    from firebase_admin import firestore
+except ImportError:  # pragma: no cover
+    firestore = None
+
 from sl_emails.config import EMAILS_REQUESTS_SUBCOLLECTION
-from sl_emails.domain.dates import iso_to_date, utc_now_iso
+from sl_emails.contracts.firestore_week_shape import EVENTS_SUBCOLLECTION
+from sl_emails.domain.dates import iso_to_date, utc_now_iso, week_end_for
 from sl_emails.domain.requests import EventRequestRecord, default_request_review, week_start_for_date
-from sl_emails.domain.weekly import AUDIENCES, normalize_audiences
+from sl_emails.domain.weekly import AUDIENCES, DEFAULT_HEADING, DEFAULT_STATUS, default_approval_state, default_sent_state, normalize_audiences, normalize_subject_overrides
 from sl_emails.services.admin_settings import is_valid_email, normalize_email
-from sl_emails.services.weekly_store import FirestoreWeeklyEmailStore
+from sl_emails.services.weekly_store import FirestoreWeeklyEmailStore, is_send_locked, normalize_event_payload
 
 
 REQUEST_STATUS_ORDER = {"pending": 0, "approved": 1, "denied": 2}
@@ -30,6 +36,15 @@ class EventRequestStore(Protocol):
         reviewer_notes: str = "",
         resolved_event_id: str = "",
     ) -> EventRequestRecord: ...
+
+    def approve_request_into_week(
+        self,
+        week_id: str,
+        request_id: str,
+        *,
+        reviewed_by: str,
+        reviewer_notes: str = "",
+    ) -> tuple[EventRequestRecord, Any]: ...
 
 
 def _sort_requests(requests: list[EventRequestRecord]) -> list[EventRequestRecord]:
@@ -104,6 +119,7 @@ def normalize_request_payload(
         team=str(payload.get("team") or (existing.team if existing else title)).strip() or title,
         opponent=str(payload.get("opponent") or (existing.opponent if existing else "")).strip(),
         is_home=bool(payload.get("is_home", existing.is_home if existing else True)),
+        metadata=payload.get("metadata") if isinstance(payload.get("metadata"), dict) else (dict(existing.metadata) if existing else {}),
         status=existing.status if existing else "pending",
         review=dict(existing.review) if existing else default_request_review(),
         submitted_at=existing.submitted_at if existing else timestamp,
@@ -186,6 +202,16 @@ class MemoryEventRequestStore:
         self._requests.setdefault(week_id, {})[request_id] = record
         return self.get_request(week_id, request_id)  # type: ignore[return-value]
 
+    def approve_request_into_week(
+        self,
+        week_id: str,
+        request_id: str,
+        *,
+        reviewed_by: str,
+        reviewer_notes: str = "",
+    ) -> tuple[EventRequestRecord, Any]:
+        raise NotImplementedError("Memory request approvals must be coordinated by the caller")
+
 
 class FirestoreEventRequestStore:
     def __init__(self, *, subcollection_name: str = EMAILS_REQUESTS_SUBCOLLECTION) -> None:
@@ -243,6 +269,88 @@ class FirestoreEventRequestStore:
         }
         self._request_collection(week_id).document(request_id).set(patch, merge=True)
         return self.get_request(week_id, request_id)  # type: ignore[return-value]
+
+    def approve_request_into_week(
+        self,
+        week_id: str,
+        request_id: str,
+        *,
+        reviewed_by: str,
+        reviewer_notes: str = "",
+    ) -> tuple[EventRequestRecord, Any]:
+        if firestore is None:
+            raise RuntimeError("firebase_admin.firestore is not available")
+
+        client = self._weekly_store._get_client()
+        week_ref = self._weekly_store._week_ref(week_id)
+        request_ref = self._request_collection(week_id).document(request_id)
+        event_ref = week_ref.collection(EVENTS_SUBCOLLECTION).document(f"request-{request_id}")
+        transaction = client.transaction()
+
+        @firestore.transactional
+        def apply(transaction: Any) -> None:
+            request_snapshot = request_ref.get(transaction=transaction)
+            if not request_snapshot.exists:
+                raise KeyError(request_id)
+
+            request_record = EventRequestRecord.from_dict(request_snapshot.to_dict() or {})
+            if request_record.status != "pending":
+                raise ValueError("Only pending requests can be reviewed")
+
+            week_snapshot = week_ref.get(transaction=transaction)
+            week_data = week_snapshot.to_dict() or {}
+            if week_snapshot.exists and is_send_locked(week_data.get("sent")):
+                raise ValueError("Week is locked for sending. Mark it unsent before editing the draft.")
+
+            timestamp = utc_now_iso()
+            event_record = normalize_event_payload(
+                event_payload_for_request(request_record),
+                week_start=week_id,
+                week_end=week_end_for(week_id),
+                force_source="custom",
+            )
+            created_at = str(week_data.get("created_at") or timestamp)
+            transaction.set(
+                week_ref,
+                {
+                    "week_id": week_id,
+                    "start_date": str(week_data.get("start_date") or week_id),
+                    "end_date": str(week_data.get("end_date") or week_end_for(week_id)),
+                    "heading": str(week_data.get("heading") or DEFAULT_HEADING),
+                    "status": DEFAULT_STATUS,
+                    "approval": default_approval_state(),
+                    "sent": default_sent_state(),
+                    "notes": str(week_data.get("notes") or ""),
+                    "subject_overrides": normalize_subject_overrides(week_data.get("subject_overrides")),
+                    "metadata": week_data.get("metadata") if isinstance(week_data.get("metadata"), dict) else {},
+                    "created_at": created_at,
+                    "updated_at": timestamp,
+                },
+                merge=True,
+            )
+            transaction.set(event_ref, event_record.to_firestore())
+            transaction.set(
+                request_ref,
+                {
+                    "status": "approved",
+                    "review": {
+                        "decision": "approved",
+                        "reviewed_at": timestamp,
+                        "reviewed_by": str(reviewed_by or "").strip(),
+                        "reviewer_notes": str(reviewer_notes or "").strip(),
+                        "resolved_event_id": event_record.id,
+                    },
+                    "updated_at": timestamp,
+                },
+                merge=True,
+            )
+
+        apply(transaction)
+        updated_request = self.get_request(week_id, request_id)
+        updated_week = self._weekly_store.get_week(week_id)
+        if updated_request is None or updated_week is None:
+            raise RuntimeError("Approved request transaction committed, but follow-up reads failed")
+        return updated_request, updated_week
 
 
 __all__ = [

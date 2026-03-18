@@ -16,6 +16,7 @@ from sl_emails.config import WEB_STATIC_DIR as STATIC_DIR
 from sl_emails.config import WEB_TEMPLATES_DIR as TEMPLATE_DIR
 from sl_emails.services.activity_log import FirestoreActivityLogStore
 from sl_emails.services.admin_settings import DEFAULT_ALLOWED_ADMIN_EMAILS, FirestoreAdminSettingsStore, normalize_email_list
+from sl_emails.services.request_store import FirestoreEventRequestStore
 from sl_emails.services.weekly_store import FirestoreWeeklyEmailStore
 
 
@@ -32,6 +33,14 @@ def get_settings_store() -> FirestoreAdminSettingsStore:
     if store is None:
         store = FirestoreAdminSettingsStore()
         current_app.config["EMAILS_SETTINGS_STORE"] = store
+    return store
+
+
+def get_request_store() -> FirestoreEventRequestStore:
+    store = current_app.config.get("EMAILS_REQUEST_STORE")
+    if store is None:
+        store = FirestoreEventRequestStore()
+        current_app.config["EMAILS_REQUEST_STORE"] = store
     return store
 
 
@@ -198,6 +207,7 @@ __all__ = [
     "ensure_admin_settings",
     "get_activity_store",
     "get_emails_store",
+    "get_request_store",
     "get_settings_store",
     "is_authenticated_admin",
     "json_error",

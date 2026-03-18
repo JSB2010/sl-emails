@@ -4,6 +4,7 @@ from unittest.mock import patch
 from sl_emails.poster.carousel import PosterEvent
 from sl_emails.services.activity_log import MemoryActivityLogStore
 from sl_emails.services.admin_settings import MemoryAdminSettingsStore
+from sl_emails.services.request_store import MemoryEventRequestStore
 from sl_emails.services import weekly_ingest
 from sl_emails.services.weekly_store import MemoryWeeklyEmailStore
 from sl_emails.web import create_app
@@ -17,6 +18,7 @@ class AppApiTests(unittest.TestCase):
                 "TESTING": True,
                 "SESSION_COOKIE_SECURE": False,
                 "EMAILS_STORE": MemoryWeeklyEmailStore(),
+                "EMAILS_REQUEST_STORE": MemoryEventRequestStore(),
                 "EMAILS_SETTINGS_STORE": MemoryAdminSettingsStore(),
                 "EMAILS_ACTIVITY_STORE": MemoryActivityLogStore(),
             }
@@ -77,6 +79,41 @@ class AppApiTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertIn('"weekId": "2026-03-09"', response.get_data(as_text=True))
+
+    def test_public_request_page_is_available_without_login(self):
+        self.logout()
+
+        response = self.client.get("/request")
+
+        self.assertEqual(response.status_code, 200)
+        body = response.get_data(as_text=True)
+        self.assertIn("Sports Email Event Request", body)
+        self.assertIn('id="request-form"', body)
+
+    def test_public_request_submission_routes_to_review_week(self):
+        self.logout()
+
+        response = self.client.post(
+            "/api/emails/requests",
+            json={
+                "title": "Robotics Night",
+                "start_date": "2026-03-11",
+                "end_date": "2026-03-11",
+                "time_text": "6:00 PM",
+                "location": "Innovation Lab",
+                "category": "STEM",
+                "requester_name": "Jordan Smith",
+                "requester_email": "jordan@kentdenver.org",
+            },
+        )
+
+        self.assertEqual(response.status_code, 201)
+        payload = response.get_json()
+        assert payload is not None
+        self.assertEqual(payload["request"]["status"], "pending")
+        self.assertEqual(payload["request"]["week_id"], "2026-03-09")
+        self.assertIn("March 9", payload["week_label"])
+        self.assertIn("2026", payload["week_label"])
 
     def test_non_allowlisted_user_is_redirected_to_access_denied(self):
         self.logout()
@@ -754,6 +791,78 @@ class AppApiTests(unittest.TestCase):
         assert payload is not None
         self.assertFalse(payload["week"]["approval"]["approved"])
         self.assertEqual(payload["event"]["source"], "custom")
+
+    def test_approving_event_request_adds_custom_event_and_resets_approval(self):
+        request_response = self.client.post(
+            "/api/emails/requests",
+            json={
+                "title": "Admissions Night",
+                "start_date": "2026-03-12",
+                "end_date": "2026-03-12",
+                "time_text": "6:00 PM",
+                "location": "Welcome Center",
+                "category": "Admissions",
+                "description": "Meet the coaches and tour the campus.",
+                "requester_name": "Jordan Smith",
+                "requester_email": "jordan@kentdenver.org",
+            },
+        )
+        request_payload = request_response.get_json()
+        assert request_payload is not None
+        request_id = request_payload["request"]["request_id"]
+
+        self.client.put(
+            "/api/emails/weeks/2026-03-09",
+            json={"start_date": "2026-03-09", "end_date": "2026-03-15", "events": []},
+        )
+        self.client.post("/api/emails/weeks/2026-03-09/approve")
+
+        response = self.client.post(
+            f"/api/emails/weeks/2026-03-09/requests/{request_id}/approve",
+            json={"reviewer_notes": "Looks good for this week."},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        assert payload is not None
+        self.assertEqual(payload["request"]["status"], "approved")
+        self.assertEqual(payload["request"]["review"]["decision"], "approved")
+        self.assertEqual(payload["request"]["review"]["resolved_event_id"], f"request-{request_id}")
+        self.assertFalse(payload["week"]["approval"]["approved"])
+        self.assertEqual(payload["week"]["events"][0]["source"], "custom")
+        self.assertEqual(payload["week"]["events"][0]["metadata"]["request_id"], request_id)
+
+    def test_denying_event_request_records_review_without_creating_event(self):
+        request_response = self.client.post(
+            "/api/emails/requests",
+            json={
+                "title": "Film Club Note",
+                "start_date": "2026-03-10",
+                "end_date": "2026-03-10",
+                "time_text": "3:30 PM",
+                "location": "Screening Room",
+                "category": "Club",
+                "requester_name": "Morgan Lee",
+                "requester_email": "morgan@kentdenver.org",
+            },
+        )
+        request_payload = request_response.get_json()
+        assert request_payload is not None
+        request_id = request_payload["request"]["request_id"]
+
+        response = self.client.post(
+            f"/api/emails/weeks/2026-03-09/requests/{request_id}/deny",
+            json={"reviewer_notes": "This is outside the sports email scope."},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        assert payload is not None
+        self.assertEqual(payload["request"]["status"], "denied")
+        self.assertEqual(payload["request"]["review"]["decision"], "denied")
+
+        week_response = self.client.get("/api/emails/weeks/2026-03-09")
+        self.assertEqual(week_response.status_code, 404)
 
 
 if __name__ == "__main__":

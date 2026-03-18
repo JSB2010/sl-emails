@@ -11,6 +11,7 @@
   const state = {
     weekId: defaults.weekId || '',
     week: null,
+    requests: [],
     outputs: null,
     dirty: false,
     filters: {
@@ -30,6 +31,8 @@
     markUnsentBtn: document.getElementById('mark-unsent'),
     addBtn: document.getElementById('add-custom'),
     exportBtn: document.getElementById('export-csv'),
+    requestSummary: document.getElementById('request-summary'),
+    requestList: document.getElementById('request-list'),
     heading: document.getElementById('week-heading'),
     notes: document.getElementById('week-notes'),
     msSubjectInput: document.getElementById('week-subject-ms'),
@@ -218,6 +221,40 @@
     };
   }
 
+  function normalizeRequest(item) {
+    return {
+      request_id: String(item.request_id || item.id || crypto.randomUUID()),
+      week_id: String(item.week_id || state.weekId || '').trim(),
+      title: String(item.title || item.team || 'Untitled Request').trim(),
+      start_date: String(item.start_date || item.date || state.weekId || '').trim(),
+      end_date: String(item.end_date || item.start_date || item.date || state.weekId || '').trim(),
+      time_text: String(item.time_text || item.time || 'TBA').trim() || 'TBA',
+      location: String(item.location || 'On Campus').trim() || 'On Campus',
+      category: String(item.category || 'School Event').trim() || 'School Event',
+      audiences: normalizeAudiences(item.audiences || item.audience) || ['middle-school', 'upper-school'],
+      requester_name: String(item.requester_name || '').trim(),
+      requester_email: String(item.requester_email || '').trim(),
+      kind: String(item.kind || 'event').trim().toLowerCase() || 'event',
+      subtitle: String(item.subtitle || '').trim(),
+      description: String(item.description || '').trim(),
+      link: String(item.link || '').trim(),
+      requester_notes: String(item.requester_notes || item.notes || '').trim(),
+      team: String(item.team || item.title || '').trim(),
+      opponent: String(item.opponent || '').trim(),
+      is_home: item.is_home !== false,
+      status: String(item.status || 'pending').trim().toLowerCase() || 'pending',
+      review: {
+        decision: String(item.review?.decision || '').trim().toLowerCase(),
+        reviewed_at: String(item.review?.reviewed_at || '').trim(),
+        reviewed_by: String(item.review?.reviewed_by || '').trim(),
+        reviewer_notes: String(item.review?.reviewer_notes || '').trim(),
+        resolved_event_id: String(item.review?.resolved_event_id || '').trim(),
+      },
+      submitted_at: String(item.submitted_at || '').trim(),
+      updated_at: String(item.updated_at || '').trim(),
+    };
+  }
+
   function blankWeek(weekId) {
     return {
       week_id: weekId,
@@ -381,13 +418,14 @@
     const hidden = events.filter((event) => event.status === 'hidden').length;
     const visible = events.length - hidden;
     const custom = events.filter((event) => event.source === 'custom').length;
+    const pendingRequests = state.requests.filter((item) => item.status === 'pending').length;
     const unsaved = state.dirty ? ' · unsaved changes' : '';
     const approved = week.approval?.approved;
     const sent = Boolean(week.sent?.sent);
     const sending = Boolean(week.sent?.sending);
 
     els.weekSummary.textContent = `${week.start_date} → ${week.end_date}`;
-    els.eventCount.textContent = `${events.length} events (${visible} visible, ${custom} custom)`;
+    els.eventCount.textContent = `${events.length} events (${visible} visible, ${custom} custom) · ${pendingRequests} pending requests`;
 
     if (sent) {
       els.stateBanner.className = 'state-banner state-sent';
@@ -457,6 +495,96 @@
     } else {
       els.statusSend.textContent = formatActivity(metadata.send, 'No send claim or completion recorded yet.');
     }
+  }
+
+  function requestCounts() {
+    const pending = state.requests.filter((item) => item.status === 'pending').length;
+    const approved = state.requests.filter((item) => item.status === 'approved').length;
+    const denied = state.requests.filter((item) => item.status === 'denied').length;
+    return { pending, approved, denied, total: state.requests.length };
+  }
+
+  function requestStatusLabel(status) {
+    if (status === 'approved') return 'Approved';
+    if (status === 'denied') return 'Denied';
+    return 'Pending Review';
+  }
+
+  function requestDateLabel(item) {
+    if (!item.start_date) return 'Date not provided';
+    if (item.end_date && item.end_date !== item.start_date) {
+      return `${item.start_date} \u2192 ${item.end_date}`;
+    }
+    return item.start_date;
+  }
+
+  function requestCardMarkup(item, index) {
+    const status = item.status || 'pending';
+    const reviewerNotes = item.review?.reviewer_notes || '';
+    const detailParts = [
+      item.time_text || 'TBA',
+      item.location || 'On Campus',
+      formatAudiences(item.audiences),
+      item.category || 'School Event',
+    ].filter(Boolean);
+    const requesterLabel = [item.requester_name, item.requester_email].filter(Boolean).join(' · ');
+    const reviewSummary = item.review?.reviewed_at || item.review?.reviewed_by
+      ? `${requestStatusLabel(status)} by ${item.review.reviewed_by || 'admin'}${item.review.reviewed_at ? ` at ${item.review.reviewed_at}` : ''}`
+      : '';
+
+    return `
+      <article class="request-card request-${escapeHtml(status)}" data-request-index="${index}">
+        <div class="request-card-head">
+          <div class="request-head-main">
+            <span class="request-status request-status-${escapeHtml(status)}">${escapeHtml(requestStatusLabel(status))}</span>
+            <h3>${escapeHtml(item.title)}</h3>
+            <p class="request-meta">${escapeHtml(requestDateLabel(item))} · ${escapeHtml(detailParts.join(' · '))}</p>
+          </div>
+          <div class="request-contact">
+            <strong>${escapeHtml(item.requester_name || 'Unknown requester')}</strong>
+            <span>${escapeHtml(item.requester_email || 'No email provided')}</span>
+          </div>
+        </div>
+        ${item.subtitle ? `<p class="request-block"><strong>Subtitle</strong><span>${escapeHtml(item.subtitle)}</span></p>` : ''}
+        ${item.description ? `<p class="request-block"><strong>Requested event details</strong><span>${escapeHtml(item.description)}</span></p>` : ''}
+        ${item.requester_notes ? `<p class="request-block"><strong>Requester notes</strong><span>${escapeHtml(item.requester_notes)}</span></p>` : ''}
+        ${item.link ? `<p class="request-block"><strong>Link</strong><a href="${escapeHtml(item.link)}" target="_blank" rel="noreferrer">${escapeHtml(item.link)}</a></p>` : ''}
+        ${status === 'pending' ? `
+          <label class="request-review-field">
+            Reviewer Note
+            <textarea data-request-field="reviewer_notes" rows="3" placeholder="Optional note to keep with the review decision.">${escapeHtml(reviewerNotes)}</textarea>
+          </label>
+          <div class="request-actions">
+            <button class="btn btn-approve" data-request-action="approve" type="button">Approve &amp; Add to Draft</button>
+            <button class="btn btn-ghost" data-request-action="deny" type="button">Deny Request</button>
+          </div>
+        ` : `
+          <div class="request-review-summary">
+            <strong>${escapeHtml(reviewSummary || requestStatusLabel(status))}</strong>
+            ${reviewerNotes ? `<span>${escapeHtml(reviewerNotes)}</span>` : ''}
+          </div>
+        `}
+        <p class="request-submitted">Submitted ${escapeHtml(item.submitted_at || 'recently')} · ${escapeHtml(requesterLabel)}</p>
+      </article>
+    `;
+  }
+
+  function renderRequests() {
+    if (!state.week) {
+      els.requestSummary.textContent = 'No requests loaded';
+      els.requestList.innerHTML = '<div class="empty-request-state">Load a week to review submitted requests.</div>';
+      return;
+    }
+
+    const counts = requestCounts();
+    if (!counts.total) {
+      els.requestSummary.textContent = '0 requests';
+      els.requestList.innerHTML = '<div class="empty-request-state">No public requests have been submitted for this week yet.</div>';
+      return;
+    }
+
+    els.requestSummary.textContent = `${counts.pending} pending · ${counts.approved} approved · ${counts.denied} denied`;
+    els.requestList.innerHTML = state.requests.map((item, index) => requestCardMarkup(item, index)).join('');
   }
 
   function renderFilters() {
@@ -580,6 +708,7 @@
     renderRows();
     renderPreview();
     renderStatus();
+    renderRequests();
 
     const isSent = Boolean(state.week?.sent?.sent);
     const isSending = Boolean(state.week?.sent?.sending);
@@ -617,6 +746,7 @@
   async function loadWeek() {
     const weekId = currentWeekId();
     state.weekId = weekId;
+    state.requests = [];
     setButtonBusy(els.loadBtn, true);
     setFlash(`Loading week ${weekId}...`);
 
@@ -624,12 +754,14 @@
       const data = await fetchJson(`/api/emails/weeks/${weekId}`);
       state.outputs = null;
       applyWeek(data.week);
+      await fetchWeekRequests(weekId);
       setFlash(`Loaded weekly draft for ${weekId}.`);
       await previewWeek({ silent: true, autoSave: false });
     } catch (error) {
       if (/No weekly draft found/i.test(error.message)) {
         state.outputs = null;
         applyWeek(blankWeek(weekId));
+        await fetchWeekRequests(weekId);
         setFlash('No saved draft found for this week yet. Create one from source events or start with custom rows.');
       } else {
         setFlash(error.message || 'Unable to load week.', true);
@@ -704,6 +836,28 @@
       subject_overrides: state.week.subject_overrides,
       events: state.week.events.map(serializeEvent),
     };
+  }
+
+  function upsertRequest(request) {
+    const normalized = normalizeRequest(request);
+    const index = state.requests.findIndex((item) => item.request_id === normalized.request_id);
+    if (index === -1) {
+      state.requests.push(normalized);
+    } else {
+      state.requests[index] = normalized;
+    }
+    state.requests.sort((left, right) => {
+      const order = { pending: 0, approved: 1, denied: 2 };
+      return (order[left.status] ?? 99) - (order[right.status] ?? 99)
+        || left.start_date.localeCompare(right.start_date)
+        || left.title.localeCompare(right.title);
+    });
+  }
+
+  async function fetchWeekRequests(weekId) {
+    const data = await fetchJson(`/api/emails/weeks/${weekId}/requests`);
+    state.requests = (data.requests || []).map(normalizeRequest);
+    render();
   }
 
   async function createDraftFromSource() {
@@ -846,6 +1000,45 @@
     }
   }
 
+  async function reviewRequest(index, decision) {
+    const item = state.requests[index];
+    if (!item || !state.week) return;
+
+    const isDenial = decision === 'deny';
+    const confirmed = typeof window.confirm !== 'function'
+      || window.confirm(
+        isDenial
+          ? `Deny the request for “${item.title}”?`
+          : `Approve the request for “${item.title}” and add it to this week's draft?`
+      );
+    if (!confirmed) return;
+
+    const endpoint = `/api/emails/weeks/${state.week.week_id}/requests/${item.request_id}/${isDenial ? 'deny' : 'approve'}`;
+    try {
+      const data = await fetchJson(endpoint, {
+        method: 'POST',
+        headers: { 'X-Email-Actor': 'admin-ui' },
+        body: JSON.stringify({ reviewer_notes: item.review?.reviewer_notes || '' }),
+      });
+
+      if (data.week) {
+        state.outputs = null;
+        applyWeek(data.week);
+      }
+      if (data.request) {
+        upsertRequest(data.request);
+      }
+      render();
+      setFlash(
+        isDenial
+          ? `Denied request for ${item.title}.`
+          : `Approved request for ${item.title} and added it to the draft.`
+      );
+    } catch (error) {
+      setFlash(error.message || 'Unable to review the request.', true);
+    }
+  }
+
   function csvCell(value) {
     const str = String(value ?? '');
     if (str.includes(',') || str.includes('"') || str.includes('\n')) {
@@ -935,6 +1128,29 @@
     resetFilters();
     renderFilters();
     renderRows();
+  }
+
+  function onRequestInput(event) {
+    const card = event.target.closest('[data-request-index]');
+    if (!card) return;
+    const index = Number(card.dataset.requestIndex);
+    const item = state.requests[index];
+    if (!item) return;
+
+    const field = event.target.dataset.requestField;
+    if (field === 'reviewer_notes') {
+      item.review.reviewer_notes = event.target.value;
+    }
+  }
+
+  function onRequestClick(event) {
+    const button = event.target.closest('[data-request-action]');
+    if (!button) return;
+    const card = button.closest('[data-request-index]');
+    if (!card) return;
+    const index = Number(card.dataset.requestIndex);
+    if (!Number.isFinite(index)) return;
+    reviewRequest(index, button.dataset.requestAction);
   }
 
   function onTableInput(event) {
@@ -1046,6 +1262,8 @@
     els.sourceFilter.addEventListener('change', onFilterInput);
     els.visibilityFilter.addEventListener('change', onFilterInput);
     els.clearFiltersBtn.addEventListener('click', clearEventFilters);
+    els.requestList.addEventListener('input', onRequestInput);
+    els.requestList.addEventListener('click', onRequestClick);
     els.tbody.addEventListener('input', onTableInput);
     els.tbody.addEventListener('change', onTableInput);
     els.tbody.addEventListener('click', onTableClick);

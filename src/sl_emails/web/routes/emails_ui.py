@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from flask import Blueprint, render_template, request
+from flask import Blueprint, render_template, request, url_for
 
 from sl_emails.domain.dates import iso_to_date, week_end_for
 from sl_emails.domain.email_presets import CURATED_ICON_GROUPS
@@ -14,6 +14,17 @@ from ..support import auth_urls, current_user, require_emails_admin
 
 
 blueprint = Blueprint("emails_ui", __name__)
+
+
+@blueprint.get("/request")
+def request_event_page():
+    today = datetime.now().date()
+    return render_template(
+        "request_event.html",
+        default_start_date=today.isoformat(),
+        admin_login_url=url_for("auth.login", next="/emails"),
+        dashboard_url=url_for("emails_ui.emails_index"),
+    )
 
 
 @blueprint.get("/emails")

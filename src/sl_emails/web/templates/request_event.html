@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Request a Sports Email Event</title>
+  <link rel="icon" href="/static/kd-logo.png" type="image/png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Crimson+Pro:wght@500;600;700&family=Red+Hat+Text:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/request-event.css" />
+</head>
+<body>
+  <header class="request-topbar">
+    <div class="request-topbar-inner">
+      <div class="brand-lockup">
+        <img src="/static/kd-logo.png" alt="Kent Denver" />
+        <div>
+          <span class="brand-name">Kent Denver</span>
+          <span class="brand-product">Sports Email Event Request</span>
+        </div>
+      </div>
+      <div class="topbar-links">
+        <a href="{{ dashboard_url }}">Dashboard</a>
+        <a href="{{ admin_login_url }}">Admin Sign-In</a>
+      </div>
+    </div>
+  </header>
+
+  <main class="request-shell">
+    <section class="request-hero">
+      <p class="eyebrow">Public Submission</p>
+      <h1>Request an event to be added to the weekly sports emails.</h1>
+      <p class="hero-copy">Share the event details, any relevant link, and who to contact if the review team has questions. Requests stay pending until an admin approves or denies them in the dashboard.</p>
+      <div class="hero-note">
+        <strong id="week-preview-label">Review week will be assigned from the event start date.</strong>
+        <span>The admin team reviews requests inside the weekly email dashboard before anything is published.</span>
+      </div>
+    </section>
+
+    <section class="request-card">
+      <form id="request-form" class="request-form">
+        <div class="form-grid">
+          <label class="span-2">
+            Event Title or Team Name
+            <input name="title" type="text" maxlength="120" placeholder="Varsity Baseball Senior Night" required />
+          </label>
+
+          <label>
+            Event Type
+            <select name="kind">
+              <option value="event">Event</option>
+              <option value="game">Game</option>
+            </select>
+          </label>
+
+          <label>
+            Audience
+            <select name="audience">
+              <option value="both">Both audiences</option>
+              <option value="middle-school">Middle School</option>
+              <option value="upper-school">Upper School</option>
+            </select>
+          </label>
+
+          <label>
+            Start Date
+            <input id="start-date" name="start_date" type="date" value="{{ default_start_date }}" required />
+          </label>
+
+          <label>
+            End Date
+            <input id="end-date" name="end_date" type="date" value="{{ default_start_date }}" required />
+          </label>
+
+          <label>
+            Time
+            <input name="time_text" type="text" maxlength="80" placeholder="6:00 PM or All Day" />
+          </label>
+
+          <label>
+            Location
+            <input name="location" type="text" maxlength="120" placeholder="Main Gym" />
+          </label>
+
+          <label>
+            Category
+            <input name="category" type="text" maxlength="80" placeholder="Baseball, Community, Performance" />
+          </label>
+
+          <label>
+            Subtitle or Opponent
+            <input name="subtitle" type="text" maxlength="120" placeholder="vs. Colorado Academy" />
+          </label>
+
+          <label class="span-2">
+            Link
+            <input name="link" type="url" maxlength="500" placeholder="https://..." />
+          </label>
+
+          <label class="span-2">
+            Public Event Details
+            <textarea name="description" rows="4" placeholder="Optional detail that should appear in the email if approved."></textarea>
+          </label>
+
+          <label class="span-2">
+            Notes for Review Team
+            <textarea name="requester_notes" rows="4" placeholder="Add context, scheduling caveats, ticket info, or anything the reviewer should know."></textarea>
+          </label>
+
+          <label>
+            Your Name
+            <input name="requester_name" type="text" maxlength="120" placeholder="Jordan Smith" required />
+          </label>
+
+          <label>
+            Your Email
+            <input name="requester_email" type="email" maxlength="200" placeholder="jordan@kentdenver.org" required />
+          </label>
+        </div>
+
+        <div class="form-actions">
+          <button id="submit-request" class="submit-btn" type="submit">Submit Request</button>
+          <p class="form-footnote">Submitting this form does not publish the event automatically.</p>
+        </div>
+      </form>
+
+      <section id="request-success" class="request-success" hidden>
+        <h2>Request submitted</h2>
+        <p id="request-success-message">Your event request has been sent for review.</p>
+        <div class="success-actions">
+          <button id="submit-another" type="button">Submit another request</button>
+          <a href="{{ dashboard_url }}">Open dashboard</a>
+        </div>
+      </section>
+
+      <p id="request-error" class="request-error" hidden></p>
+    </section>
+  </main>
+
+  <script>
+    window.__EVENT_REQUEST_DEFAULTS__ = {{ {
+      "defaultStartDate": default_start_date
+    }|tojson }};
+  </script>
+  <script src="/static/request-event.js"></script>
+</body>
+</html>

@@ -2,6 +2,7 @@ import unittest
 
 from sl_emails.services.activity_log import MemoryActivityLogStore
 from sl_emails.services.admin_settings import MemoryAdminSettingsStore
+from sl_emails.services.request_store import MemoryEventRequestStore
 from sl_emails.services.weekly_store import MemoryWeeklyEmailStore
 from sl_emails.web import create_app
 
@@ -13,6 +14,7 @@ class EmailsAdminUiTests(unittest.TestCase):
                 "TESTING": True,
                 "SESSION_COOKIE_SECURE": False,
                 "EMAILS_STORE": MemoryWeeklyEmailStore(),
+                "EMAILS_REQUEST_STORE": MemoryEventRequestStore(),
                 "EMAILS_SETTINGS_STORE": MemoryAdminSettingsStore(),
                 "EMAILS_ACTIVITY_STORE": MemoryActivityLogStore(),
             }
@@ -37,6 +39,9 @@ class EmailsAdminUiTests(unittest.TestCase):
         self.assertIn("Settings", body)
         self.assertIn('id="week-subject-ms"', body)
         self.assertIn('id="week-subject-us"', body)
+        self.assertIn("Submission Queue", body)
+        self.assertIn('id="request-summary"', body)
+        self.assertIn('id="request-list"', body)
         self.assertIn('"iconOptions"', body)
 
     def test_emails_script_includes_mark_unsent_ui_state_handling(self):
@@ -52,6 +57,9 @@ class EmailsAdminUiTests(unittest.TestCase):
         self.assertIn("/source-refresh", body)
         self.assertIn("window.confirm", body)
         self.assertIn("status-review-email", body)
+        self.assertIn("/weeks/${weekId}/requests", body)
+        self.assertIn("reviewRequest", body)
+        self.assertIn("requestList", body)
 
     def test_hidden_events_are_excluded_from_preview_outputs(self):
         self.client.put(

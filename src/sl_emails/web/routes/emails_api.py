@@ -6,11 +6,13 @@ from typing import Any
 
 from flask import Blueprint, jsonify, request
 
+from sl_emails.domain.dates import format_email_date_range, week_end_for
 from sl_emails.ingest import generate_games
+from sl_emails.services.request_store import event_payload_for_request
 from sl_emails.services.weekly_ingest import WeeklyIngestResult, scheduled_ingest_week, source_refresh_week
 from sl_emails.services.weekly_outputs import build_weekly_email_outputs as render_weekly_email_outputs
 
-from ..support import current_user_email, get_emails_store, json_error, require_automation_key, require_emails_admin, require_emails_operator, write_activity
+from ..support import current_user_email, get_emails_store, get_request_store, json_error, require_automation_key, require_emails_admin, require_emails_operator, write_activity
 
 
 blueprint = Blueprint("emails_api", __name__, url_prefix="/api/emails")
@@ -40,6 +42,33 @@ def actor_for_request(default: str = "admin-ui") -> str:
 
 def update_week_status(week_id: str, patch: dict[str, Any]) -> Any:
     return get_emails_store().update_week_metadata(week_id, patch)
+
+
+@blueprint.post("/requests")
+def submit_event_request() -> Any:
+    payload = request.get_json(silent=True) or {}
+    try:
+        record = get_request_store().submit_request(payload)
+    except ValueError as exc:
+        return json_error(str(exc), status=400)
+    except RuntimeError as exc:
+        return json_error(str(exc), status=503)
+
+    write_activity(
+        event_type="request.submitted",
+        status="success",
+        actor=record.requester_email or record.requester_name or "public-request",
+        week_id=record.week_id,
+        message="Submitted public event request",
+        details={"request_id": record.request_id, "requester_name": record.requester_name},
+    )
+    return jsonify(
+        {
+            "ok": True,
+            "request": record.to_dict(),
+            "week_label": format_email_date_range(record.week_id, week_end_for(record.week_id)),
+        }
+    ), 201
 
 
 @blueprint.get("/weeks/<week_id>")
@@ -118,6 +147,89 @@ def create_custom_event(week_id: str) -> Any:
 
     write_activity(event_type="custom_event.created", status="success", actor=actor, week_id=week_id, message="Added custom event")
     return jsonify({"ok": True, "week": week.to_dict(), "event": week.events[-1].to_dict() if week.events else None}), 201
+
+
+@blueprint.get("/weeks/<week_id>/requests")
+@require_emails_admin
+def list_week_requests(week_id: str) -> Any:
+    try:
+        records = get_request_store().list_requests(week_id)
+    except RuntimeError as exc:
+        return json_error(str(exc), status=503)
+    return jsonify({"ok": True, "requests": [record.to_dict() for record in records]})
+
+
+@blueprint.post("/weeks/<week_id>/requests/<request_id>/approve")
+@require_emails_admin
+def approve_event_request(week_id: str, request_id: str) -> Any:
+    actor = actor_for_request()
+    payload = request.get_json(silent=True) or {}
+    request_record = get_request_store().get_request(week_id, request_id)
+    if request_record is None:
+        return json_error("No event request found for that week", status=404)
+    if request_record.status != "pending":
+        return json_error("Only pending requests can be reviewed", status=409)
+
+    event_payload = event_payload_for_request(request_record)
+    try:
+        week = get_emails_store().add_event(week_id, event_payload)
+        updated_request = get_request_store().review_request(
+            week_id,
+            request_id,
+            decision="approved",
+            reviewed_by=actor,
+            reviewer_notes=str(payload.get("reviewer_notes") or "").strip(),
+            resolved_event_id=str(event_payload["id"]),
+        )
+    except ValueError as exc:
+        return json_error(str(exc), status=400)
+    except RuntimeError as exc:
+        return json_error(str(exc), status=503)
+
+    write_activity(
+        event_type="request.reviewed",
+        status="success",
+        actor=actor,
+        week_id=week_id,
+        message="Approved event request",
+        details={"request_id": request_id, "decision": "approved", "requester_email": request_record.requester_email},
+    )
+    return jsonify({"ok": True, "request": updated_request.to_dict(), "week": week.to_dict()})
+
+
+@blueprint.post("/weeks/<week_id>/requests/<request_id>/deny")
+@require_emails_admin
+def deny_event_request(week_id: str, request_id: str) -> Any:
+    actor = actor_for_request()
+    payload = request.get_json(silent=True) or {}
+    request_record = get_request_store().get_request(week_id, request_id)
+    if request_record is None:
+        return json_error("No event request found for that week", status=404)
+    if request_record.status != "pending":
+        return json_error("Only pending requests can be reviewed", status=409)
+
+    try:
+        updated_request = get_request_store().review_request(
+            week_id,
+            request_id,
+            decision="denied",
+            reviewed_by=actor,
+            reviewer_notes=str(payload.get("reviewer_notes") or "").strip(),
+        )
+    except ValueError as exc:
+        return json_error(str(exc), status=400)
+    except RuntimeError as exc:
+        return json_error(str(exc), status=503)
+
+    write_activity(
+        event_type="request.reviewed",
+        status="success",
+        actor=actor,
+        week_id=week_id,
+        message="Denied event request",
+        details={"request_id": request_id, "decision": "denied", "requester_email": request_record.requester_email},
+    )
+    return jsonify({"ok": True, "request": updated_request.to_dict()})
 
 
 @blueprint.post("/weeks/<week_id>/preview")

@@ -102,7 +102,6 @@ sl-emails/
 ├── src/sl_emails/web/static/      # /emails static assets
 ├── google-apps-script/            # Sunday draft/send automation + troubleshooting
 ├── requirements.txt               # Unified Python dependencies
-├── digital-signage/index.html     # Preview-only local signage artifact
 ├── .github/workflows/             # Deploy automation
 ├── README.md
 └── SETUP.md
@@ -111,5 +110,5 @@ sl-emails/
 ## Notes
 
 - Firestore is the operational source of truth for signage snapshots, sports email weeks, admin allowlists, and app-side audit records.
-- `digital-signage/index.html` is local preview output only and is not used by the runtime.
+- `digital-signage/index.html` is generated on demand for local preview and is not used by the runtime.
 - The legacy Firestore REST publish path remains in the repo for manual tooling compatibility, but it is no longer the production scheduler path.

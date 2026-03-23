@@ -541,6 +541,7 @@ Examples:
 
     # Save to the supported signage artifact path.
     output_path = SIGNAGE_OUTPUT_HTML
+    output_path.parent.mkdir(parents=True, exist_ok=True)
     with open(output_path, 'w', encoding='utf-8') as f:
         f.write(html)
 

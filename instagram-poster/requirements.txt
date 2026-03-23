@@ -1,6 +1,0 @@
-flask>=3.0.0
-gunicorn>=23.0.0
-firebase-admin>=6.5.0
-Authlib>=1.4.0
-# Existing source fetchers live in ../sports-emails and require:
-# requests, beautifulsoup4, lxml, icalendar, selenium, webdriver-manager

@@ -6,13 +6,10 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PYTHONPATH=/app/src
 
-COPY sports-emails/requirements.txt sports-emails/requirements.txt
-COPY instagram-poster/requirements.txt instagram-poster/requirements.txt
+COPY requirements.txt requirements.txt
 
 RUN python -m pip install --no-cache-dir --upgrade pip \
-    && python -m pip install --no-cache-dir \
-        -r sports-emails/requirements.txt \
-        -r instagram-poster/requirements.txt
+    && python -m pip install --no-cache-dir -r requirements.txt
 
 COPY digital-signage digital-signage
 COPY src src

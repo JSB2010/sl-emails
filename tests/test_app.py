@@ -1,18 +1,16 @@
 import unittest
 from unittest.mock import patch
 
-from sl_emails.poster.carousel import PosterEvent
 from sl_emails.services import signage_ingest
 from sl_emails.services.activity_log import MemoryActivityLogStore
 from sl_emails.services.admin_settings import MemoryAdminSettingsStore
-from sl_emails.services.event_shapes import PosterEvent as SourcePosterEvent
+from sl_emails.services.event_shapes import PosterEvent
 from sl_emails.services.request_store import MemoryEventRequestStore
 from sl_emails.services.signage_store import MemorySignageStore
 from sl_emails.services import weekly_ingest
 from sl_emails.services.weekly_store import MemoryWeeklyEmailStore
 from sl_emails.web import create_app
 from sl_emails.web.request_protection import PublicRequestProtector
-from sl_emails.web.routes import poster_api
 from sl_emails.web import support as web_support
 
 
@@ -91,7 +89,7 @@ class AppApiTests(unittest.TestCase):
     @patch.object(signage_ingest, "fetch_signage_events")
     def test_signage_refresh_endpoint_creates_and_refreshes_day_snapshot(self, mock_fetch_signage_events):
         mock_fetch_signage_events.return_value = [
-            SourcePosterEvent(
+            PosterEvent(
                 title="Spring Concert",
                 subtitle="Music",
                 date="2026-03-24",
@@ -282,73 +280,6 @@ class AppApiTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 302)
         self.assertEqual(response.headers["Location"], "/access-denied")
-
-    def test_render_endpoint_handles_custom_event(self):
-        response = self.client.post(
-            "/api/render",
-            json={
-                "start_date": "2026-03-09",
-                "end_date": "2026-03-15",
-                "heading": "This Week",
-                "base_events": [],
-                "custom_events": [
-                    {
-                        "title": "Robotics Night",
-                        "date": "2026-03-10",
-                        "time": "6:00 PM",
-                        "location": "Innovation Lab",
-                        "category": "STEM",
-                    }
-                ],
-            },
-        )
-
-        self.assertEqual(response.status_code, 200)
-        payload = response.get_json()
-        assert payload is not None
-        self.assertTrue(payload["ok"])
-        self.assertEqual(payload["slide_count"], 7)
-        self.assertEqual(sum(slide["events_total"] for slide in payload["slides"]), 1)
-        self.assertIn("Robotics Night", payload["slides"][1]["poster_html"])
-
-    @patch.object(poster_api, "fetch_week_events")
-    def test_fetch_events_endpoint(self, mock_fetch):
-        mock_fetch.return_value = [
-            PosterEvent(
-                title="Sample",
-                subtitle="vs. Opp",
-                date="2026-03-09",
-                time="4:00 PM",
-                location="Gym",
-                category="Basketball",
-                source="athletics",
-                badge="HOME",
-                priority=3,
-                accent="#0C3A6B",
-                audiences=["upper-school"],
-                team="Varsity Basketball",
-                opponent="Opp",
-                is_home=False,
-                metadata={"source_type": "game", "sport": "basketball"},
-            )
-        ]
-
-        response = self.client.post(
-            "/api/fetch-events",
-            json={"mode": "custom", "start_date": "2026-03-09", "end_date": "2026-03-15"},
-        )
-
-        self.assertEqual(response.status_code, 200)
-        payload = response.get_json()
-        assert payload is not None
-        self.assertTrue(payload["ok"])
-        self.assertEqual(len(payload["events"]), 1)
-        self.assertEqual(payload["events"][0]["title"], "Sample")
-        self.assertEqual(payload["events"][0]["audiences"], ["upper-school"])
-        self.assertEqual(payload["events"][0]["team"], "Varsity Basketball")
-        self.assertEqual(payload["events"][0]["opponent"], "Opp")
-        self.assertFalse(payload["events"][0]["is_home"])
-        self.assertEqual(payload["events"][0]["metadata"]["sport"], "basketball")
 
     def test_healthcheck(self):
         response = self.client.get("/healthz")

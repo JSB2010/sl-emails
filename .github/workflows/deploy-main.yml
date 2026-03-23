@@ -76,7 +76,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.cache/pip
-          key: ${{ runner.os }}-pip-deploy-${{ hashFiles('sports-emails/requirements.txt', 'instagram-poster/requirements.txt') }}
+          key: ${{ runner.os }}-pip-deploy-${{ hashFiles('requirements.txt') }}
           restore-keys: |
             ${{ runner.os }}-pip-deploy-
             ${{ runner.os }}-pip-
@@ -84,7 +84,7 @@ jobs:
       - name: Install Python dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r sports-emails/requirements.txt -r instagram-poster/requirements.txt
+          pip install -r requirements.txt
 
       - name: Run focused runtime checks
         run: PYTHONPATH=src python -m unittest tests.test_public_healthcheck tests.test_wsgi_entrypoint

@@ -221,7 +221,6 @@ def write_activity(
 
 
 __all__ = [
-    "SIGNAGE_INDEX",
     "TEMPLATE_DIR",
     "STATIC_DIR",
     "auth_urls",

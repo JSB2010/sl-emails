@@ -6,9 +6,8 @@ from datetime import datetime
 
 from flask import Blueprint, render_template, request, url_for
 
-from sl_emails.domain.dates import iso_to_date, week_end_for
+from sl_emails.domain.dates import iso_to_date, resolve_week_bounds, week_end_for
 from sl_emails.domain.email_presets import CURATED_ICON_GROUPS
-from sl_emails.poster.carousel import get_week_bounds
 
 from ..support import auth_urls, current_user, require_emails_admin
 
@@ -38,9 +37,9 @@ def emails_index():
             start = iso_to_date(requested_week)
             end = iso_to_date(week_end_for(requested_week))
         except ValueError:
-            start, end = get_week_bounds(mode="next", today=today)
+            start, end = resolve_week_bounds(mode="next", today=today)
     else:
-        start, end = get_week_bounds(mode="next", today=today)
+        start, end = resolve_week_bounds(mode="next", today=today)
 
     user = current_user() or {}
 

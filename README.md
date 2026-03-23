@@ -72,8 +72,7 @@ Apps Script expects:
 Install dependencies from the repo root:
 
 ```bash
-python3 -m pip install -r sports-emails/requirements.txt
-python3 -m pip install -r instagram-poster/requirements.txt
+python3 -m pip install -r requirements.txt
 ```
 
 Run the web app locally:
@@ -94,20 +93,15 @@ Refresh signage locally:
 PYTHONPATH=src python3 -m sl_emails.signage.generate_signage
 ```
 
-Generate poster/carousel output:
-
-```bash
-PYTHONPATH=src python3 -m sl_emails.poster.carousel --next-week
-```
-
 ## Repository Structure
 
 ```text
 sl-emails/
-├── src/sl_emails/                 # Runtime, services, ingest, signage, poster tools
+├── src/sl_emails/                 # Runtime, services, ingest, signage tools
 ├── src/sl_emails/web/templates/   # /emails admin UI
 ├── src/sl_emails/web/static/      # /emails static assets
 ├── google-apps-script/            # Sunday draft/send automation + troubleshooting
+├── requirements.txt               # Unified Python dependencies
 ├── digital-signage/index.html     # Preview-only local signage artifact
 ├── .github/workflows/             # Deploy automation
 ├── README.md
@@ -117,6 +111,5 @@ sl-emails/
 ## Notes
 
 - Firestore is the operational source of truth for signage snapshots, sports email weeks, admin allowlists, and app-side audit records.
-- Historical `sports-emails/<week>/...html` output is optional preview/archive output only.
 - `digital-signage/index.html` is local preview output only and is not used by the runtime.
 - The legacy Firestore REST publish path remains in the repo for manual tooling compatibility, but it is no longer the production scheduler path.

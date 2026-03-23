@@ -15,7 +15,6 @@ SIGNAGE_OUTPUT_HTML = REPO_ROOT / "digital-signage" / "index.html"
 SIGNAGE_TIMEZONE = "America/Denver"
 WEB_TEMPLATES_DIR = WEB_DIR / "templates"
 WEB_STATIC_DIR = WEB_DIR / "static"
-POSTER_OUTPUT_HTML = REPO_ROOT / "instagram-poster" / "carousel.html"
 
 DEFAULT_FIRESTORE_DATABASE_ID = "(default)"
 
@@ -126,7 +125,6 @@ __all__ = [
     "GOOGLE_OAUTH_CLIENT_ID_ENV",
     "GOOGLE_OAUTH_CLIENT_SECRET_ENV",
     "PACKAGE_DIR",
-    "POSTER_OUTPUT_HTML",
     "REPO_ROOT",
     "RuntimeFirestoreConfig",
     "SIGNAGE_OUTPUT_HTML",

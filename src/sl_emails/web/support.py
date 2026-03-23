@@ -11,13 +11,16 @@ from flask import Response, current_app, jsonify, redirect, request, session, ur
 from sl_emails.config import EMAILS_AUTOMATION_KEY_ENV
 from sl_emails.config import EMAILS_BOOTSTRAP_ALLOWED_EMAILS_ENV
 from sl_emails.config import EMAILS_BOOTSTRAP_NOTIFICATION_EMAILS_ENV
-from sl_emails.config import SIGNAGE_OUTPUT_HTML as SIGNAGE_INDEX
+from sl_emails.config import SIGNAGE_TIMEZONE
 from sl_emails.config import WEB_STATIC_DIR as STATIC_DIR
 from sl_emails.config import WEB_TEMPLATES_DIR as TEMPLATE_DIR
+from sl_emails.domain.dates import today_in_timezone
 from sl_emails.services.activity_log import FirestoreActivityLogStore
 from sl_emails.services.admin_settings import DEFAULT_ALLOWED_ADMIN_EMAILS, FirestoreAdminSettingsStore, normalize_email_list
 from sl_emails.services.request_store import FirestoreEventRequestStore
+from sl_emails.services.signage_store import FirestoreSignageStore
 from sl_emails.services.weekly_store import FirestoreWeeklyEmailStore
+from sl_emails.signage.generate_signage import generate_signage_html
 from sl_emails.web.request_protection import PublicRequestProtector
 
 
@@ -26,6 +29,14 @@ def get_emails_store() -> FirestoreWeeklyEmailStore:
     if store is None:
         store = FirestoreWeeklyEmailStore()
         current_app.config["EMAILS_STORE"] = store
+    return store
+
+
+def get_signage_store() -> FirestoreSignageStore:
+    store = current_app.config.get("SIGNAGE_STORE")
+    if store is None:
+        store = FirestoreSignageStore()
+        current_app.config["SIGNAGE_STORE"] = store
     return store
 
 
@@ -80,9 +91,14 @@ def ensure_admin_settings():
 
 
 def serve_signage() -> Response:
-    if not SIGNAGE_INDEX.exists():
-        return Response("Signage HTML not found.", status=404, mimetype="text/plain")
-    return Response(SIGNAGE_INDEX.read_text(encoding="utf-8"), mimetype="text/html")
+    day_id = today_in_timezone(SIGNAGE_TIMEZONE).isoformat()
+    try:
+        day = get_signage_store().get_day(day_id)
+    except RuntimeError as exc:
+        return Response(str(exc), status=503, mimetype="text/plain")
+    if day is None:
+        return Response("Signage snapshot not found.", status=404, mimetype="text/plain")
+    return Response(generate_signage_html(day.poster_events(), day_id), mimetype="text/html")
 
 
 def json_error(message: str, status: int = 400, *, extra: dict[str, Any] | None = None) -> tuple[Response, int]:
@@ -218,6 +234,7 @@ __all__ = [
     "get_emails_store",
     "get_request_store",
     "get_request_protector",
+    "get_signage_store",
     "get_settings_store",
     "is_authenticated_admin",
     "json_error",

@@ -2,6 +2,7 @@
  * Kent Denver Sports Email Automation
  *
  * Google Apps Script owns the sports email cron flow:
+ * 0. Daily at midnight MT: refresh the public signage snapshot in the web app.
  * 1. Sunday 8:00 AM MT: create or confirm the weekly draft in the web app.
  * 2. Email the admin/ops list a review link to /emails?week=<YYYY-MM-DD>.
  * 3. Sunday 4:00 PM MT: send only approved payloads.
@@ -30,7 +31,7 @@ const CONFIG = {
   TIMEZONE: 'America/Denver'
 };
 
-const MANAGED_TRIGGER_FUNCTIONS = ['runSundayDraftCycle', 'sendSportsEmails'];
+const MANAGED_TRIGGER_FUNCTIONS = ['refreshDailySignage', 'runSundayDraftCycle', 'sendSportsEmails'];
 
 function getScriptProperties() {
   return PropertiesService.getScriptProperties();
@@ -171,6 +172,26 @@ function runSundayDraftCycleManual() {
   runSundayDraftCycle();
 }
 
+function refreshDailySignage() {
+  const config = assertConfigured({ skipRecipients: true });
+  const dayId = getCurrentSignageDayId();
+
+  try {
+    console.log(`🖥️ Refreshing signage snapshot for ${dayId}...`);
+    const refreshResult = triggerSignageRefresh(dayId, config);
+    console.log(`✅ Signage refresh ${refreshResult.action || 'completed'} for ${dayId}`);
+    logEmailActivity('SIGNAGE', `Daily signage refresh ${refreshResult.action || 'completed'} for ${dayId}`);
+  } catch (error) {
+    console.error('❌ Error in refreshDailySignage:', error);
+    sendErrorNotification(`Error refreshing digital signage for ${dayId}: ${error.message}`, config);
+    logEmailActivity('ERROR', `Daily signage refresh failed for ${dayId}: ${error.message}`);
+  }
+}
+
+function refreshDailySignageManual() {
+  refreshDailySignage();
+}
+
 function sendSportsEmails() {
   const config = assertConfigured();
   let weekId = 'unknown';
@@ -266,6 +287,10 @@ function getCurrentWeekFolder() {
   return Utilities.formatDate(getTargetMondayDate(), getEffectiveConfig().TIMEZONE, 'MMMdd').toLowerCase();
 }
 
+function getCurrentSignageDayId() {
+  return Utilities.formatDate(new Date(), getEffectiveConfig().TIMEZONE, 'yyyy-MM-dd');
+}
+
 function fetchApprovedEmailPayloads(weekId, config) {
   const url = `${config.API_BASE_URL}/api/emails/weeks/${encodeURIComponent(weekId)}/sender-output`;
   console.log(`📥 Fetching approved sender payloads from: ${url}`);
@@ -275,6 +300,12 @@ function fetchApprovedEmailPayloads(weekId, config) {
 function triggerScheduledIngest(weekId, config) {
   const url = `${config.API_BASE_URL}/api/emails/automation/weeks/${encodeURIComponent(weekId)}/scheduled-ingest`;
   console.log(`📥 Triggering scheduled ingest at: ${url}`);
+  return fetchJson(url, { method: 'POST' }, config);
+}
+
+function triggerSignageRefresh(dayId, config) {
+  const url = `${config.API_BASE_URL}/api/signage/automation/days/${encodeURIComponent(dayId)}/refresh`;
+  console.log(`📥 Triggering signage refresh at: ${url}`);
   return fetchJson(url, { method: 'POST' }, config);
 }
 
@@ -489,6 +520,12 @@ function setupTriggers() {
   assertConfigured();
   removeTriggers();
 
+  ScriptApp.newTrigger('refreshDailySignage')
+    .timeBased()
+    .everyDays(1)
+    .atHour(0)
+    .create();
+
   ScriptApp.newTrigger('runSundayDraftCycle')
     .timeBased()
     .everyWeeks(1)
@@ -503,7 +540,7 @@ function setupTriggers() {
     .atHour(16)
     .create();
 
-  console.log('✅ Triggers set up successfully. Draft review email runs Sunday at 8:00 AM and approved sends run Sunday at 4:00 PM.');
+  console.log('✅ Triggers set up successfully. Signage refresh runs daily at midnight, draft review email runs Sunday at 8:00 AM, and approved sends run Sunday at 4:00 PM.');
 }
 
 function removeTriggers() {

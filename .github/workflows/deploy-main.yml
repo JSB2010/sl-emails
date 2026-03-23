@@ -219,7 +219,7 @@ jobs:
             local label="$2"
 
             check_path "$base_url" "/_health" "$label" '"ok"'
-            check_path "$base_url" "/" "$label"
+            check_path "$base_url" "/signage" "$label"
             check_path "$base_url" "/login" "$label"
           }
 

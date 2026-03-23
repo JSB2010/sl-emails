@@ -12,6 +12,7 @@ PACKAGE_DIR = Path(__file__).resolve().parent
 WEB_DIR = PACKAGE_DIR / "web"
 
 SIGNAGE_OUTPUT_HTML = REPO_ROOT / "digital-signage" / "index.html"
+SIGNAGE_TIMEZONE = "America/Denver"
 WEB_TEMPLATES_DIR = WEB_DIR / "templates"
 WEB_STATIC_DIR = WEB_DIR / "static"
 POSTER_OUTPUT_HTML = REPO_ROOT / "instagram-poster" / "carousel.html"
@@ -129,6 +130,7 @@ __all__ = [
     "REPO_ROOT",
     "RuntimeFirestoreConfig",
     "SIGNAGE_OUTPUT_HTML",
+    "SIGNAGE_TIMEZONE",
     "WEB_DIR",
     "WEB_STATIC_DIR",
     "WEB_TEMPLATES_DIR",

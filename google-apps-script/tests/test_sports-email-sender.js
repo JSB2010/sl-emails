@@ -23,8 +23,10 @@ function buildHarness(options = {}) {
     sent: { sent: false, sent_at: '', sent_by: '', sending: false, sending_at: '', sending_by: '' },
     finalizeAttempts: 0,
     ingestCalls: 0,
+    signageRefreshCalls: 0,
     activityCalls: [],
     failIngest: Boolean(options.failIngest),
+    failSignageRefresh: Boolean(options.failSignageRefresh),
     ingestAction: options.ingestAction || 'created',
   };
   const deliveries = [];
@@ -84,6 +86,26 @@ function buildHarness(options = {}) {
         if (url.includes('/api/emails/automation/weeks/') && url.endsWith('/activity')) {
           backendState.activityCalls.push(JSON.parse(options.payload || '{}'));
           return makeResponse(200, { ok: true });
+        }
+
+        if (url.includes('/api/signage/automation/days/')) {
+          backendState.signageRefreshCalls += 1;
+          if (backendState.failSignageRefresh) {
+            return makeResponse(503, { ok: false, error: 'signage refresh failed' });
+          }
+
+          return makeResponse(200, {
+            ok: true,
+            day_id: '2026-03-09',
+            action: backendState.signageRefreshCalls === 1 ? 'created' : 'refreshed',
+            reason: backendState.signageRefreshCalls === 1 ? 'created_from_sources' : 'replaced_existing_snapshot',
+            source_summary: {
+              athletics_events: 1,
+              arts_events: 1,
+              total_events: 2,
+            },
+            day: { date: '2026-03-09' },
+          });
         }
 
         if (url.includes('/api/emails/automation/weeks/')) {
@@ -181,6 +203,7 @@ function buildHarness(options = {}) {
         };
         return {
           timeBased() { return this; },
+          everyDays() { return this; },
           everyWeeks() { return this; },
           onWeekDay() { return this; },
           atHour(hour) {
@@ -199,7 +222,7 @@ function buildHarness(options = {}) {
 
   vm.createContext(sandbox);
   vm.runInContext(
-    `${senderSource}\nthis.__exports = { runSundayDraftCycle, sendSportsEmails, setupTriggers, removeTriggers, validateConfiguration, getEffectiveConfig, CONFIG };`,
+    `${senderSource}\nthis.__exports = { refreshDailySignage, runSundayDraftCycle, sendSportsEmails, setupTriggers, removeTriggers, validateConfiguration, getEffectiveConfig, CONFIG };`,
     sandbox
   );
 
@@ -250,6 +273,15 @@ test('sunday draft cycle emails review link when a draft is created', () => {
   assert.equal(harness.backendState.activityCalls[0].status, 'success');
 });
 
+test('daily signage refresh hits the app-owned signage endpoint', () => {
+  const harness = buildHarness();
+
+  harness.exports.refreshDailySignage();
+
+  assert.equal(harness.backendState.signageRefreshCalls, 1);
+  assert.equal(harness.adminEmails.length, 0);
+});
+
 test('sunday draft cycle still emails review link when draft already exists', () => {
   const harness = buildHarness({ ingestAction: 'skipped' });
 
@@ -275,18 +307,19 @@ test('sunday draft cycle sends admin error email on backend failure', () => {
 });
 
 test('setupTriggers creates both sunday triggers and removes existing managed ones', () => {
-  const harness = buildHarness({ triggers: ['sendSportsEmails', 'runSundayDraftCycle', 'otherHandler'] });
+  const harness = buildHarness({ triggers: ['refreshDailySignage', 'sendSportsEmails', 'runSundayDraftCycle', 'otherHandler'] });
 
   harness.exports.setupTriggers();
 
   const handlers = harness.triggers.map((trigger) => trigger.getHandlerFunction()).sort();
-  assert.deepEqual(handlers, ['otherHandler', 'runSundayDraftCycle', 'sendSportsEmails']);
+  assert.deepEqual(handlers, ['otherHandler', 'refreshDailySignage', 'runSundayDraftCycle', 'sendSportsEmails']);
 });
 
 test('apps script sources use app-owned ingest, approved sender flow, and script properties', () => {
   assert.doesNotMatch(senderSource, /raw\.githubusercontent/);
   assert.doesNotMatch(troubleshootingSource, /raw\.githubusercontent/);
   assert.match(senderSource, /scheduled-ingest/);
+  assert.match(senderSource, /api\/signage\/automation\/days/);
   assert.match(senderSource, /sender-output/);
   assert.match(senderSource, /PropertiesService/);
   assert.match(troubleshootingSource, /validateConfiguration/);

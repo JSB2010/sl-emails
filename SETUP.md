@@ -6,9 +6,9 @@ This is the live runbook for the sports email system after the GitHub scheduler 
 
 - Cloud Run hosts `sl_emails.web:create_app`
 - Firebase Hosting fronts the public hostname
-- Firestore stores weekly drafts, approval state, and sent state
-- Google Apps Script owns Sunday cron automation and all Gmail sends
-- GitHub Actions handles deploys and digital signage only
+- Firestore stores public signage snapshots plus weekly drafts, approval state, and sent state
+- Google Apps Script owns daily signage refresh, Sunday cron automation, and all Gmail sends
+- GitHub Actions handles deploys only
 
 ## Required Runtime Configuration
 
@@ -52,6 +52,9 @@ Optional Script Properties:
 
 ## Key Endpoints
 
+- `POST /api/signage/automation/days/<day-id>/refresh`
+  - Protected by `X-Automation-Key`
+  - Refreshes the Firestore-backed signage snapshot for the target Denver-local date
 - `POST /api/emails/automation/weeks/<week-id>/scheduled-ingest`
   - Protected by `X-Automation-Key`
   - Creates a missing week from source events
@@ -67,7 +70,7 @@ Optional Script Properties:
 
 ## Weekly Timeline
 
-- Daily: `.github/workflows/update-signage.yml` refreshes signage
+- Daily 12:00 AM MT: Apps Script runs `refreshDailySignage`
 - Sunday 8:00 AM MT: Apps Script runs `runSundayDraftCycle`
 - Sunday morning: admin receives review email linking to `/emails?week=<week-id>`
 - Before Sunday 4:00 PM MT: staff review and approve the week
@@ -82,13 +85,14 @@ Optional Script Properties:
 5. Update Apps Script Script Properties, especially `API_BASE_URL` and `AUTOMATION_API_KEY`.
 6. Paste `google-apps-script/sports-email-sender.gs` and `google-apps-script/troubleshooting-functions.gs` into the Apps Script project.
 7. Run `debugConfiguration()` and `debugScheduledIngestAccess()` in Apps Script.
-8. Run `setupTriggers()` in Apps Script once production config is correct.
-9. Run `runSundayDraftCycleManual()` and confirm:
+8. Run `refreshDailySignageManual()` and confirm `/signage` renders the current day snapshot.
+9. Run `setupTriggers()` in Apps Script once production config is correct.
+10. Run `runSundayDraftCycleManual()` and confirm:
 - the backend returns a created or skipped result
 - the ops/admin list receives the review email
 - the review link opens `/emails?week=<week-id>` after Google sign-in
-10. Approve a test week in `/emails`.
-11. Run `testApprovedApiAccess()` and then `sendSportsEmailsManual()`.
+11. Approve a test week in `/emails`.
+12. Run `testApprovedApiAccess()` and then `sendSportsEmailsManual()`.
 
 ## Troubleshooting
 
@@ -96,6 +100,10 @@ Optional Script Properties:
   - check Cloud Run logs for `/api/emails/automation/weeks/<week-id>/scheduled-ingest`
   - confirm `EMAILS_AUTOMATION_KEY` matches the Apps Script `AUTOMATION_API_KEY` Script Property
   - run `debugScheduledIngestAccess()` in Apps Script
+- If signage is blank or missing:
+  - check Cloud Run logs for `/api/signage/automation/days/<day-id>/refresh`
+  - run `refreshDailySignageManual()` in Apps Script
+  - confirm `/signage` returns HTML for the current Denver-local date
 - If admins cannot sign in:
   - confirm the deployed app has `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET`, and `EMAILS_SESSION_SECRET`
   - confirm the OAuth callback URL matches `https://<host>/auth/google/callback`
@@ -110,6 +118,5 @@ Optional Script Properties:
 
 ## Notes
 
-- Firestore is the source of truth for sports emails.
+- Firestore is the source of truth for signage and sports emails.
 - Scheduled ingest never overwrites an existing week.
-- Digital signage intentionally still uses GitHub Actions in this phase.

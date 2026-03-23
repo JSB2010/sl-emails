@@ -2,14 +2,18 @@ import unittest
 from unittest.mock import patch
 
 from sl_emails.poster.carousel import PosterEvent
+from sl_emails.services import signage_ingest
 from sl_emails.services.activity_log import MemoryActivityLogStore
 from sl_emails.services.admin_settings import MemoryAdminSettingsStore
+from sl_emails.services.event_shapes import PosterEvent as SourcePosterEvent
 from sl_emails.services.request_store import MemoryEventRequestStore
+from sl_emails.services.signage_store import MemorySignageStore
 from sl_emails.services import weekly_ingest
 from sl_emails.services.weekly_store import MemoryWeeklyEmailStore
 from sl_emails.web import create_app
 from sl_emails.web.request_protection import PublicRequestProtector
 from sl_emails.web.routes import poster_api
+from sl_emails.web import support as web_support
 
 
 class _FailingReviewRequestStore(MemoryEventRequestStore):
@@ -19,10 +23,38 @@ class _FailingReviewRequestStore(MemoryEventRequestStore):
 
 class AppApiTests(unittest.TestCase):
     def setUp(self):
+        signage_store = MemorySignageStore()
+        signage_store.save_day(
+            "2026-03-23",
+            {
+                "events": [
+                    {
+                        "title": "Varsity Soccer",
+                        "subtitle": "vs. Front Range",
+                        "date": "2026-03-23",
+                        "time": "4:00 PM",
+                        "location": "Main Field",
+                        "category": "Soccer",
+                        "source": "athletics",
+                        "badge": "HOME",
+                        "priority": 4,
+                        "accent": "#0066ff",
+                        "audiences": ["upper-school"],
+                        "team": "Varsity Soccer",
+                        "opponent": "Front Range",
+                        "is_home": True,
+                        "metadata": {"source_type": "game", "sport": "soccer"},
+                    }
+                ],
+                "source_summary": {"athletics_events": 1, "arts_events": 0, "total_events": 1},
+                "metadata": {},
+            },
+        )
         app = create_app(
             {
                 "TESTING": True,
                 "SESSION_COOKIE_SECURE": False,
+                "SIGNAGE_STORE": signage_store,
                 "EMAILS_STORE": MemoryWeeklyEmailStore(),
                 "EMAILS_REQUEST_STORE": MemoryEventRequestStore(),
                 "EMAILS_SETTINGS_STORE": MemoryAdminSettingsStore(),
@@ -40,11 +72,76 @@ class AppApiTests(unittest.TestCase):
         with self.client.session_transaction() as session:
             session.clear()
 
-    def test_root_serves_signage_html(self):
-        response = self.client.get("/")
+    @patch.object(web_support, "today_in_timezone")
+    def test_signage_route_serves_firestore_snapshot(self, mock_today):
+        mock_today.return_value = weekly_ingest.iso_to_date("2026-03-23")
+        response = self.client.get("/signage")
 
         self.assertEqual(response.status_code, 200)
         self.assertIn("Today's Events", response.get_data(as_text=True))
+        self.assertIn("Varsity Soccer", response.get_data(as_text=True))
+
+    def test_root_returns_plain_text_404(self):
+        response = self.client.get("/")
+
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(response.mimetype, "text/plain")
+        self.assertEqual(response.get_data(as_text=True), "Not Found")
+
+    @patch.object(signage_ingest, "fetch_signage_events")
+    def test_signage_refresh_endpoint_creates_and_refreshes_day_snapshot(self, mock_fetch_signage_events):
+        mock_fetch_signage_events.return_value = [
+            SourcePosterEvent(
+                title="Spring Concert",
+                subtitle="Music",
+                date="2026-03-24",
+                time="7:00 PM",
+                location="PAC",
+                category="Music",
+                source="arts",
+                badge="EVENT",
+                priority=4,
+                accent="#A11919",
+                audiences=["upper-school"],
+                team="Spring Concert",
+                metadata={"source_type": "arts"},
+            )
+        ]
+
+        forbidden = self.client.post("/api/signage/automation/days/2026-03-24/refresh")
+        self.assertEqual(forbidden.status_code, 503)
+
+        self.client.application.config["EMAILS_AUTOMATION_KEY"] = "secret-key"
+
+        invalid = self.client.post(
+            "/api/signage/automation/days/2026-03-24/refresh",
+            headers={"X-Automation-Key": "wrong-key"},
+        )
+        self.assertEqual(invalid.status_code, 403)
+
+        created = self.client.post(
+            "/api/signage/automation/days/2026-03-24/refresh",
+            headers={"X-Automation-Key": "secret-key", "X-Email-Actor": "google-apps-script"},
+        )
+        self.assertEqual(created.status_code, 200)
+        created_payload = created.get_json()
+        assert created_payload is not None
+        self.assertEqual(created_payload["action"], "created")
+        self.assertEqual(created_payload["reason"], "created_from_sources")
+        self.assertEqual(created_payload["source_summary"]["arts_events"], 1)
+        self.assertEqual(created_payload["day"]["metadata"]["ingest"]["actor"], "google-apps-script")
+        self.assertEqual(created_payload["day"]["metadata"]["ingest"]["action"], "created")
+
+        refreshed = self.client.post(
+            "/api/signage/automation/days/2026-03-24/refresh",
+            headers={"X-Automation-Key": "secret-key", "X-Email-Actor": "google-apps-script"},
+        )
+        self.assertEqual(refreshed.status_code, 200)
+        refreshed_payload = refreshed.get_json()
+        assert refreshed_payload is not None
+        self.assertEqual(refreshed_payload["action"], "refreshed")
+        self.assertEqual(refreshed_payload["reason"], "replaced_existing_snapshot")
+        self.assertEqual(refreshed_payload["day"]["metadata"]["ingest"]["action"], "refreshed")
 
     def test_emails_route_requires_login_when_unauthenticated(self):
         self.logout()
@@ -105,7 +202,7 @@ class AppApiTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         body = response.get_data(as_text=True)
-        self.assertIn("Sports Email Event Request", body)
+        self.assertIn("Request an event for the weekly sports emails.", body)
         self.assertIn('id="request-form"', body)
 
     def test_public_request_submission_routes_to_review_week(self):

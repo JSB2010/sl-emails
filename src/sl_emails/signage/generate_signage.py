@@ -1,38 +1,22 @@
 #!/usr/bin/env python3
-"""
-Kent Denver Digital Signage Generator
-
-Generates a daily HTML display (2500x1650px) showing today's games and performances
-for digital signage around the school.
-
-Features:
-- Fetches today's sports games and arts events
-- Displays in card format similar to email design
-- Updates daily via GitHub Actions
-- Optimized for 2500x1650px displays
-
-Usage:
-    PYTHONPATH=src python3 -m sl_emails.signage.generate_signage
-    PYTHONPATH=src python3 -m sl_emails.signage.generate_signage --date 2025-11-08
-
-Author: Jacob Barkin (jbarkin28@kentdenver.org)
-"""
-
-import requests
-from bs4 import BeautifulSoup
-from datetime import datetime, timedelta
-import sys
 import argparse
-from typing import List, Dict, Union
-from icalendar import Calendar
+from datetime import date, datetime
+import sys
+from typing import Dict, List
 
 from sl_emails.config import SIGNAGE_OUTPUT_HTML
-from sl_emails.ingest.generate_games import (
-    Game, Event,
-    scrape_athletics_schedule, fetch_arts_events,
-    is_varsity_game,
-    build_icon_html, KDS_PRIMARY_LOGO_URL
+from sl_emails.domain.dates import iso_to_date
+from sl_emails.domain.email_presets import (
+    ARTS_CONFIG,
+    DEFAULT_ARTS_CONFIG,
+    DEFAULT_SCHOOL_EVENT_CONFIG,
+    DEFAULT_SPORT_CONFIG,
+    SCHOOL_EVENT_CONFIG,
+    SPORT_CONFIG,
 )
+from sl_emails.ingest.generate_games import KDS_PRIMARY_LOGO_URL, build_icon_html
+from sl_emails.services.event_shapes import PosterEvent
+from sl_emails.services.signage_ingest import fetch_signage_events
 
 def get_date_range(date_str=None):
     """Get date in the format needed for fetching
@@ -43,16 +27,16 @@ def get_date_range(date_str=None):
     if date_str:
         # Validate and use provided date
         try:
-            target_date = datetime.strptime(date_str, '%Y-%m-%d')
+            target_day = iso_to_date(date_str)
         except ValueError:
             print(f"❌ Invalid date format: {date_str}")
             print("   Please use YYYY-MM-DD format (e.g., 2025-11-08)")
             sys.exit(1)
     else:
-        target_date = datetime.now()
+        target_day = datetime.now().date()
 
-    date_str = target_date.strftime('%Y-%m-%d')
-    return date_str, date_str, target_date
+    day_id = target_day.isoformat()
+    return day_id, day_id, target_day
 
 def fetch_events_for_date(date_str=None):
     """Fetch all games and events for the specified date
@@ -60,36 +44,31 @@ def fetch_events_for_date(date_str=None):
     Args:
         date_str: Optional date string in YYYY-MM-DD format. If None, uses today.
     """
-    start_date, end_date, target_date = get_date_range(date_str)
+    start_date, _end_date, target_day = get_date_range(date_str)
 
-    print(f"🔍 Fetching events for {start_date} ({target_date.strftime('%A, %B %d, %Y')})...")
+    print(f"🔍 Fetching events for {start_date} ({target_day.strftime('%A, %B %d, %Y')})...")
 
-    # Fetch sports games
-    games = scrape_athletics_schedule(start_date, end_date)
+    all_events = fetch_signage_events(start_date)
+    games = [event for event in all_events if event.source == "athletics"]
+    arts_events = [event for event in all_events if event.source == "arts"]
     print(f"✅ Found {len(games)} sports games")
-
-    # Fetch arts events
-    arts_events = fetch_arts_events(start_date, end_date)
     print(f"✅ Found {len(arts_events)} arts events")
-
-    # Combine all events
-    all_events = games + arts_events
     print(f"📊 Total: {len(all_events)} events")
 
-    return all_events, target_date
+    return all_events, target_day
 
-def categorize_events(events: List[Union[Game, Event]]):
+def categorize_events(events: List[PosterEvent]):
     """Categorize events into featured and regular"""
     featured = []
     regular = []
     
     for event in events:
-        if event.event_type == 'arts':
+        if event.source == 'arts':
             # All arts events are featured
             featured.append(event)
-        elif event.event_type == 'game':
+        elif event.source == 'athletics':
             # Varsity games are featured
-            if is_varsity_game(event.team):
+            if "varsity" in (event.team or "").lower():
                 featured.append(event)
             else:
                 regular.append(event)
@@ -227,25 +206,64 @@ def get_layout_config(total_events: int) -> dict:
             "card_height": "auto"
         }
 
-def generate_event_card_html(event: Union[Game, Event], is_featured: bool = False, layout_config: dict = None) -> str:
-    """Generate HTML for a single event card with dynamic sizing"""
-    config = event.get_sport_config()
-    accent_color = config.get('accent_color', config.get('border_color', '#041e42'))
+def event_display_config(event: PosterEvent) -> Dict[str, str]:
+    event_key = (event.category or event.title or "").lower()
+    if event.source == "athletics":
+        team_key = (event.team or event.title or "").lower()
+        for sport_key, config in SPORT_CONFIG.items():
+            if sport_key in team_key or sport_key in event_key:
+                return dict(config)
+        return dict(DEFAULT_SPORT_CONFIG)
 
-    if event.event_type == 'arts':
-        badge_style = event.get_home_away_style()
+    for category_key, config in ARTS_CONFIG.items():
+        if category_key in event_key:
+            return dict(config)
+    for category_key, config in SCHOOL_EVENT_CONFIG.items():
+        if category_key in event_key:
+            return dict(config)
+    return dict(DEFAULT_ARTS_CONFIG if event.source == "arts" else DEFAULT_SCHOOL_EVENT_CONFIG)
+
+
+def event_badge_style(event: PosterEvent) -> Dict[str, str]:
+    badge = (event.badge or "").strip().upper()
+    if event.source == "athletics":
+        if badge == "AWAY" or not event.is_home:
+            return {
+                "background": "#fef3c7",
+                "color": "#92400e",
+                "text": "Away",
+            }
+        return {
+            "background": "#dcfce7",
+            "color": "#166534",
+            "text": "Home",
+        }
+    return {
+        "background": "#e0e7ff",
+        "color": "#3730a3",
+        "text": "Event",
+    }
+
+
+def generate_event_card_html(event: PosterEvent, is_featured: bool = False, layout_config: dict = None) -> str:
+    """Generate HTML for a single event card with dynamic sizing"""
+    config = event_display_config(event)
+    accent_color = event.accent or config.get('accent_color', config.get('border_color', '#041e42'))
+
+    if event.source == 'arts':
+        badge_style = event_badge_style(event)
         title = event.title
         subtitle_primary = event.location or "On Campus"
         subtitle_secondary = event.category.title()
         icon_label = event.category
     else:
-        badge_style = event.get_home_away_style()
-        title = event.team
+        badge_style = event_badge_style(event)
+        title = event.team or event.title
         opponent = event.opponent or "TBA"
         location = event.location or "Location TBA"
         subtitle_primary = f"vs. {opponent}"
         subtitle_secondary = location
-        icon_label = event.sport
+        icon_label = event.category or event.title
 
     # Use layout config
     emoji_size = layout_config["emoji_size"]
@@ -291,15 +309,24 @@ def generate_event_card_html(event: Union[Game, Event], is_featured: bool = Fals
     </div>
     '''
 
-def generate_signage_html(events: List[Union[Game, Event]], target_date: datetime = None) -> str:
+def _coerce_display_date(target_date: date | datetime | str | None) -> datetime:
+    if target_date is None:
+        return datetime.now()
+    if isinstance(target_date, str):
+        return datetime.combine(iso_to_date(target_date), datetime.min.time())
+    if isinstance(target_date, datetime):
+        return target_date
+    return datetime.combine(target_date, datetime.min.time())
+
+
+def generate_signage_html(events: List[PosterEvent], target_date: date | datetime | str | None = None) -> str:
     """Generate the complete HTML for digital signage
 
     Args:
         events: List of games and events to display
         target_date: The date to display. If None, uses current date.
     """
-    if target_date is None:
-        target_date = datetime.now()
+    target_date = _coerce_display_date(target_date)
     date_display = target_date.strftime('%A, %B %d, %Y')
 
     logo_url = KDS_PRIMARY_LOGO_URL

@@ -14,47 +14,53 @@
 
   <!-- ── Topbar ───────────────────────────────────────── -->
   <header class="app-topbar">
-    <img src="/static/kd-logo.png" alt="Kent Denver" class="topbar-logo" />
-    <span class="topbar-brand">Kent Denver</span>
-    <span class="topbar-dot">·</span>
-    <span class="topbar-product">Weekly Email Review</span>
-    <div class="topbar-spacer"></div>
-    <a class="topbar-link" href="{{ auth.settings }}">Settings</a>
-    <span class="topbar-user">{{ current_user_name or current_user_email }}</span>
-    <a class="topbar-link topbar-link-muted" href="{{ auth.logout }}">Sign Out</a>
+    <div class="app-topbar-inner">
+      <div class="topbar-branding">
+        <img src="/static/kd-logo.png" alt="Kent Denver" class="topbar-logo" />
+        <div class="topbar-brand-copy">
+          <span class="topbar-brand">Kent Denver</span>
+          <span class="topbar-product">Weekly Email Review</span>
+        </div>
+      </div>
+      <div class="topbar-account">
+        <a class="topbar-link" href="{{ auth.settings }}">Settings</a>
+        <span class="topbar-user">{{ current_user_name or current_user_email }}</span>
+        <a class="topbar-link topbar-link-muted" href="{{ auth.logout }}">Sign Out</a>
+      </div>
+    </div>
   </header>
 
   <!-- ── Command bar ──────────────────────────────────── -->
   <div class="cmd-bar">
     <div class="cmd-inner">
 
-      <!-- Week picker -->
-      <div class="cmd-group cmd-week-group">
-        <label class="cmd-label" for="week-id">Week of</label>
-        <input id="week-id" type="date" value="{{ default_week_id }}" class="cmd-date" />
-        <button id="load-week" class="btn btn-primary">Load Draft</button>
-        <button id="create-from-source" class="btn cmd-ghost-btn">↺ Refresh Events</button>
+      <div class="cmd-cluster cmd-cluster-week">
+        <label class="cmd-label" for="week-id">Review Week</label>
+        <div class="cmd-group cmd-week-group">
+          <input id="week-id" type="date" value="{{ default_week_id }}" class="cmd-date" />
+          <button id="load-week" class="btn btn-primary">Load Draft</button>
+          <button id="create-from-source" class="btn cmd-ghost-btn">Refresh Events</button>
+        </div>
       </div>
 
-      <div class="cmd-divider"></div>
-
-      <!-- Week state info -->
-      <div class="cmd-group cmd-state-group">
-        <span id="week-summary" class="cmd-week-range">No draft loaded</span>
-        <span id="event-count" class="cmd-event-count">—</span>
+      <div class="cmd-cluster cmd-cluster-state">
+        <span class="cmd-label">Current Draft</span>
+        <div class="cmd-group cmd-state-group">
+          <span id="week-summary" class="cmd-week-range">No draft loaded</span>
+          <span id="event-count" class="cmd-event-count">—</span>
+        </div>
       </div>
 
-      <div class="cmd-spacer"></div>
-
-      <!-- Action buttons -->
-      <div class="cmd-group cmd-actions-group">
-        <button id="export-csv" class="btn cmd-ghost-btn" disabled title="Export events to CSV">↓ CSV</button>
-        <button id="add-custom" class="btn btn-ghost" disabled>+ Add Event</button>
-        <div class="cmd-action-sep"></div>
-        <button id="save-week" class="btn btn-primary" disabled>Save Draft</button>
-        <button id="preview-week" class="btn" disabled>Refresh Preview</button>
-        <button id="approve-week" class="btn btn-approve" disabled>✓ Approve Week</button>
-        <button id="mark-unsent" class="btn btn-ghost" type="button" hidden>Mark Unsent</button>
+      <div class="cmd-cluster cmd-cluster-actions">
+        <span class="cmd-label">Actions</span>
+        <div class="cmd-group cmd-actions-group">
+          <button id="export-csv" class="btn cmd-ghost-btn" disabled title="Export events to CSV">Export CSV</button>
+          <button id="add-custom" class="btn btn-ghost" disabled>Add Event</button>
+          <button id="save-week" class="btn btn-primary" disabled>Save Draft</button>
+          <button id="preview-week" class="btn" disabled>Refresh Preview</button>
+          <button id="approve-week" class="btn btn-approve" disabled>Approve Week</button>
+          <button id="mark-unsent" class="btn btn-ghost" type="button" hidden>Mark Unsent</button>
+        </div>
       </div>
 
     </div>
@@ -122,7 +128,10 @@
       <!-- Event review -->
       <section class="panel panel-events">
         <div class="events-panel-head">
-          <h2 class="events-panel-title">Events</h2>
+          <div class="events-panel-head-copy">
+            <h2 class="events-panel-title">Events</h2>
+            <p class="events-panel-subtitle">Actions &amp; filters are built into each card, so the full event stays visible without horizontal scrolling.</p>
+          </div>
           <div class="event-tools">
             <label class="event-search-label">
               <span class="sr-only">Search events</span>
@@ -150,22 +159,8 @@
           </div>
         </div>
 
-        <div class="events-table-wrap">
-          <table class="events-table">
-            <thead>
-              <tr>
-                <th>Source</th>
-                <th>Event</th>
-                <th>Dates</th>
-                <th>Time &amp; Location</th>
-                <th>Audience</th>
-                <th>Visibility</th>
-                <th>Link &amp; Notes</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody id="events-tbody"></tbody>
-          </table>
+        <div class="events-list-wrap">
+          <div id="events-tbody" class="events-list"></div>
         </div>
       </section>
 

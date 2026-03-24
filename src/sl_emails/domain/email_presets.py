@@ -11,6 +11,7 @@ CURATED_ICON_GROUPS: list[dict[str, Any]] = [
             {"value": "football", "label": "Football"},
             {"value": "basketball", "label": "Basketball"},
             {"value": "baseball", "label": "Baseball"},
+            {"value": "shield-halved", "label": "Lacrosse"},
             {"value": "golf-ball-tee", "label": "Golf"},
             {"value": "volleyball", "label": "Volleyball"},
             {"value": "hockey-puck", "label": "Hockey"},
@@ -41,10 +42,48 @@ CURATED_ICON_GROUPS: list[dict[str, Any]] = [
             {"value": "book-open", "label": "Learning"},
             {"value": "users", "label": "Community"},
             {"value": "bullhorn", "label": "Announcement"},
+            {"value": "hand-holding-dollar", "label": "Fundraiser"},
             {"value": "handshake-angle", "label": "Service"},
+            {"value": "box-open", "label": "Supply Drive"},
+            {"value": "shirt", "label": "Clothing Drive"},
+            {"value": "utensils", "label": "Food Drive"},
             {"value": "camera", "label": "Student Media"},
         ],
     },
+]
+
+REQUEST_SPORT_OPTIONS: list[dict[str, str]] = [
+    {"value": "Baseball", "label": "Baseball", "icon": "baseball"},
+    {"value": "Basketball", "label": "Basketball", "icon": "basketball"},
+    {"value": "Cross Country", "label": "Cross Country", "icon": "person-running"},
+    {"value": "Field Hockey", "label": "Field Hockey", "icon": "hockey-puck"},
+    {"value": "Football", "label": "Football", "icon": "football"},
+    {"value": "Golf", "label": "Golf", "icon": "golf-ball-tee"},
+    {"value": "Ice Hockey", "label": "Ice Hockey", "icon": "hockey-puck"},
+    {"value": "Lacrosse", "label": "Lacrosse", "icon": "shield-halved"},
+    {"value": "Soccer", "label": "Soccer", "icon": "futbol"},
+    {"value": "Swimming", "label": "Swimming", "icon": "person-swimming"},
+    {"value": "Tennis", "label": "Tennis", "icon": "medal"},
+    {"value": "Track", "label": "Track", "icon": "person-running"},
+    {"value": "Volleyball", "label": "Volleyball", "icon": "volleyball"},
+]
+
+REQUEST_EVENT_CATEGORY_OPTIONS: list[dict[str, str]] = [
+    {"value": "Admissions", "label": "Admissions", "icon": "school", "description": "Open houses, visit programs, and family events."},
+    {"value": "Academic", "label": "Academic", "icon": "graduation-cap", "description": "Lectures, showcases, and academic milestones."},
+    {"value": "Announcement", "label": "Announcement", "icon": "bullhorn", "description": "Important schoolwide notices or reminders."},
+    {"value": "Assembly", "label": "Assembly", "icon": "school", "description": "Divisional gatherings and speaker programs."},
+    {"value": "Club Meeting", "label": "Club Meeting", "icon": "users", "description": "Student club meetings, interest sessions, and sign-ups."},
+    {"value": "Community", "label": "Community", "icon": "users", "description": "Community nights, celebrations, and parent-facing events."},
+    {"value": "Fundraiser", "label": "Fundraiser", "icon": "hand-holding-dollar", "description": "Benefit nights, ticket sales, and fundraising campaigns."},
+    {"value": "Service", "label": "Service", "icon": "handshake-angle", "description": "Volunteer events and service projects."},
+    {"value": "Performance", "label": "Performance", "icon": "microphone-lines", "description": "Concerts, recitals, theater, and live performances."},
+    {"value": "Showcase", "label": "Showcase", "icon": "star", "description": "Exhibits, showcases, and featured presentations."},
+    {"value": "Food Drive", "label": "Food Drive", "icon": "utensils", "description": "Canned food and pantry item collection drives."},
+    {"value": "Book Drive", "label": "Book Drive", "icon": "book-open", "description": "Book donation drives and reading campaigns."},
+    {"value": "Clothing Drive", "label": "Clothing Drive", "icon": "shirt", "description": "Clothing, outerwear, and uniform collection drives."},
+    {"value": "Supply Drive", "label": "Supply Drive", "icon": "box-open", "description": "School supply, toiletry, or equipment donation drives."},
+    {"value": "Media", "label": "Media / Publication", "icon": "camera", "description": "Yearbook, newspaper, photography, and publication deadlines."},
 ]
 
 ICON_LABELS = {
@@ -91,6 +130,12 @@ SCHOOL_EVENT_CONFIG = {
     "club": {"icon": "users", "border_color": "#7c3aed", "accent_color": "#7c3aed"},
     "meeting": {"icon": "calendar-days", "border_color": "#64748b", "accent_color": "#64748b"},
     "assembly": {"icon": "school", "border_color": "#165191", "accent_color": "#165191"},
+    "fundraiser": {"icon": "hand-holding-dollar", "border_color": "#8c6a00", "accent_color": "#8c6a00"},
+    "food drive": {"icon": "utensils", "border_color": "#a11919", "accent_color": "#a11919"},
+    "book drive": {"icon": "book-open", "border_color": "#165191", "accent_color": "#165191"},
+    "clothing drive": {"icon": "shirt", "border_color": "#17654c", "accent_color": "#17654c"},
+    "supply drive": {"icon": "box-open", "border_color": "#64748b", "accent_color": "#64748b"},
+    "drive": {"icon": "box-open", "border_color": "#64748b", "accent_color": "#64748b"},
     "media": {"icon": "camera", "border_color": "#0f766e", "accent_color": "#0f766e"},
 }
 
@@ -104,4 +149,3 @@ def icon_label(icon_name: str) -> str:
     if not value:
         return "Auto"
     return ICON_LABELS.get(value, value.replace("-", " ").title())
-

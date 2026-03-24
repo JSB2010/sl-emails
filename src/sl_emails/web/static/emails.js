@@ -1,6 +1,10 @@
 (() => {
   const defaults = window.__EMAIL_REVIEW_DEFAULTS__ || {};
   const ICON_OPTIONS = Array.isArray(defaults.iconOptions) ? defaults.iconOptions : [];
+  const ICON_CDN_BASE = 'https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.5.2/svgs/solid';
+  const ICON_LABELS = new Map(
+    ICON_OPTIONS.flatMap((group) => (Array.isArray(group.options) ? group.options : []).map((option) => [String(option.value || '').trim(), String(option.label || option.value || '').trim()]))
+  );
   const SOURCE_COLORS = {
     athletics: '#0C3A6B',
     arts: '#A11919',
@@ -362,26 +366,92 @@
   }
 
   function buildIconOptionsMarkup(selectedValue) {
-    const knownValues = new Set();
-    const markup = ['<option value="">Auto (preset)</option>'];
-    ICON_OPTIONS.forEach((group) => {
+    const knownValues = new Set(ICON_LABELS.keys());
+    const selectedLabel = iconLabel(selectedValue);
+    const groupsMarkup = ICON_OPTIONS.map((group) => {
       const groupLabel = escapeHtml(group.label || 'Icons');
       const options = Array.isArray(group.options) ? group.options : [];
-      const groupOptions = options.map((option) => {
+      const optionButtons = options.map((option) => {
         const value = String(option.value || '').trim();
         if (!value) return '';
-        knownValues.add(value);
         const label = escapeHtml(option.label || value);
-        return `<option value="${escapeHtml(value)}" ${selectedValue === value ? 'selected' : ''}>${label}</option>`;
+        const isActive = selectedValue === value ? ' icon-option-active' : '';
+        return `
+          <button class="icon-option${isActive}" data-action="set-icon" data-icon-value="${escapeHtml(value)}" type="button">
+            ${iconSwatchMarkup(value, option.label || value)}
+            <span>${label}</span>
+          </button>
+        `;
       }).join('');
-      if (groupOptions) {
-        markup.push(`<optgroup label="${groupLabel}">${groupOptions}</optgroup>`);
-      }
-    });
-    if (selectedValue && !knownValues.has(selectedValue)) {
-      markup.unshift(`<option value="${escapeHtml(selectedValue)}" selected>${escapeHtml(selectedValue)}</option>`);
+      if (!optionButtons) return '';
+      return `
+        <div class="icon-picker-group">
+          <p class="icon-picker-group-title">${groupLabel}</p>
+          <div class="icon-picker-options">${optionButtons}</div>
+        </div>
+      `;
+    }).join('');
+
+    const unknownOptionMarkup = selectedValue && !knownValues.has(selectedValue)
+      ? `
+        <div class="icon-picker-group">
+          <p class="icon-picker-group-title">Current Value</p>
+          <div class="icon-picker-options">
+            <button class="icon-option icon-option-active" data-action="set-icon" data-icon-value="${escapeHtml(selectedValue)}" type="button">
+              ${iconSwatchMarkup(selectedValue, selectedLabel)}
+              <span>${escapeHtml(selectedLabel)}</span>
+            </button>
+          </div>
+        </div>
+      `
+      : '';
+
+    return `
+      <details class="icon-picker">
+        <summary class="icon-picker-trigger">
+          ${iconSwatchMarkup(selectedValue, selectedLabel)}
+          <span class="icon-picker-copy">
+            <strong>${escapeHtml(selectedLabel)}</strong>
+            <span>${selectedValue ? escapeHtml(selectedValue) : 'Use the category or source default icon.'}</span>
+          </span>
+        </summary>
+        <div class="icon-picker-panel">
+          <div class="icon-picker-group">
+            <p class="icon-picker-group-title">Automatic</p>
+            <div class="icon-picker-options">
+              <button class="icon-option${selectedValue ? '' : ' icon-option-active'}" data-action="set-icon" data-icon-value="" type="button">
+                ${iconSwatchMarkup('', 'Auto')}
+                <span>Auto Select</span>
+              </button>
+            </div>
+          </div>
+          ${unknownOptionMarkup}
+          ${groupsMarkup}
+        </div>
+      </details>
+    `;
+  }
+
+  function iconLabel(value) {
+    const iconName = String(value || '').trim();
+    if (!iconName) return 'Auto Select';
+    return ICON_LABELS.get(iconName) || iconName.replaceAll('-', ' ').replace(/\b\w/g, (letter) => letter.toUpperCase());
+  }
+
+  function iconSwatchMarkup(value, label) {
+    const iconName = String(value || '').trim();
+    if (!iconName) {
+      return '<span class="icon-picker-swatch"><span>Auto</span></span>';
     }
-    return markup.join('');
+    return `<span class="icon-picker-swatch"><img src="${ICON_CDN_BASE}/${escapeHtml(iconName)}.svg" alt="${escapeHtml(label)}" /></span>`;
+  }
+
+  function formatEventDate(event) {
+    const start = String(event.start_date || '').trim();
+    const end = String(event.end_date || '').trim();
+    if (!start) return 'Date not set';
+    if (end && end !== start) return `${start} to ${end}`;
+    return start;
   }
 
   function applyWeek(week) {
@@ -607,90 +677,97 @@
   function rowMarkup(event, index) {
     const isHidden = event.status === 'hidden';
     const audienceChoice = audienceChoiceForEvent(event);
+    const summarySubtitle = [formatEventDate(event), event.time_text || 'TBA', event.location || 'On Campus'].filter(Boolean).join(' · ');
     return `
-      <tr data-index="${index}" class="${isHidden ? 'row-hidden' : ''}">
-        <td>
-          <span class="source-pill ${sourceClass(event.source)}">${escapeHtml(event.source)}</span>
-        </td>
-        <td>
-          <div class="cell-stack">
-            <select class="mini-select" data-field="kind">
-              <option value="event" ${event.kind === 'event' ? 'selected' : ''}>Event</option>
-              <option value="game" ${event.kind === 'game' ? 'selected' : ''}>Game</option>
-            </select>
-            <input class="mini-input" type="text" data-field="title" value="${escapeHtml(event.title)}" placeholder="Title" />
-            <input class="mini-input" type="text" data-field="subtitle" value="${escapeHtml(event.subtitle)}" placeholder="Subtitle or opponent" />
-            <input class="mini-input" type="text" data-field="category" value="${escapeHtml(event.category)}" placeholder="Category" />
-            <select class="mini-select" data-field="icon">
-              ${buildIconOptionsMarkup(event.icon)}
-            </select>
+      <article data-index="${index}" class="event-card ${isHidden ? 'row-hidden' : ''}">
+        <div class="event-card-head">
+          <div class="event-card-meta">
+            <div class="event-card-pills">
+              <span class="source-pill ${sourceClass(event.source)}">${escapeHtml(event.source)}</span>
+              <span class="kind-pill">${escapeHtml(event.kind)}</span>
+              <span class="visibility-pill ${isHidden ? 'visibility-pill-hidden' : ''}">${isHidden ? 'Hidden' : 'Visible'}</span>
+            </div>
+            <p class="event-summary-line"><strong>${escapeHtml(event.title || 'Untitled')}</strong>${escapeHtml(event.subtitle || event.category || '')}</p>
+            <p class="event-summary-subline">${escapeHtml(summarySubtitle)}</p>
           </div>
-        </td>
-        <td>
-          <div class="inline-pair">
-            <label class="inline-field">Start
-              <input class="mini-input" type="date" data-field="start_date" value="${escapeHtml(event.start_date)}" />
-            </label>
-            <label class="inline-field">End
-              <input class="mini-input" type="date" data-field="end_date" value="${escapeHtml(event.end_date)}" />
-            </label>
-          </div>
-        </td>
-        <td>
-          <div class="cell-stack">
-            <input class="mini-input" type="text" data-field="time_text" value="${escapeHtml(event.time_text)}" placeholder="Time" />
-            <input class="mini-input" type="text" data-field="location" value="${escapeHtml(event.location)}" placeholder="Location" />
-          </div>
-        </td>
-        <td>
-          <div class="cell-stack">
-            <select class="mini-select" data-field="audience_choice">
-              <option value="middle-school" ${audienceChoice === 'middle-school' ? 'selected' : ''}>Middle School</option>
-              <option value="upper-school" ${audienceChoice === 'upper-school' ? 'selected' : ''}>Upper School</option>
-              <option value="both" ${audienceChoice === 'both' ? 'selected' : ''}>Both Audiences</option>
-            </select>
-            <p class="field-note">Controls which preview and sender output includes this row.</p>
-          </div>
-        </td>
-        <td>
-          <div class="cell-stack">
-            <select class="mini-select" data-field="status">
-              <option value="active" ${event.status !== 'hidden' ? 'selected' : ''}>Visible</option>
-              <option value="hidden" ${event.status === 'hidden' ? 'selected' : ''}>Hidden</option>
-            </select>
-            <p class="field-note">${isHidden ? 'Hidden rows are omitted from preview and sender output.' : 'Visible rows appear in preview and sender output.'}</p>
-          </div>
-        </td>
-        <td>
-          <div class="cell-stack">
-            <input class="mini-input" type="url" data-field="link" value="${escapeHtml(event.link)}" placeholder="Optional link URL" />
-            <textarea class="mini-textarea" data-field="description" placeholder="Optional notes or details">${escapeHtml(event.description)}</textarea>
-          </div>
-        </td>
-        <td>
-          <div class="row-actions">
+          <div class="event-card-actions row-actions">
             <button class="row-action" data-action="duplicate" type="button">Duplicate</button>
             <button class="row-remove row-action-danger" data-action="remove" type="button">Delete</button>
           </div>
-        </td>
-      </tr>
+        </div>
+
+        <div class="event-card-grid">
+          <section class="event-card-section event-card-section-wide">
+            <p class="field-group-label">Basics</p>
+            <div class="cell-stack">
+              <select class="mini-select" data-field="kind">
+                <option value="event" ${event.kind === 'event' ? 'selected' : ''}>Event</option>
+                <option value="game" ${event.kind === 'game' ? 'selected' : ''}>Game</option>
+              </select>
+              <input class="mini-input" type="text" data-field="title" value="${escapeHtml(event.title)}" placeholder="${event.kind === 'game' ? 'Team name' : 'Event title'}" />
+              <input class="mini-input" type="text" data-field="subtitle" value="${escapeHtml(event.subtitle)}" placeholder="${event.kind === 'game' ? 'Opponent or matchup line' : 'Subtitle'}" />
+              <input class="mini-input" type="text" data-field="category" value="${escapeHtml(event.category)}" placeholder="${event.kind === 'game' ? 'Sport' : 'Category'}" />
+              ${buildIconOptionsMarkup(event.icon)}
+            </div>
+          </section>
+
+          <section class="event-card-section">
+            <p class="field-group-label">Schedule</p>
+            <div class="inline-pair">
+              <label class="inline-field">Start
+                <input class="mini-input" type="date" data-field="start_date" value="${escapeHtml(event.start_date)}" />
+              </label>
+              <label class="inline-field">End
+                <input class="mini-input" type="date" data-field="end_date" value="${escapeHtml(event.end_date)}" />
+              </label>
+            </div>
+            <input class="mini-input" type="text" data-field="time_text" value="${escapeHtml(event.time_text)}" placeholder="Time" />
+            <input class="mini-input" type="text" data-field="location" value="${escapeHtml(event.location)}" placeholder="Location" />
+          </section>
+
+          <section class="event-card-section">
+            <p class="field-group-label">Audience &amp; Status</p>
+            <div class="cell-stack">
+              <select class="mini-select" data-field="audience_choice">
+                <option value="middle-school" ${audienceChoice === 'middle-school' ? 'selected' : ''}>Middle School</option>
+                <option value="upper-school" ${audienceChoice === 'upper-school' ? 'selected' : ''}>Upper School</option>
+                <option value="both" ${audienceChoice === 'both' ? 'selected' : ''}>Both Audiences</option>
+              </select>
+              <p class="field-note">Controls which preview and sender output includes this row.</p>
+              <select class="mini-select" data-field="status">
+                <option value="active" ${event.status !== 'hidden' ? 'selected' : ''}>Visible</option>
+                <option value="hidden" ${event.status === 'hidden' ? 'selected' : ''}>Hidden</option>
+              </select>
+              <p class="field-note">${isHidden ? 'Hidden rows are omitted from preview and sender output.' : 'Visible rows appear in preview and sender output.'}</p>
+            </div>
+          </section>
+
+          <section class="event-card-section event-card-section-wide">
+            <p class="field-group-label">Links &amp; Notes</p>
+            <div class="cell-stack">
+              <input class="mini-input" type="url" data-field="link" value="${escapeHtml(event.link)}" placeholder="Optional link URL" />
+              <textarea class="mini-textarea" data-field="description" placeholder="Optional notes or details">${escapeHtml(event.description)}</textarea>
+            </div>
+          </section>
+        </div>
+      </article>
     `;
   }
 
   function renderRows() {
     if (!state.week) {
-      els.tbody.innerHTML = '<tr><td colspan="8" class="empty-row">Load a week to begin reviewing events.</td></tr>';
+      els.tbody.innerHTML = '<div class="empty-row">Load a week to begin reviewing events.</div>';
       return;
     }
 
     if (!state.week.events.length) {
-      els.tbody.innerHTML = '<tr><td colspan="8" class="empty-row">No events yet. Create a draft from source events or add a custom announcement.</td></tr>';
+      els.tbody.innerHTML = '<div class="empty-row">No events yet. Create a draft from source events or add a custom announcement.</div>';
       return;
     }
 
     const rows = filteredEventRows();
     if (!rows.length) {
-      els.tbody.innerHTML = '<tr><td colspan="8" class="empty-row">No events match the current filters. Clear filters to review the full draft.</td></tr>';
+      els.tbody.innerHTML = '<div class="empty-row">No events match the current filters. Clear filters to review the full draft.</div>';
       return;
     }
 
@@ -1154,7 +1231,7 @@
   }
 
   function onTableInput(event) {
-    const row = event.target.closest('tr[data-index]');
+    const row = event.target.closest('.event-card[data-index]');
     if (!row || !state.week) return;
 
     const index = Number(row.dataset.index);
@@ -1181,6 +1258,9 @@
     if (field === 'subtitle' && item.kind === 'game') {
       item.opponent = deriveOpponent(item.subtitle);
     }
+    if (field === 'kind') {
+      renderRows();
+    }
     if (field === 'status' && item.status !== 'hidden' && !item.audiences.length) {
       item.audiences = inferAudiences(item);
       renderRows();
@@ -1192,7 +1272,7 @@
     const button = event.target.closest('[data-action]');
     if (!button || !state.week) return;
 
-    const row = button.closest('tr[data-index]');
+    const row = button.closest('.event-card[data-index]');
     if (!row) return;
 
     const index = Number(row.dataset.index);
@@ -1201,6 +1281,13 @@
     const action = button.dataset.action;
     const item = state.week.events[index];
     if (!item) return;
+
+    if (action === 'set-icon') {
+      item.icon = String(button.dataset.iconValue || '').trim();
+      renderRows();
+      markDirty();
+      return;
+    }
 
     if (action === 'duplicate') {
       resetFilters();

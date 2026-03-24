@@ -33,119 +33,243 @@
     <section class="request-hero">
       <p class="eyebrow">Public Submission</p>
       <h1>Request an event for the weekly sports emails.</h1>
-      <p class="hero-copy">Share event details and contact info. Requests stay pending until an admin approves or denies them in the dashboard.</p>
+      <p class="hero-copy">Use the guided form below so the review team gets cleaner event data, stronger icon matches, and fewer follow-up questions.</p>
       <div class="hero-note">
         <strong id="week-preview-label">Review week will be assigned from the event start date.</strong>
-        <span>The admin team reviews requests inside the weekly email dashboard before anything is published.</span>
+        <span>The admin team reviews each submission in the dashboard before anything is published.</span>
       </div>
     </section>
 
     <section class="request-card">
       <form id="request-form" class="request-form">
 
-        <!-- Honeypot -->
         <div aria-hidden="true" style="position:absolute;left:-9999px;top:auto;width:1px;height:1px;overflow:hidden;">
           <label>Leave this field empty<input name="website" type="text" tabindex="-1" autocomplete="off" /></label>
         </div>
 
-        <!-- Event details -->
-        <div class="form-section">
-          <p class="form-section-label">Event Details</p>
-          <div class="form-grid">
-            <label class="span-2">
-              Event Title or Team Name
-              <input name="title" type="text" maxlength="120" placeholder="Varsity Baseball Senior Night" required />
-            </label>
+        <div class="request-form-layout">
+          <div class="request-form-main">
 
-            <label>
-              Event Type
-              <select name="kind">
-                <option value="event">Event</option>
-                <option value="game">Game</option>
-              </select>
-            </label>
+            <div class="form-section">
+              <p class="form-section-label">Submission Type</p>
+              <div class="choice-grid choice-grid-2">
+                <label class="choice-card">
+                  <input type="radio" name="kind" value="event" checked />
+                  <span class="choice-card-body">
+                    <span class="choice-card-title">School Event</span>
+                    <span class="choice-card-copy">Fundraisers, drives, performances, meetings, and other non-game announcements.</span>
+                  </span>
+                </label>
+                <label class="choice-card">
+                  <input type="radio" name="kind" value="game" />
+                  <span class="choice-card-body">
+                    <span class="choice-card-title">Athletic Game</span>
+                    <span class="choice-card-copy">Sports matchups with a team name, opponent, and sport classification.</span>
+                  </span>
+                </label>
+              </div>
+            </div>
 
-            <label>
-              Audience
-              <select name="audience">
-                <option value="both">Both audiences</option>
-                <option value="middle-school">Middle School</option>
-                <option value="upper-school">Upper School</option>
-              </select>
-            </label>
+            <div class="form-section">
+              <p class="form-section-label">Audience</p>
+              <div class="choice-grid choice-grid-3">
+                <label class="choice-card compact-card">
+                  <input type="radio" name="audience" value="both" checked />
+                  <span class="choice-card-body">
+                    <span class="choice-card-title">Both</span>
+                    <span class="choice-card-copy">Show in both email versions.</span>
+                  </span>
+                </label>
+                <label class="choice-card compact-card">
+                  <input type="radio" name="audience" value="middle-school" />
+                  <span class="choice-card-body">
+                    <span class="choice-card-title">Middle School</span>
+                    <span class="choice-card-copy">Only include in the MS email.</span>
+                  </span>
+                </label>
+                <label class="choice-card compact-card">
+                  <input type="radio" name="audience" value="upper-school" />
+                  <span class="choice-card-body">
+                    <span class="choice-card-title">Upper School</span>
+                    <span class="choice-card-copy">Only include in the US email.</span>
+                  </span>
+                </label>
+              </div>
+            </div>
 
-            <label>
-              Category
-              <input name="category" type="text" maxlength="80" placeholder="Baseball, Community, Performance" />
-            </label>
+            <div class="form-section" data-kind-panel="event">
+              <p class="form-section-label">Event Category</p>
+              <div class="icon-choice-grid">
+                {% for option in request_event_category_options %}
+                <label class="icon-choice-card">
+                  <input type="radio" name="event_category" value="{{ option.value }}" {% if loop.first %}checked{% endif %} />
+                  <span class="icon-choice-card-body">
+                    <span class="icon-choice-media">
+                      <img src="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.5.2/svgs/solid/{{ option.icon }}.svg" alt="" aria-hidden="true" />
+                    </span>
+                    <span class="icon-choice-text">
+                      <strong>{{ option.label }}</strong>
+                      <span>{{ option.description }}</span>
+                    </span>
+                  </span>
+                </label>
+                {% endfor %}
+              </div>
+            </div>
 
-            <label>
-              Subtitle or Opponent
-              <input name="subtitle" type="text" maxlength="120" placeholder="vs. Colorado Academy" />
-            </label>
+            <div class="form-section" data-kind-panel="game" hidden>
+              <p class="form-section-label">Sport</p>
+              <div class="sport-choice-grid">
+                {% for option in request_sport_options %}
+                <label class="sport-choice-card">
+                  <input type="radio" name="sport_category" value="{{ option.value }}" {% if loop.first %}checked{% endif %} />
+                  <span class="sport-choice-card-body">
+                    <span class="icon-choice-media">
+                      <img src="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.5.2/svgs/solid/{{ option.icon }}.svg" alt="" aria-hidden="true" />
+                    </span>
+                    <span class="sport-choice-label">{{ option.label }}</span>
+                  </span>
+                </label>
+                {% endfor %}
+              </div>
+            </div>
 
-            <label class="span-2">
-              Link
-              <input name="link" type="url" maxlength="500" placeholder="https://..." />
-            </label>
+            <div class="form-section">
+              <p class="form-section-label">Details</p>
+              <div class="form-grid">
+                <label class="span-2">
+                  <span id="title-label">Event Title</span>
+                  <input id="title-input" name="title" type="text" maxlength="120" placeholder="Community Night" required />
+                </label>
 
-            <label class="span-2">
-              Public Event Details
-              <textarea name="description" rows="3" placeholder="Optional detail that should appear in the email if approved."></textarea>
-            </label>
+                <label data-kind-panel="game" hidden>
+                  Opponent
+                  <input name="opponent_name" type="text" maxlength="120" placeholder="Colorado Academy" />
+                </label>
+
+                <label data-kind-panel="game" hidden>
+                  Home or Away
+                  <select name="home_away">
+                    <option value="home">Home</option>
+                    <option value="away">Away</option>
+                  </select>
+                </label>
+
+                <label class="span-2">
+                  Link
+                  <input name="link" type="url" maxlength="500" placeholder="https://..." />
+                </label>
+
+                <label class="span-2">
+                  Public Event Details
+                  <textarea name="description" rows="4" placeholder="What should families know if this is approved? Include logistics, signup notes, ticket details, or what to bring."></textarea>
+                </label>
+              </div>
+            </div>
+
+            <div class="form-section">
+              <p class="form-section-label">Schedule</p>
+              <div class="form-grid">
+                <label>
+                  Start Date
+                  <input id="start-date" name="start_date" type="date" value="{{ default_start_date }}" required />
+                </label>
+
+                <label>
+                  End Date
+                  <input id="end-date" name="end_date" type="date" value="{{ default_start_date }}" required />
+                </label>
+
+                <label class="span-2 checkbox-card">
+                  <input id="single-day" type="checkbox" checked />
+                  <span>This is a single-day event</span>
+                </label>
+
+                <label>
+                  Time
+                  <select id="time-mode" name="time_mode">
+                    <option value="scheduled">Scheduled time</option>
+                    <option value="all-day">All Day</option>
+                    <option value="tbd">Time TBD</option>
+                  </select>
+                </label>
+
+                <label id="time-value-wrap">
+                  Start Time
+                  <input id="time-value" name="time_value" type="time" value="18:00" />
+                </label>
+
+                <label class="span-2">
+                  Location
+                  <input name="location" type="text" maxlength="120" placeholder="Main Gym" />
+                </label>
+              </div>
+            </div>
+
+            <div class="form-section">
+              <p class="form-section-label">Contact &amp; Notes</p>
+              <div class="form-grid">
+                <label>
+                  Your Name
+                  <input name="requester_name" type="text" maxlength="120" placeholder="Jordan Smith" required />
+                </label>
+
+                <label>
+                  Your Email
+                  <input name="requester_email" type="email" maxlength="200" placeholder="jordan@kentdenver.org" required />
+                </label>
+
+                <label class="span-2">
+                  Notes for Review Team
+                  <textarea name="requester_notes" rows="3" placeholder="Optional internal context for the reviewer. This does not appear in the published email."></textarea>
+                </label>
+              </div>
+            </div>
+
+            <div class="form-actions">
+              <button id="submit-request" class="submit-btn" type="submit">Submit Request</button>
+              <p class="form-footnote">Submitting this form does not publish the event automatically.</p>
+            </div>
           </div>
-        </div>
 
-        <!-- Scheduling -->
-        <div class="form-section">
-          <p class="form-section-label">Schedule</p>
-          <div class="form-grid">
-            <label>
-              Start Date
-              <input id="start-date" name="start_date" type="date" value="{{ default_start_date }}" required />
-            </label>
-
-            <label>
-              End Date
-              <input id="end-date" name="end_date" type="date" value="{{ default_start_date }}" required />
-            </label>
-
-            <label>
-              Time
-              <input name="time_text" type="text" maxlength="80" placeholder="6:00 PM or All Day" />
-            </label>
-
-            <label>
-              Location
-              <input name="location" type="text" maxlength="120" placeholder="Main Gym" />
-            </label>
-          </div>
-        </div>
-
-        <!-- Contact info -->
-        <div class="form-section">
-          <p class="form-section-label">Contact &amp; Notes</p>
-          <div class="form-grid">
-            <label>
-              Your Name
-              <input name="requester_name" type="text" maxlength="120" placeholder="Jordan Smith" required />
-            </label>
-
-            <label>
-              Your Email
-              <input name="requester_email" type="email" maxlength="200" placeholder="jordan@kentdenver.org" required />
-            </label>
-
-            <label class="span-2">
-              Notes for Review Team
-              <textarea name="requester_notes" rows="3" placeholder="Add context, scheduling caveats, ticket info, or anything the reviewer should know."></textarea>
-            </label>
-          </div>
-        </div>
-
-        <div class="form-actions">
-          <button id="submit-request" class="submit-btn" type="submit">Submit Request</button>
-          <p class="form-footnote">Submitting this form does not publish the event automatically.</p>
+          <aside class="request-preview">
+            <p class="form-section-label">Reviewer Preview</p>
+            <div class="preview-card">
+              <div class="preview-badges">
+                <span id="preview-kind" class="preview-pill">School Event</span>
+                <span id="preview-audience" class="preview-pill preview-pill-muted">Both Audiences</span>
+              </div>
+              <div class="preview-title-block">
+                <div id="preview-icon" class="preview-icon"></div>
+                <div>
+                  <h2 id="preview-title">Community Night</h2>
+                  <p id="preview-subtitle">Community</p>
+                </div>
+              </div>
+              <dl class="preview-meta">
+                <div>
+                  <dt>When</dt>
+                  <dd id="preview-when">Select a date</dd>
+                </div>
+                <div>
+                  <dt>Where</dt>
+                  <dd id="preview-location">On Campus</dd>
+                </div>
+                <div>
+                  <dt>Link</dt>
+                  <dd id="preview-link">Optional</dd>
+                </div>
+                <div>
+                  <dt>Requester</dt>
+                  <dd id="preview-requester">Add your contact info</dd>
+                </div>
+              </dl>
+              <div class="preview-detail">
+                <strong>Public details</strong>
+                <p id="preview-description">Any description you provide will appear here for the reviewer before approval.</p>
+              </div>
+            </div>
+          </aside>
         </div>
       </form>
 
@@ -165,7 +289,9 @@
 
   <script>
     window.__EVENT_REQUEST_DEFAULTS__ = {{ {
-      "defaultStartDate": default_start_date
+      "defaultStartDate": default_start_date,
+      "sportOptions": request_sport_options,
+      "eventCategoryOptions": request_event_category_options
     }|tojson }};
   </script>
   <script src="/static/request-event.js"></script>

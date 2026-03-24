@@ -79,12 +79,12 @@ class AppApiTests(unittest.TestCase):
         self.assertIn("Today's Events", response.get_data(as_text=True))
         self.assertIn("Varsity Soccer", response.get_data(as_text=True))
 
-    def test_root_returns_plain_text_404(self):
+    def test_root_returns_plain_text_ok(self):
         response = self.client.get("/")
 
-        self.assertEqual(response.status_code, 404)
+        self.assertEqual(response.status_code, 200)
         self.assertEqual(response.mimetype, "text/plain")
-        self.assertEqual(response.get_data(as_text=True), "Not Found")
+        self.assertEqual(response.get_data(as_text=True), "OK")
 
     @patch.object(signage_ingest, "fetch_signage_events")
     def test_signage_refresh_endpoint_creates_and_refreshes_day_snapshot(self, mock_fetch_signage_events):
@@ -202,6 +202,8 @@ class AppApiTests(unittest.TestCase):
         body = response.get_data(as_text=True)
         self.assertIn("Request an event for the weekly sports emails.", body)
         self.assertIn('id="request-form"', body)
+        self.assertIn("Food Drive", body)
+        self.assertIn('name="sport_category"', body)
 
     def test_public_request_submission_routes_to_review_week(self):
         self.logout()

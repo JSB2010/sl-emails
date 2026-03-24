@@ -12,7 +12,7 @@ blueprint = Blueprint("signage", __name__)
 
 @blueprint.get("/")
 def root():
-    return Response("Not Found", status=404, mimetype="text/plain")
+    return Response("OK", status=200, mimetype="text/plain")
 
 
 @blueprint.get("/signage")

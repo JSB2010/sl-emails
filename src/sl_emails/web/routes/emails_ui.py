@@ -7,7 +7,7 @@ from datetime import datetime
 from flask import Blueprint, render_template, request, url_for
 
 from sl_emails.domain.dates import iso_to_date, resolve_week_bounds, week_end_for
-from sl_emails.domain.email_presets import CURATED_ICON_GROUPS
+from sl_emails.domain.email_presets import CURATED_ICON_GROUPS, REQUEST_EVENT_CATEGORY_OPTIONS, REQUEST_SPORT_OPTIONS
 
 from ..support import auth_urls, current_user, require_emails_admin
 
@@ -23,6 +23,8 @@ def request_event_page():
         default_start_date=today.isoformat(),
         admin_login_url=url_for("auth.login", next="/emails"),
         dashboard_url=url_for("emails_ui.emails_index"),
+        request_sport_options=REQUEST_SPORT_OPTIONS,
+        request_event_category_options=REQUEST_EVENT_CATEGORY_OPTIONS,
     )
 
 

@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from sl_emails.domain.dates import iso_to_date, utc_now_iso, week_end_for
+from sl_emails.ingest.generate_games import fetch_arts_events, is_varsity_game, scrape_athletics_schedule
 from sl_emails.services.event_shapes import fetch_week_events, poster_event_to_weekly_event_payload
 from sl_emails.services.weekly_store import WeeklyEmailStore
 
@@ -37,7 +38,13 @@ def _build_source_payload(
 ) -> tuple[dict[str, Any], dict[str, int]]:
     start_date = iso_to_date(week_id)
     end_date = iso_to_date(week_end_for(week_id))
-    fetched_events = fetch_week_events(start_date, end_date)
+    fetched_events = fetch_week_events(
+        start_date,
+        end_date,
+        scrape_athletics_schedule=scrape_athletics_schedule,
+        fetch_arts_events=fetch_arts_events,
+        is_varsity_game=is_varsity_game,
+    )
     timestamp = utc_now_iso()
     source_events = [poster_event_to_weekly_event_payload(event, timestamp=timestamp) for event in fetched_events]
 

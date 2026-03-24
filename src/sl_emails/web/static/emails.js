@@ -18,6 +18,7 @@
     requests: [],
     outputs: null,
     dirty: false,
+    expandedEventIds: new Set(),
     filters: {
       query: '',
       source: 'all',
@@ -456,11 +457,18 @@
 
   function applyWeek(week) {
     resetFilters();
+    const nextExpandedIds = new Set();
     state.week = {
       ...week,
       subject_overrides: typeof week.subject_overrides === 'object' && week.subject_overrides ? week.subject_overrides : {},
       events: (week.events || []).map(normalizeEvent),
     };
+    state.week.events.forEach((event) => {
+      if (state.expandedEventIds.has(event.id)) {
+        nextExpandedIds.add(event.id);
+      }
+    });
+    state.expandedEventIds = nextExpandedIds;
     state.weekId = state.week.week_id;
     state.dirty = false;
     render();
@@ -678,79 +686,89 @@
     const isHidden = event.status === 'hidden';
     const audienceChoice = audienceChoiceForEvent(event);
     const summarySubtitle = [formatEventDate(event), event.time_text || 'TBA', event.location || 'On Campus'].filter(Boolean).join(' · ');
+    const isExpanded = state.expandedEventIds.has(event.id);
     return `
-      <article data-index="${index}" class="event-card ${isHidden ? 'row-hidden' : ''}">
-        <div class="event-card-head">
-          <div class="event-card-meta">
-            <div class="event-card-pills">
-              <span class="source-pill ${sourceClass(event.source)}">${escapeHtml(event.source)}</span>
-              <span class="kind-pill">${escapeHtml(event.kind)}</span>
-              <span class="visibility-pill ${isHidden ? 'visibility-pill-hidden' : ''}">${isHidden ? 'Hidden' : 'Visible'}</span>
+      <details data-index="${index}" class="event-card ${isHidden ? 'row-hidden' : ''}" ${isExpanded ? 'open' : ''}>
+        <summary class="event-card-summary">
+          <div class="event-card-head">
+            <div class="event-card-meta">
+              <div class="event-card-pills">
+                <span class="source-pill ${sourceClass(event.source)}">${escapeHtml(event.source)}</span>
+                <span class="kind-pill">${escapeHtml(event.kind)}</span>
+                <span class="visibility-pill ${isHidden ? 'visibility-pill-hidden' : ''}">${isHidden ? 'Hidden' : 'Visible'}</span>
+              </div>
+              <p class="event-summary-line"><strong>${escapeHtml(event.title || 'Untitled')}</strong>${escapeHtml(event.subtitle || event.category || '')}</p>
+              <p class="event-summary-subline">${escapeHtml(summarySubtitle)}</p>
             </div>
-            <p class="event-summary-line"><strong>${escapeHtml(event.title || 'Untitled')}</strong>${escapeHtml(event.subtitle || event.category || '')}</p>
-            <p class="event-summary-subline">${escapeHtml(summarySubtitle)}</p>
+            <div class="event-card-summary-side">
+              <p class="event-summary-audience">${escapeHtml(formatAudiences(event.audiences))}</p>
+              <span class="event-expand-label">${isExpanded ? 'Collapse' : 'Expand'}</span>
+            </div>
           </div>
-          <div class="event-card-actions row-actions">
+        </summary>
+
+        <div class="event-card-body">
+          <div class="event-card-toolbar row-actions">
             <button class="row-action" data-action="duplicate" type="button">Duplicate</button>
             <button class="row-remove row-action-danger" data-action="remove" type="button">Delete</button>
           </div>
+
+          <div class="event-card-grid">
+            <section class="event-card-section event-card-section-wide">
+              <p class="field-group-label">Basics</p>
+              <div class="cell-stack">
+                <select class="mini-select" data-field="kind">
+                  <option value="event" ${event.kind === 'event' ? 'selected' : ''}>Event</option>
+                  <option value="game" ${event.kind === 'game' ? 'selected' : ''}>Game</option>
+                </select>
+                <input class="mini-input" type="text" data-field="title" value="${escapeHtml(event.title)}" placeholder="${event.kind === 'game' ? 'Team name' : 'Event title'}" />
+                <input class="mini-input" type="text" data-field="subtitle" value="${escapeHtml(event.subtitle)}" placeholder="${event.kind === 'game' ? 'Opponent or matchup line' : 'Subtitle'}" />
+                <input class="mini-input" type="text" data-field="category" value="${escapeHtml(event.category)}" placeholder="${event.kind === 'game' ? 'Sport' : 'Category'}" />
+                ${buildIconOptionsMarkup(event.icon)}
+              </div>
+            </section>
+
+            <section class="event-card-section">
+              <p class="field-group-label">Schedule</p>
+              <div class="inline-pair">
+                <label class="inline-field">Start
+                  <input class="mini-input" type="date" data-field="start_date" value="${escapeHtml(event.start_date)}" />
+                </label>
+                <label class="inline-field">End
+                  <input class="mini-input" type="date" data-field="end_date" value="${escapeHtml(event.end_date)}" />
+                </label>
+              </div>
+              <input class="mini-input" type="text" data-field="time_text" value="${escapeHtml(event.time_text)}" placeholder="Time" />
+              <input class="mini-input" type="text" data-field="location" value="${escapeHtml(event.location)}" placeholder="Location" />
+            </section>
+
+            <section class="event-card-section">
+              <p class="field-group-label">Audience &amp; Status</p>
+              <div class="cell-stack">
+                <select class="mini-select" data-field="audience_choice">
+                  <option value="middle-school" ${audienceChoice === 'middle-school' ? 'selected' : ''}>Middle School</option>
+                  <option value="upper-school" ${audienceChoice === 'upper-school' ? 'selected' : ''}>Upper School</option>
+                  <option value="both" ${audienceChoice === 'both' ? 'selected' : ''}>Both Audiences</option>
+                </select>
+                <p class="field-note">Controls which preview and sender output includes this row.</p>
+                <select class="mini-select" data-field="status">
+                  <option value="active" ${event.status !== 'hidden' ? 'selected' : ''}>Visible</option>
+                  <option value="hidden" ${event.status === 'hidden' ? 'selected' : ''}>Hidden</option>
+                </select>
+                <p class="field-note">${isHidden ? 'Hidden rows are omitted from preview and sender output.' : 'Visible rows appear in preview and sender output.'}</p>
+              </div>
+            </section>
+
+            <section class="event-card-section event-card-section-wide">
+              <p class="field-group-label">Links &amp; Notes</p>
+              <div class="cell-stack">
+                <input class="mini-input" type="url" data-field="link" value="${escapeHtml(event.link)}" placeholder="Optional link URL" />
+                <textarea class="mini-textarea" data-field="description" placeholder="Optional notes or details">${escapeHtml(event.description)}</textarea>
+              </div>
+            </section>
+          </div>
         </div>
-
-        <div class="event-card-grid">
-          <section class="event-card-section event-card-section-wide">
-            <p class="field-group-label">Basics</p>
-            <div class="cell-stack">
-              <select class="mini-select" data-field="kind">
-                <option value="event" ${event.kind === 'event' ? 'selected' : ''}>Event</option>
-                <option value="game" ${event.kind === 'game' ? 'selected' : ''}>Game</option>
-              </select>
-              <input class="mini-input" type="text" data-field="title" value="${escapeHtml(event.title)}" placeholder="${event.kind === 'game' ? 'Team name' : 'Event title'}" />
-              <input class="mini-input" type="text" data-field="subtitle" value="${escapeHtml(event.subtitle)}" placeholder="${event.kind === 'game' ? 'Opponent or matchup line' : 'Subtitle'}" />
-              <input class="mini-input" type="text" data-field="category" value="${escapeHtml(event.category)}" placeholder="${event.kind === 'game' ? 'Sport' : 'Category'}" />
-              ${buildIconOptionsMarkup(event.icon)}
-            </div>
-          </section>
-
-          <section class="event-card-section">
-            <p class="field-group-label">Schedule</p>
-            <div class="inline-pair">
-              <label class="inline-field">Start
-                <input class="mini-input" type="date" data-field="start_date" value="${escapeHtml(event.start_date)}" />
-              </label>
-              <label class="inline-field">End
-                <input class="mini-input" type="date" data-field="end_date" value="${escapeHtml(event.end_date)}" />
-              </label>
-            </div>
-            <input class="mini-input" type="text" data-field="time_text" value="${escapeHtml(event.time_text)}" placeholder="Time" />
-            <input class="mini-input" type="text" data-field="location" value="${escapeHtml(event.location)}" placeholder="Location" />
-          </section>
-
-          <section class="event-card-section">
-            <p class="field-group-label">Audience &amp; Status</p>
-            <div class="cell-stack">
-              <select class="mini-select" data-field="audience_choice">
-                <option value="middle-school" ${audienceChoice === 'middle-school' ? 'selected' : ''}>Middle School</option>
-                <option value="upper-school" ${audienceChoice === 'upper-school' ? 'selected' : ''}>Upper School</option>
-                <option value="both" ${audienceChoice === 'both' ? 'selected' : ''}>Both Audiences</option>
-              </select>
-              <p class="field-note">Controls which preview and sender output includes this row.</p>
-              <select class="mini-select" data-field="status">
-                <option value="active" ${event.status !== 'hidden' ? 'selected' : ''}>Visible</option>
-                <option value="hidden" ${event.status === 'hidden' ? 'selected' : ''}>Hidden</option>
-              </select>
-              <p class="field-note">${isHidden ? 'Hidden rows are omitted from preview and sender output.' : 'Visible rows appear in preview and sender output.'}</p>
-            </div>
-          </section>
-
-          <section class="event-card-section event-card-section-wide">
-            <p class="field-group-label">Links &amp; Notes</p>
-            <div class="cell-stack">
-              <input class="mini-input" type="url" data-field="link" value="${escapeHtml(event.link)}" placeholder="Optional link URL" />
-              <textarea class="mini-textarea" data-field="description" placeholder="Optional notes or details">${escapeHtml(event.description)}</textarea>
-            </div>
-          </section>
-        </div>
-      </article>
+      </details>
     `;
   }
 
@@ -1180,7 +1198,9 @@
     }
 
     resetFilters();
-    state.week.events.push(createCustomEventTemplate());
+    const newEvent = createCustomEventTemplate();
+    state.week.events.push(newEvent);
+    state.expandedEventIds.add(newEvent.id);
     renderFilters();
     renderRows();
     markDirty();
@@ -1291,12 +1311,14 @@
 
     if (action === 'duplicate') {
       resetFilters();
-      state.week.events.splice(index + 1, 0, normalizeEvent({
+      const duplicatedEvent = normalizeEvent({
         ...item,
         id: crypto.randomUUID(),
         created_at: '',
         updated_at: '',
-      }));
+      });
+      state.week.events.splice(index + 1, 0, duplicatedEvent);
+      state.expandedEventIds.add(duplicatedEvent.id);
       renderFilters();
       renderRows();
       markDirty();
@@ -1310,11 +1332,30 @@
       || window.confirm(`Delete “${item.title || 'this event'}” from this draft? Reload the week to undo an unsaved deletion.`);
     if (!confirmed) return;
 
+    state.expandedEventIds.delete(item.id);
     state.week.events.splice(index, 1);
     renderFilters();
     renderRows();
     markDirty();
     setFlash('Event removed from the draft. Save to persist the change.');
+  }
+
+  function onTableToggle(event) {
+    const card = event.target.closest('.event-card[data-index]');
+    if (!card || !state.week) return;
+    const index = Number(card.dataset.index);
+    const item = state.week.events[index];
+    if (!item) return;
+
+    if (card.open) {
+      state.expandedEventIds.add(item.id);
+    } else {
+      state.expandedEventIds.delete(item.id);
+    }
+    const expandLabel = card.querySelector('.event-expand-label');
+    if (expandLabel) {
+      expandLabel.textContent = card.open ? 'Collapse' : 'Expand';
+    }
   }
 
   function initPreviewTabs() {
@@ -1354,6 +1395,7 @@
     els.tbody.addEventListener('input', onTableInput);
     els.tbody.addEventListener('change', onTableInput);
     els.tbody.addEventListener('click', onTableClick);
+    els.tbody.addEventListener('toggle', onTableToggle, true);
   }
 
   async function init() {

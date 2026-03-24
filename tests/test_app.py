@@ -48,6 +48,32 @@ class AppApiTests(unittest.TestCase):
                 "metadata": {},
             },
         )
+        signage_store.save_day(
+            "2026-04-02",
+            {
+                "events": [
+                    {
+                        "title": "Spring Play",
+                        "subtitle": "Theater",
+                        "date": "2026-04-02",
+                        "time": "7:00 PM",
+                        "location": "Richards Hall",
+                        "category": "Theater",
+                        "source": "arts",
+                        "badge": "EVENT",
+                        "priority": 4,
+                        "accent": "#A11919",
+                        "audiences": ["upper-school"],
+                        "team": "Spring Play",
+                        "opponent": "",
+                        "is_home": True,
+                        "metadata": {"source_type": "arts"},
+                    }
+                ],
+                "source_summary": {"athletics_events": 0, "arts_events": 1, "total_events": 1},
+                "metadata": {},
+            },
+        )
         app = create_app(
             {
                 "TESTING": True,
@@ -78,6 +104,19 @@ class AppApiTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn("Today's Events", response.get_data(as_text=True))
         self.assertIn("Varsity Soccer", response.get_data(as_text=True))
+
+    def test_signage_route_accepts_testing_date_override(self):
+        response = self.client.get("/signage?date=2026-04-02")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Thursday, April 02, 2026", response.get_data(as_text=True))
+        self.assertIn("Spring Play", response.get_data(as_text=True))
+
+    def test_signage_route_rejects_invalid_testing_date_override(self):
+        response = self.client.get("/signage?date=2026-04-31")
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.get_data(as_text=True), "Invalid signage preview date. Use YYYY-MM-DD.")
 
     def test_root_returns_plain_text_ok(self):
         response = self.client.get("/")
@@ -140,6 +179,38 @@ class AppApiTests(unittest.TestCase):
         self.assertEqual(refreshed_payload["action"], "refreshed")
         self.assertEqual(refreshed_payload["reason"], "replaced_existing_snapshot")
         self.assertEqual(refreshed_payload["day"]["metadata"]["ingest"]["action"], "refreshed")
+
+    @patch.object(signage_ingest, "fetch_signage_events")
+    def test_local_signage_refresh_endpoint_creates_snapshot_in_testing(self, mock_fetch_signage_events):
+        mock_fetch_signage_events.return_value = [
+            PosterEvent(
+                title="April Preview Game",
+                subtitle="vs. Valor",
+                date="2026-04-02",
+                time="4:30 PM",
+                location="Main Field",
+                category="Soccer",
+                source="athletics",
+                badge="HOME",
+                priority=4,
+                accent="#0066ff",
+                audiences=["upper-school"],
+                team="April Preview Game",
+                opponent="Valor",
+                is_home=True,
+                metadata={"source_type": "game", "sport": "soccer"},
+            )
+        ]
+
+        response = self.client.post("/api/signage/local/days/2026-04-02/refresh")
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        assert payload is not None
+        self.assertEqual(payload["action"], "refreshed")
+        self.assertEqual(payload["day_id"], "2026-04-02")
+        self.assertEqual(payload["day"]["metadata"]["ingest"]["actor"], "local-dev")
+        self.assertEqual(payload["day"]["events"][0]["title"], "April Preview Game")
 
     def test_emails_route_requires_login_when_unauthenticated(self):
         self.logout()

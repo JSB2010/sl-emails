@@ -14,7 +14,7 @@ from sl_emails.config import EMAILS_BOOTSTRAP_NOTIFICATION_EMAILS_ENV
 from sl_emails.config import SIGNAGE_TIMEZONE
 from sl_emails.config import WEB_STATIC_DIR as STATIC_DIR
 from sl_emails.config import WEB_TEMPLATES_DIR as TEMPLATE_DIR
-from sl_emails.domain.dates import today_in_timezone
+from sl_emails.domain.dates import iso_to_date, today_in_timezone
 from sl_emails.services.activity_log import FirestoreActivityLogStore
 from sl_emails.services.admin_settings import DEFAULT_ALLOWED_ADMIN_EMAILS, FirestoreAdminSettingsStore, normalize_email_list
 from sl_emails.services.request_store import FirestoreEventRequestStore
@@ -90,8 +90,29 @@ def ensure_admin_settings():
     )
 
 
+def _flag_enabled(value: Any) -> bool:
+    return str(value or "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def is_local_dev_or_testing() -> bool:
+    return bool(current_app.config.get("TESTING")) or _flag_enabled(current_app.config.get("EMAILS_LOCAL_DEV"))
+
+
+def _signage_preview_day_id() -> str | None:
+    raw_value = str(request.args.get("date") or "").strip()
+    if not raw_value:
+        return None
+    if not is_local_dev_or_testing():
+        return None
+    iso_to_date(raw_value)
+    return raw_value
+
+
 def serve_signage() -> Response:
-    day_id = today_in_timezone(SIGNAGE_TIMEZONE).isoformat()
+    try:
+        day_id = _signage_preview_day_id() or today_in_timezone(SIGNAGE_TIMEZONE).isoformat()
+    except ValueError:
+        return Response("Invalid signage preview date. Use YYYY-MM-DD.", status=400, mimetype="text/plain")
     try:
         day = get_signage_store().get_day(day_id)
     except RuntimeError as exc:

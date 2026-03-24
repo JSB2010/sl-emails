@@ -168,6 +168,20 @@ class AppApiTests(unittest.TestCase):
                 }
             )
 
+    def test_create_app_local_dev_allows_http_callback_defaults(self):
+        app = create_app(
+            {
+                "EMAILS_LOCAL_DEV": "1",
+                "SECRET_KEY": "local-dev-secret",
+                "EMAILS_AUTOMATION_KEY": "local-dev-automation-key",
+                "GOOGLE_OAUTH_CLIENT_ID": "client-id",
+                "GOOGLE_OAUTH_CLIENT_SECRET": "client-secret",
+            }
+        )
+
+        self.assertFalse(app.config["SESSION_COOKIE_SECURE"])
+        self.assertEqual(app.config["PREFERRED_URL_SCHEME"], "http")
+
     def test_emails_route_serves_review_ui(self):
         response = self.client.get("/emails")
 

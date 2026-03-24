@@ -28,6 +28,7 @@ Configure these on the deployed app:
 Local-only:
 
 - `FIRESTORE_EMULATOR_HOST`
+- `EMAILS_LOCAL_DEV=1` when you run the Cloud Run container over plain local HTTP
 
 ## Required Apps Script Configuration
 
@@ -93,6 +94,21 @@ Optional Script Properties:
 - the review link opens `/emails?week=<week-id>` after Google sign-in
 11. Approve a test week in `/emails`.
 12. Run `testApprovedApiAccess()` and then `sendSportsEmailsManual()`.
+
+## Local Cloud Run-Style Run
+
+For local parity with the deployed container, use:
+
+```bash
+./scripts/run_cloudrun_local.sh
+```
+
+Notes:
+
+- This builds the repo `Dockerfile` and runs the same Gunicorn entrypoint that Cloud Run uses.
+- The script reads `.env.local` by default. Start from `.env.local.example`.
+- For live Firestore without embedding a service-account JSON string, the script mounts local ADC from `~/.config/gcloud/application_default_credentials.json` when present.
+- `EMAILS_LOCAL_DEV=1` switches cookies and generated callback URLs to local HTTP so Google sign-in can work on `localhost`.
 
 ## Troubleshooting
 

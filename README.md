@@ -42,6 +42,7 @@ The deployed app expects:
 - `FIREBASE_SERVICE_ACCOUNT_JSON`
 - `FIRESTORE_COLLECTION` (optional; defaults to `emailWeeks`)
 - `FIRESTORE_EMULATOR_HOST` (local only)
+- `EMAILS_LOCAL_DEV` (local Docker/HTTP only)
 - `EMAILS_AUTOMATION_KEY` (required for scheduled-ingest calls)
 - `EMAILS_SESSION_SECRET` (required for stable admin sessions)
 - `GOOGLE_OAUTH_CLIENT_ID`
@@ -81,6 +82,14 @@ Run the web app locally:
 PYTHONPATH=src python3 -m flask --app sl_emails.web:create_app run --port 5050
 ```
 
+Run the same container Cloud Run uses, but locally:
+
+```bash
+./scripts/run_cloudrun_local.sh
+```
+
+The Docker runner reads `.env.local` by default, sets `EMAILS_LOCAL_DEV=1`, mounts local ADC automatically when available, and starts Gunicorn on `http://localhost:8080`.
+
 Generate local/manual HTML previews:
 
 ```bash
@@ -101,6 +110,7 @@ sl-emails/
 ├── src/sl_emails/web/templates/   # /emails admin UI
 ├── src/sl_emails/web/static/      # /emails static assets
 ├── google-apps-script/            # Sunday draft/send automation + troubleshooting
+├── scripts/run_cloudrun_local.sh  # Local Cloud Run-style Docker runner
 ├── requirements.txt               # Unified Python dependencies
 ├── .github/workflows/             # Deploy automation
 ├── README.md

@@ -144,7 +144,13 @@
   function syncKindPanels() {
     const kind = currentKind();
     els.kindPanels.forEach((panel) => {
-      panel.hidden = panel.dataset.kindPanel !== kind;
+      const shouldHide = panel.dataset.kindPanel !== kind;
+      panel.hidden = false;
+      panel.classList.toggle('kind-panel-hidden', shouldHide);
+      panel.setAttribute('aria-hidden', String(shouldHide));
+      panel.querySelectorAll('input, select, textarea, button').forEach((field) => {
+        field.disabled = shouldHide;
+      });
     });
     els.titleLabel.textContent = kind === 'game' ? 'Team Name' : 'Event Title';
     els.titleInput.placeholder = kind === 'game' ? 'Varsity Baseball' : 'Community Night';
@@ -269,7 +275,7 @@
   }
 
   els.form.addEventListener('change', syncAll);
-  els.form.addEventListener('input', updatePreview);
+  els.form.addEventListener('input', onFormInput);
   els.startDate.addEventListener('change', syncAll);
   els.singleDay.addEventListener('change', syncAll);
   els.timeMode.addEventListener('change', syncAll);
@@ -278,3 +284,10 @@
 
   syncAll();
 })();
+  function onFormInput(event) {
+    if (event.target && event.target.name === 'kind') {
+      syncAll();
+      return;
+    }
+    updatePreview();
+  }

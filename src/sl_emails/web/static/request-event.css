@@ -191,6 +191,10 @@ body {
   gap: 26px;
 }
 
+.kind-panel-hidden {
+  display: none !important;
+}
+
 .request-preview {
   position: sticky;
   top: 92px;

@@ -25,7 +25,6 @@
 
 const CONFIG = {
   API_ACTOR: 'google-apps-script',
-  REQUEST_TIMEOUT_MS: 30000,
   EMAIL_FROM_NAME: 'Student Leadership',
   REPLY_TO_EMAIL: 'studentleader@kentdenver.org',
   TIMEZONE: 'America/Denver'
@@ -74,7 +73,6 @@ function getEffectiveConfig() {
     API_ACTOR: getRawProperty('API_ACTOR') || CONFIG.API_ACTOR,
     AUTOMATION_API_KEY: automationApiKey,
     ADMIN_NOTIFICATION_EMAILS: adminNotificationEmails,
-    REQUEST_TIMEOUT_MS: CONFIG.REQUEST_TIMEOUT_MS,
     EMAIL_FROM_NAME: getRawProperty('EMAIL_FROM_NAME') || CONFIG.EMAIL_FROM_NAME,
     REPLY_TO_EMAIL: getRawProperty('REPLY_TO_EMAIL') || CONFIG.REPLY_TO_EMAIL,
     TIMEZONE: getRawProperty('TIMEZONE') || CONFIG.TIMEZONE,
@@ -261,22 +259,40 @@ function sendSportsEmailsManual() {
 }
 
 function getTargetMondayDate() {
-  const today = new Date();
-  const dayOfWeek = today.getDay();
+  const timezone = getEffectiveConfig().TIMEZONE;
+  const today = getTodayInTimezone(timezone);
+  const isoWeekday = getIsoWeekdayInTimezone(today, timezone);
 
   let daysUntilMonday;
-  if (dayOfWeek === 0) {
+  if (isoWeekday === 7) {
     daysUntilMonday = 1;
-  } else if (dayOfWeek === 1) {
+  } else if (isoWeekday === 1) {
     daysUntilMonday = 0;
   } else {
-    daysUntilMonday = 8 - dayOfWeek;
+    daysUntilMonday = 8 - isoWeekday;
   }
 
-  const upcomingMonday = new Date(today);
-  upcomingMonday.setDate(today.getDate() + daysUntilMonday);
+  return addDaysUtc(today, daysUntilMonday);
+}
 
-  return upcomingMonday;
+function getTodayInTimezone(timezone) {
+  const todayIso = Utilities.formatDate(new Date(), timezone, 'yyyy-MM-dd');
+  return utcDateFromIso(todayIso);
+}
+
+function getIsoWeekdayInTimezone(date, timezone) {
+  return Number(Utilities.formatDate(date, timezone, 'u'));
+}
+
+function utcDateFromIso(isoDate) {
+  const parts = String(isoDate || '').split('-').map(part => Number(part));
+  return new Date(Date.UTC(parts[0], parts[1] - 1, parts[2]));
+}
+
+function addDaysUtc(date, days) {
+  const next = new Date(date.getTime());
+  next.setUTCDate(next.getUTCDate() + Number(days || 0));
+  return next;
 }
 
 function getCurrentWeekId() {

@@ -51,6 +51,7 @@ function buildHarness(options = {}) {
 
   const sandbox = {
     console,
+    Date: options.Date || Date,
     MailApp: {
       sendEmail(opts) {
         if ((opts.to || '').includes('admin@example.test')) {
@@ -222,7 +223,7 @@ function buildHarness(options = {}) {
 
   vm.createContext(sandbox);
   vm.runInContext(
-    `${senderSource}\nthis.__exports = { refreshDailySignage, runSundayDraftCycle, sendSportsEmails, setupTriggers, removeTriggers, validateConfiguration, getEffectiveConfig, CONFIG };`,
+    `${senderSource}\nthis.__exports = { refreshDailySignage, runSundayDraftCycle, sendSportsEmails, setupTriggers, removeTriggers, validateConfiguration, getEffectiveConfig, getTargetMondayDate, getCurrentWeekId, getCurrentSignageDayId, CONFIG };`,
     sandbox
   );
 
@@ -313,6 +314,30 @@ test('setupTriggers creates both sunday triggers and removes existing managed on
 
   const handlers = harness.triggers.map((trigger) => trigger.getHandlerFunction()).sort();
   assert.deepEqual(handlers, ['otherHandler', 'refreshDailySignage', 'runSundayDraftCycle', 'sendSportsEmails']);
+});
+
+test('timezone helpers derive monday and day ids from configured timezone dates', () => {
+  class FixedDate extends Date {
+    constructor(...args) {
+      if (args.length) {
+        super(...args);
+        return;
+      }
+      super('2026-03-08T23:30:00Z');
+    }
+    static now() {
+      return new Date('2026-03-08T23:30:00Z').getTime();
+    }
+  }
+
+  const harness = buildHarness({ Date: FixedDate });
+  harness.properties.TIMEZONE = 'America/Denver';
+
+  const monday = harness.exports.getTargetMondayDate();
+
+  assert.ok(monday instanceof Date);
+  assert.equal(harness.exports.getCurrentWeekId(), '2026-03-09');
+  assert.equal(harness.exports.getCurrentSignageDayId(), '2026-03-09');
 });
 
 test('apps script sources use app-owned ingest, approved sender flow, and script properties', () => {

@@ -21,7 +21,7 @@ from sl_emails.services.request_store import FirestoreEventRequestStore
 from sl_emails.services.signage_store import FirestoreSignageStore
 from sl_emails.services.weekly_store import FirestoreWeeklyEmailStore
 from sl_emails.signage.generate_signage import generate_signage_html
-from sl_emails.web.request_protection import PublicRequestProtector
+from sl_emails.web.request_protection import FirestoreRequestProtector, PublicRequestProtector
 
 
 def get_emails_store() -> FirestoreWeeklyEmailStore:
@@ -67,7 +67,10 @@ def get_activity_store() -> FirestoreActivityLogStore:
 def get_request_protector() -> PublicRequestProtector:
     protector = current_app.config.get("EMAILS_REQUEST_PROTECTOR")
     if protector is None:
-        protector = PublicRequestProtector()
+        if current_app.config.get("TESTING") or _flag_enabled(current_app.config.get("EMAILS_LOCAL_DEV")):
+            protector = PublicRequestProtector()
+        else:
+            protector = FirestoreRequestProtector()
         current_app.config["EMAILS_REQUEST_PROTECTOR"] = protector
     return protector
 
@@ -231,14 +234,33 @@ def write_activity(
     message: str = "",
     details: dict[str, Any] | None = None,
 ) -> None:
-    get_activity_store().log(
-        event_type=event_type,
-        status=status,
-        actor=actor,
-        week_id=week_id,
-        message=message,
-        details=details or {},
-    )
+    try:
+        get_activity_store().log(
+            event_type=event_type,
+            status=status,
+            actor=actor,
+            week_id=week_id,
+            message=message,
+            details=details or {},
+        )
+    except Exception:
+        current_app.logger.exception("Failed to write activity log for %s (%s)", event_type, week_id or "global")
+
+
+def update_week_metadata_safely(week_id: str, metadata: dict[str, Any]):
+    try:
+        return get_emails_store().update_week_metadata(week_id, metadata)
+    except Exception:
+        current_app.logger.exception("Failed to update week metadata for %s", week_id)
+        return None
+
+
+def update_signage_metadata_safely(day_id: str, metadata: dict[str, Any]):
+    try:
+        return get_signage_store().update_day_metadata(day_id, metadata)
+    except Exception:
+        current_app.logger.exception("Failed to update signage metadata for %s", day_id)
+        return None
 
 
 __all__ = [
@@ -263,5 +285,7 @@ __all__ = [
     "require_emails_admin",
     "require_emails_operator",
     "serve_signage",
+    "update_signage_metadata_safely",
+    "update_week_metadata_safely",
     "write_activity",
 ]

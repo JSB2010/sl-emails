@@ -20,7 +20,7 @@ Kent Denver's sports email workflow now runs through the deployed app plus Googl
 
 ## Key Routes
 
-- `/` — plain-text 404 (root no longer serves signage)
+- `/` — plain-text `200 OK`
 - `/signage` — public signage page rendered from the Firestore day snapshot
 - `/login` — Google sign-in entrypoint for sports email admins
 - `/emails` — weekly admin review UI (Google sign-in + allowlist required)
@@ -47,7 +47,7 @@ The deployed app expects:
 - `EMAILS_SESSION_SECRET` (required for stable admin sessions)
 - `GOOGLE_OAUTH_CLIENT_ID`
 - `GOOGLE_OAUTH_CLIENT_SECRET`
-- `GOOGLE_OAUTH_CALLBACK_URL` (recommended in production)
+- `GOOGLE_OAUTH_CALLBACK_URL` (required in production; deploy defaults to `<hosting-url>/auth/google/callback` when unset)
 - `EMAILS_BOOTSTRAP_ALLOWED_EMAILS` (optional; defaults to `appdev@kentdenver.org,studentleader@kentdenver.org`)
 - `EMAILS_BOOTSTRAP_NOTIFICATION_EMAILS` (optional; defaults to the same two emails)
 
@@ -73,7 +73,7 @@ Apps Script expects:
 Install dependencies from the repo root:
 
 ```bash
-python3 -m pip install -r requirements.txt
+python3 -m pip install -r requirements-dev.txt
 ```
 
 Run the web app locally:
@@ -120,5 +120,7 @@ sl-emails/
 ## Notes
 
 - Firestore is the operational source of truth for signage snapshots, sports email weeks, admin allowlists, and app-side audit records.
+- Source refreshes now fail closed: if athletics or arts fetches fail, the app returns `503` and preserves existing week/day data.
+- GitHub Actions runs full Python and Apps Script test suites before production deploys, and pull requests run the same checks in `.github/workflows/ci.yml`.
 - `digital-signage/index.html` is generated on demand for local preview and is not used by the runtime.
 - The legacy Firestore REST publish path remains in the repo for manual tooling compatibility, but it is no longer the production scheduler path.

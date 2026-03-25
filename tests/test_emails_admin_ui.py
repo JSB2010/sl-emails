@@ -42,6 +42,8 @@ class EmailsAdminUiTests(unittest.TestCase):
         self.assertIn("Submission Queue", body)
         self.assertIn('id="request-summary"', body)
         self.assertIn('id="request-list"', body)
+        self.assertIn("Recent Activity", body)
+        self.assertIn('id="activity-list"', body)
         self.assertIn('"iconOptions"', body)
 
     def test_emails_script_includes_mark_unsent_ui_state_handling(self):
@@ -57,7 +59,10 @@ class EmailsAdminUiTests(unittest.TestCase):
         self.assertIn("/source-refresh", body)
         self.assertIn("window.confirm", body)
         self.assertIn("status-review-email", body)
+        self.assertIn("fetchWeekActivity", body)
+        self.assertIn("activityList", body)
         self.assertIn("/weeks/${weekId}/requests", body)
+        self.assertIn("/weeks/${weekId}/activity", body)
         self.assertIn("reviewRequest", body)
         self.assertIn("requestList", body)
 

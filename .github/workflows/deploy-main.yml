@@ -84,10 +84,13 @@ jobs:
       - name: Install Python dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
+          pip install -r requirements-dev.txt
 
-      - name: Run focused runtime checks
-        run: PYTHONPATH=src python -m unittest tests.test_public_healthcheck tests.test_wsgi_entrypoint
+      - name: Run Python test suite
+        run: PYTHONPATH=src pytest -q
+
+      - name: Run Google Apps Script tests
+        run: node --test google-apps-script/tests/*.js
 
       - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@v3
@@ -95,15 +98,6 @@ jobs:
           credentials_json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
           create_credentials_file: true
           export_environment_variables: true
-
-      - name: Validate required deploy secrets
-        shell: bash
-        run: |
-          set -euo pipefail
-          if [ -z "${EMAILS_AUTOMATION_KEY}" ]; then
-            echo "EMAILS_AUTOMATION_KEY is required for deployment." >&2
-            exit 1
-          fi
 
       - name: Set up gcloud
         uses: google-github-actions/setup-gcloud@v2
@@ -131,6 +125,29 @@ jobs:
           echo "image=${IMAGE}" >> "$GITHUB_OUTPUT"
           echo "hosting_url=${HOSTING_URL}" >> "$GITHUB_OUTPUT"
 
+      - name: Validate required deploy secrets
+        shell: bash
+        env:
+          HOSTING_URL: ${{ steps.meta.outputs.hosting_url }}
+        run: |
+          set -euo pipefail
+          DERIVED_CALLBACK_URL="${GOOGLE_OAUTH_CALLBACK_URL:-${HOSTING_URL%/}/auth/google/callback}"
+
+          require_value() {
+            local key="$1"
+            local value="$2"
+            if [ -z "$value" ]; then
+              echo "${key} is required for deployment." >&2
+              exit 1
+            fi
+          }
+
+          require_value "EMAILS_AUTOMATION_KEY" "${EMAILS_AUTOMATION_KEY}"
+          require_value "EMAILS_SESSION_SECRET" "${EMAILS_SESSION_SECRET}"
+          require_value "GOOGLE_OAUTH_CLIENT_ID" "${GOOGLE_OAUTH_CLIENT_ID}"
+          require_value "GOOGLE_OAUTH_CLIENT_SECRET" "${GOOGLE_OAUTH_CLIENT_SECRET}"
+          require_value "GOOGLE_OAUTH_CALLBACK_URL" "${DERIVED_CALLBACK_URL}"
+
       - name: Build and publish image
         run: >
           gcloud builds submit
@@ -142,8 +159,11 @@ jobs:
       - name: Deploy Cloud Run
         id: cloud-run
         shell: bash
+        env:
+          HOSTING_URL: ${{ steps.meta.outputs.hosting_url }}
         run: |
           set -euo pipefail
+          export DERIVED_CALLBACK_URL="${GOOGLE_OAUTH_CALLBACK_URL:-${HOSTING_URL%/}/auth/google/callback}"
           ENV_FILE="$(mktemp)"
           python - <<'PY' > "${ENV_FILE}"
           import os
@@ -154,7 +174,7 @@ jobs:
               "EMAILS_SESSION_SECRET": os.environ["EMAILS_SESSION_SECRET"],
               "GOOGLE_OAUTH_CLIENT_ID": os.environ["GOOGLE_OAUTH_CLIENT_ID"],
               "GOOGLE_OAUTH_CLIENT_SECRET": os.environ["GOOGLE_OAUTH_CLIENT_SECRET"],
-              "GOOGLE_OAUTH_CALLBACK_URL": os.environ["GOOGLE_OAUTH_CALLBACK_URL"],
+              "GOOGLE_OAUTH_CALLBACK_URL": os.environ["DERIVED_CALLBACK_URL"],
               "EMAILS_BOOTSTRAP_ALLOWED_EMAILS": os.environ["EMAILS_BOOTSTRAP_ALLOWED_EMAILS"],
               "EMAILS_BOOTSTRAP_NOTIFICATION_EMAILS": os.environ["EMAILS_BOOTSTRAP_NOTIFICATION_EMAILS"],
           }

@@ -9,11 +9,11 @@ from flask import Blueprint, jsonify, request
 from sl_emails.domain.dates import format_email_date_range, week_end_for
 from sl_emails.ingest import generate_games
 from sl_emails.services.request_store import event_payload_for_request
-from sl_emails.services.weekly_ingest import WeeklyIngestResult, scheduled_ingest_week, source_refresh_week
+from sl_emails.services.weekly_ingest import WeeklyIngestResult, WeeklySourceFetchError, scheduled_ingest_week, source_refresh_week
 from sl_emails.services.weekly_outputs import build_weekly_email_outputs as render_weekly_email_outputs
 from sl_emails.web.request_protection import HONEYPOT_FIELD, RequestProtectionError, first_forwarded_ip
 
-from ..support import current_user_email, get_emails_store, get_request_protector, get_request_store, json_error, require_automation_key, require_emails_admin, require_emails_operator, write_activity
+from ..support import current_user_email, get_activity_store, get_emails_store, get_request_protector, get_request_store, json_error, require_automation_key, require_emails_admin, require_emails_operator, update_week_metadata_safely, write_activity
 
 
 blueprint = Blueprint("emails_api", __name__, url_prefix="/api/emails")
@@ -31,6 +31,7 @@ def serialize_ingest_result(result: WeeklyIngestResult) -> Any:
             "action": result.action,
             "reason": result.reason,
             "source_summary": result.source_summary,
+            "source_health": result.source_health,
             "week": result.week.to_dict(),
         }
     )
@@ -42,7 +43,7 @@ def actor_for_request(default: str = "admin-ui") -> str:
 
 
 def update_week_status(week_id: str, patch: dict[str, Any]) -> Any:
-    return get_emails_store().update_week_metadata(week_id, patch)
+    return update_week_metadata_safely(week_id, patch)
 
 
 def value_error_status(exc: ValueError) -> int:
@@ -137,7 +138,7 @@ def source_refresh(week_id: str) -> Any:
     actor = actor_for_request()
     try:
         result = source_refresh_week(get_emails_store(), week_id)
-        result.week = update_week_status(
+        updated_week = update_week_status(
             week_id,
             {
                 "manual_refresh": {
@@ -147,9 +148,34 @@ def source_refresh(week_id: str) -> Any:
                     "actor": actor,
                     "occurred_at": result.week.updated_at,
                     "source_summary": result.source_summary,
+                    "source_health": result.source_health,
                 }
             },
         )
+        if updated_week is not None:
+            result.week = updated_week
+    except WeeklySourceFetchError as exc:
+        update_week_status(
+            week_id,
+            {
+                "manual_refresh": {
+                    "status": "failed",
+                    "actor": actor,
+                    "occurred_at": "",
+                    "message": str(exc),
+                    "source_health": exc.source_health,
+                }
+            },
+        )
+        write_activity(
+            event_type="source_refresh",
+            status="failed",
+            actor=actor,
+            week_id=week_id,
+            message=str(exc),
+            details={"source_health": exc.source_health},
+        )
+        return json_error(str(exc), status=503, extra={"source_health": exc.source_health})
     except ValueError as exc:
         write_activity(event_type="source_refresh", status="failed", actor=actor, week_id=week_id, message=str(exc))
         return json_error(str(exc), status=400)
@@ -163,7 +189,7 @@ def source_refresh(week_id: str) -> Any:
         actor=actor,
         week_id=week_id,
         message="Refreshed source events for weekly draft",
-        details={"action": result.action, "reason": result.reason, "source_summary": result.source_summary},
+        details={"action": result.action, "reason": result.reason, "source_summary": result.source_summary, "source_health": result.source_health},
     )
     return serialize_ingest_result(result)
 
@@ -313,6 +339,21 @@ def preview_week(week_id: str) -> Any:
     return jsonify({"ok": True, "week": week.to_dict(), "outputs": outputs})
 
 
+@blueprint.get("/weeks/<week_id>/activity")
+@require_emails_admin
+def list_week_activity(week_id: str) -> Any:
+    limit_raw = str(request.args.get("limit") or "").strip()
+    try:
+        limit = max(1, min(int(limit_raw or "20"), 100))
+    except ValueError:
+        return json_error("limit must be an integer between 1 and 100", status=400)
+    try:
+        records = get_activity_store().list_recent(week_id=week_id, limit=limit)
+    except RuntimeError as exc:
+        return json_error(str(exc), status=503)
+    return jsonify({"ok": True, "activity": [record.to_dict() for record in records]})
+
+
 @blueprint.post("/weeks/<week_id>/approve")
 @require_emails_admin
 def approve_week(week_id: str) -> Any:
@@ -320,7 +361,7 @@ def approve_week(week_id: str) -> Any:
     try:
         week = get_emails_store().approve_week(week_id, approved_by=actor)
         outputs = build_weekly_email_outputs(week)
-        week = update_week_status(
+        updated_week = update_week_status(
             week_id,
             {
                 "approval": {
@@ -330,6 +371,8 @@ def approve_week(week_id: str) -> Any:
                 }
             },
         )
+        if updated_week is not None:
+            week = updated_week
     except KeyError:
         return json_error(f"No weekly draft found for {week_id}", status=404)
     except ValueError as exc:
@@ -353,7 +396,7 @@ def mark_week_sent(week_id: str) -> Any:
     try:
         if requested_state == "sending":
             week = get_emails_store().claim_week_send(week_id, sending_by=actor)
-            week = update_week_status(
+            updated_week = update_week_status(
                 week_id,
                 {
                     "send": {
@@ -363,9 +406,11 @@ def mark_week_sent(week_id: str) -> Any:
                     }
                 },
             )
+            if updated_week is not None:
+                week = updated_week
         elif requested_state == "unsent":
             week = get_emails_store().reset_week_send(week_id)
-            week = update_week_status(
+            updated_week = update_week_status(
                 week_id,
                 {
                     "send": {
@@ -375,9 +420,11 @@ def mark_week_sent(week_id: str) -> Any:
                     }
                 },
             )
+            if updated_week is not None:
+                week = updated_week
         else:
             week = get_emails_store().mark_week_sent(week_id, sent_by=actor)
-            week = update_week_status(
+            updated_week = update_week_status(
                 week_id,
                 {
                     "send": {
@@ -387,6 +434,8 @@ def mark_week_sent(week_id: str) -> Any:
                     }
                 },
             )
+            if updated_week is not None:
+                week = updated_week
     except KeyError:
         return json_error(f"No weekly draft found for {week_id}", status=404)
     except ValueError as exc:
@@ -430,7 +479,7 @@ def scheduled_ingest(week_id: str) -> Any:
     actor = actor_for_request("google-apps-script")
     try:
         result = scheduled_ingest_week(get_emails_store(), week_id)
-        result.week = update_week_status(
+        updated_week = update_week_status(
             week_id,
             {
                 "scheduled_ingest": {
@@ -440,9 +489,34 @@ def scheduled_ingest(week_id: str) -> Any:
                     "actor": actor,
                     "occurred_at": result.week.updated_at,
                     "source_summary": result.source_summary,
+                    "source_health": result.source_health,
                 }
             },
         )
+        if updated_week is not None:
+            result.week = updated_week
+    except WeeklySourceFetchError as exc:
+        update_week_status(
+            week_id,
+            {
+                "scheduled_ingest": {
+                    "status": "failed",
+                    "actor": actor,
+                    "occurred_at": "",
+                    "message": str(exc),
+                    "source_health": exc.source_health,
+                }
+            },
+        )
+        write_activity(
+            event_type="scheduled_ingest",
+            status="failed",
+            actor=actor,
+            week_id=week_id,
+            message=str(exc),
+            details={"source_health": exc.source_health},
+        )
+        return json_error(str(exc), status=503, extra={"source_health": exc.source_health})
     except ValueError as exc:
         write_activity(event_type="scheduled_ingest", status="failed", actor=actor, week_id=week_id, message=str(exc))
         return json_error(str(exc), status=400)
@@ -456,7 +530,7 @@ def scheduled_ingest(week_id: str) -> Any:
         actor=actor,
         week_id=week_id,
         message=f"Scheduled ingest {result.action}",
-        details={"reason": result.reason, "source_summary": result.source_summary},
+        details={"reason": result.reason, "source_summary": result.source_summary, "source_health": result.source_health},
     )
     return serialize_ingest_result(result)
 

@@ -16,6 +16,7 @@
     weekId: defaults.weekId || '',
     week: null,
     requests: [],
+    activity: [],
     outputs: null,
     dirty: false,
     expandedEventIds: new Set(),
@@ -67,6 +68,7 @@
     statusReviewEmail: document.getElementById('status-review-email'),
     statusApproval: document.getElementById('status-approval'),
     statusSend: document.getElementById('status-send'),
+    activityList: document.getElementById('activity-list'),
   };
 
   function escapeHtml(value) {
@@ -345,7 +347,32 @@
     if (activity.source_summary && Number(activity.source_summary.total_events || 0) > 0) {
       parts.push(`${Number(activity.source_summary.total_events || 0)} imported events`);
     }
+    if (Array.isArray(activity.source_health)) {
+      const failedSources = activity.source_health
+        .filter((status) => status && status.ok === false)
+        .map((status) => `${status.source}: ${status.error || 'failed'}`);
+      if (failedSources.length) parts.push(`source failures: ${failedSources.join(', ')}`);
+    }
     return parts.length ? parts.join(' · ') : emptyText;
+  }
+
+  function activityDetailsText(record) {
+    const details = record && typeof record.details === 'object' ? record.details : {};
+    const parts = [];
+    if (details.day_id) parts.push(`day ${details.day_id}`);
+    if (details.state) parts.push(`state ${details.state}`);
+    if (details.action) parts.push(`action ${details.action}`);
+    if (details.reason) parts.push(`reason ${details.reason}`);
+    if (details.source_summary && Number(details.source_summary.total_events || 0) >= 0) {
+      parts.push(`${Number(details.source_summary.total_events || 0)} imported events`);
+    }
+    if (Array.isArray(details.source_health)) {
+      const failed = details.source_health
+        .filter((status) => status && status.ok === false)
+        .map((status) => `${status.source}: ${status.error || 'failed'}`);
+      if (failed.length) parts.push(`source failures: ${failed.join(', ')}`);
+    }
+    return parts.join(' · ');
   }
 
   function defaultSubjectForAudience(audience) {
@@ -573,6 +600,39 @@
     } else {
       els.statusSend.textContent = formatActivity(metadata.send, 'No send claim or completion recorded yet.');
     }
+  }
+
+  function renderActivity() {
+    if (!state.week) {
+      els.activityList.innerHTML = '<div class="empty-activity-state">Load a week to inspect recent activity.</div>';
+      return;
+    }
+    if (!state.activity.length) {
+      els.activityList.innerHTML = '<div class="empty-activity-state">No recent activity recorded for this week yet.</div>';
+      return;
+    }
+
+    els.activityList.innerHTML = state.activity.map((record) => {
+      const eventType = String(record.event_type || 'activity').replaceAll('_', ' ');
+      const status = String(record.status || '').trim().toLowerCase();
+      const message = String(record.message || '').trim() || 'No message recorded.';
+      const meta = [
+        record.actor ? `by ${record.actor}` : '',
+        record.occurred_at ? `at ${record.occurred_at}` : '',
+      ].filter(Boolean).join(' · ');
+      const details = activityDetailsText(record);
+      return `
+        <article class="activity-item">
+          <div class="activity-item-header">
+            <span class="activity-item-type">${escapeHtml(eventType)}</span>
+            <span class="activity-item-status activity-status-${escapeHtml(status || 'unknown')}">${escapeHtml(status || 'unknown')}</span>
+          </div>
+          <p class="activity-item-message">${escapeHtml(message)}</p>
+          ${meta ? `<p class="activity-item-meta">${escapeHtml(meta)}</p>` : ''}
+          ${details ? `<p class="activity-item-details">${escapeHtml(details)}</p>` : ''}
+        </article>
+      `;
+    }).join('');
   }
 
   function requestCounts() {
@@ -804,6 +864,7 @@
     renderPreview();
     renderStatus();
     renderRequests();
+    renderActivity();
 
     const isSent = Boolean(state.week?.sent?.sent);
     const isSending = Boolean(state.week?.sent?.sending);
@@ -849,14 +910,14 @@
       const data = await fetchJson(`/api/emails/weeks/${weekId}`);
       state.outputs = null;
       applyWeek(data.week);
-      await fetchWeekRequests(weekId);
+      await Promise.all([fetchWeekRequests(weekId), fetchWeekActivity(weekId)]);
       setFlash(`Loaded weekly draft for ${weekId}.`);
       await previewWeek({ silent: true, autoSave: false });
     } catch (error) {
       if (/No weekly draft found/i.test(error.message)) {
         state.outputs = null;
         applyWeek(blankWeek(weekId));
-        await fetchWeekRequests(weekId);
+        await Promise.all([fetchWeekRequests(weekId), fetchWeekActivity(weekId)]);
         setFlash('No saved draft found for this week yet. Create one from source events or start with custom rows.');
       } else {
         setFlash(error.message || 'Unable to load week.', true);
@@ -955,6 +1016,12 @@
     render();
   }
 
+  async function fetchWeekActivity(weekId) {
+    const data = await fetchJson(`/api/emails/weeks/${weekId}/activity?limit=20`);
+    state.activity = Array.isArray(data.activity) ? data.activity : [];
+    render();
+  }
+
   async function createDraftFromSource() {
     const weekId = currentWeekId();
     if (!state.week) {
@@ -991,6 +1058,7 @@
       } else {
         setFlash(`Created weekly draft with ${importedCount} imported events.`);
       }
+      await fetchWeekActivity(weekId);
       await previewWeek({ silent: true, autoSave: false });
     } catch (error) {
       setFlash(error.message || 'Unable to refresh source events.', true);
@@ -1012,6 +1080,7 @@
       });
       state.outputs = null;
       applyWeek(data.week);
+      await fetchWeekActivity(data.week.week_id);
       if (!silent) setFlash('Draft saved. Refresh preview to verify the updated email output.');
       return data.week;
     } catch (error) {
@@ -1058,6 +1127,7 @@
 
       state.outputs = data.outputs || null;
       applyWeek(data.week);
+      await fetchWeekActivity(data.week.week_id);
       setFlash('Week approved. Sender output can now fetch the reviewed content.');
     } catch (error) {
       setFlash(error.message || 'Unable to approve the week.', true);
@@ -1087,6 +1157,7 @@
       });
 
       applyWeek(data.week);
+      await fetchWeekActivity(data.week.week_id);
       setFlash(isSending ? 'Sending lock cleared. The week can be edited or resent again.' : 'Week marked unsent. The normal review workflow is available again.');
     } catch (error) {
       setFlash(error.message || 'Unable to clear the send state.', true);
@@ -1123,6 +1194,7 @@
       if (data.request) {
         upsertRequest(data.request);
       }
+      await fetchWeekActivity(state.week.week_id);
       render();
       setFlash(
         isDenial

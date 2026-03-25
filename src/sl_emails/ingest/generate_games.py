@@ -438,8 +438,7 @@ def scrape_athletics_schedule_with_load_more(
         return collected_games
 
     except requests.RequestException as e:
-        print(f"Error with Stage 2 athletics fetch: {e}")
-        return collected_games
+        raise RuntimeError(f"Athletics schedule fetch failed while loading additional rows: {e}") from e
 
 
 def scrape_athletics_schedule_with_selenium(start_date: str, end_date: str) -> List[Game]:
@@ -584,8 +583,7 @@ def fetch_arts_events(start_date: str, end_date: str) -> List[Event]:
         return events
 
     except requests.RequestException as e:
-        print(f"Error fetching arts events: {e}")
-        return []
+        raise RuntimeError(f"Arts calendar fetch failed: {e}") from e
 
 def format_date_range(start_date: str, end_date: str) -> str:
     """Format date range for display (e.g., 'September 22–27, 2025')"""

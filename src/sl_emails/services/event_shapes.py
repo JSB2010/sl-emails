@@ -33,6 +33,31 @@ class PosterEvent:
         return asdict(self)
 
 
+@dataclass(frozen=True)
+class SourceFetchStatus:
+    source: str
+    ok: bool
+    event_count: int
+    error: str
+    fetched_at: str
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass(frozen=True)
+class WeekEventsFetchResult:
+    events: list[PosterEvent]
+    source_statuses: list[SourceFetchStatus]
+
+    @property
+    def ok(self) -> bool:
+        return all(status.ok for status in self.source_statuses)
+
+    def status_dicts(self) -> list[dict[str, Any]]:
+        return [status.to_dict() for status in self.source_statuses]
+
+
 def poster_event_from_dict(payload: dict[str, Any]) -> PosterEvent:
     return PosterEvent(
         title=str(payload.get("title", "")).strip() or "Untitled Event",
@@ -263,11 +288,46 @@ def fetch_week_events(
     scrape_athletics_schedule: Callable[[str, str], list[Any]],
     fetch_arts_events: Callable[[str, str], list[Any]],
     is_varsity_game: Callable[[str], bool],
-) -> list[PosterEvent]:
+) -> WeekEventsFetchResult:
     start_str = start.strftime("%Y-%m-%d")
     end_str = end.strftime("%Y-%m-%d")
-    source_events = scrape_athletics_schedule(start_str, end_str) + fetch_arts_events(start_str, end_str)
-    return sort_poster_events(source_event_to_poster_event(event, is_varsity_game) for event in source_events)
+    fetched_at = utc_now_iso()
+    source_events: list[Any] = []
+    source_statuses: list[SourceFetchStatus] = []
+
+    for source_name, fetcher in (
+        ("athletics", scrape_athletics_schedule),
+        ("arts", fetch_arts_events),
+    ):
+        try:
+            events = list(fetcher(start_str, end_str))
+        except Exception as exc:
+            source_statuses.append(
+                SourceFetchStatus(
+                    source=source_name,
+                    ok=False,
+                    event_count=0,
+                    error=str(exc).strip() or f"{source_name} fetch failed",
+                    fetched_at=fetched_at,
+                )
+            )
+            continue
+
+        source_events.extend(events)
+        source_statuses.append(
+            SourceFetchStatus(
+                source=source_name,
+                ok=True,
+                event_count=len(events),
+                error="",
+                fetched_at=fetched_at,
+            )
+        )
+
+    return WeekEventsFetchResult(
+        events=sort_poster_events(source_event_to_poster_event(event, is_varsity_game) for event in source_events),
+        source_statuses=source_statuses,
+    )
 
 
 def poster_event_to_weekly_event_payload(event: PosterEvent, *, timestamp: str | None = None) -> dict[str, Any]:

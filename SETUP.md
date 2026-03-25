@@ -109,6 +109,7 @@ Notes:
 - The script reads `.env.local` by default. Start from `.env.local.example`.
 - For live Firestore without embedding a service-account JSON string, the script mounts local ADC from `~/.config/gcloud/application_default_credentials.json` when present.
 - `EMAILS_LOCAL_DEV=1` switches cookies and generated callback URLs to local HTTP so Google sign-in can work on `localhost`.
+- Local contributor installs should use `python3 -m pip install -r requirements-dev.txt` so pytest is available.
 
 ## Troubleshooting
 
@@ -135,4 +136,5 @@ Notes:
 ## Notes
 
 - Firestore is the source of truth for signage and sports emails.
+- Weekly ingest and signage refresh now fail closed. If any source fetch fails, the app records the failure and preserves the last known good week/day data.
 - Scheduled ingest never overwrites an existing week.

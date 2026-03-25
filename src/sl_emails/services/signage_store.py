@@ -14,6 +14,7 @@ except ImportError:  # pragma: no cover
 from ..config import RuntimeFirestoreConfig
 from ..domain.dates import utc_now_iso
 from ..domain.signage import SignageDayRecord
+from .weekly_store import merge_metadata
 
 
 SIGNAGE_DAYS_COLLECTION = "signageDays"
@@ -23,6 +24,8 @@ class SignageStore(Protocol):
     def get_day(self, day_id: str) -> SignageDayRecord | None: ...
 
     def save_day(self, day_id: str, payload: dict[str, Any]) -> SignageDayRecord: ...
+
+    def update_day_metadata(self, day_id: str, metadata: dict[str, Any]) -> SignageDayRecord: ...
 
 
 def normalize_signage_day_payload(
@@ -64,6 +67,15 @@ class MemorySignageStore:
         existing = self._days.get(day_id)
         day = normalize_signage_day_payload(day_id, payload, existing=existing)
         self._days[day_id] = day
+        return self.get_day(day_id)  # type: ignore[return-value]
+
+    def update_day_metadata(self, day_id: str, metadata: dict[str, Any]) -> SignageDayRecord:
+        existing = self._days.get(day_id)
+        if existing is None:
+            raise KeyError(day_id)
+        existing.metadata = merge_metadata(existing.metadata, metadata)
+        existing.updated_at = utc_now_iso()
+        self._days[day_id] = existing
         return self.get_day(day_id)  # type: ignore[return-value]
 
 
@@ -117,4 +129,20 @@ class FirestoreSignageStore:
         existing = self.get_day(day_id)
         day = normalize_signage_day_payload(day_id, payload, existing=existing)
         self._day_ref(day_id).set(day.to_dict())
+        return self.get_day(day_id)  # type: ignore[return-value]
+
+    def update_day_metadata(self, day_id: str, metadata: dict[str, Any]) -> SignageDayRecord:
+        day_ref = self._day_ref(day_id)
+        snapshot = day_ref.get()
+        if not snapshot.exists:
+            raise KeyError(day_id)
+        payload = snapshot.to_dict() or {}
+        existing = payload.get("metadata") if isinstance(payload.get("metadata"), dict) else {}
+        day_ref.set(
+            {
+                "metadata": merge_metadata(existing, metadata),
+                "updated_at": utc_now_iso(),
+            },
+            merge=True,
+        )
         return self.get_day(day_id)  # type: ignore[return-value]

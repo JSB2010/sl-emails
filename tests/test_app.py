@@ -4,7 +4,7 @@ from unittest.mock import patch
 from sl_emails.services import signage_ingest
 from sl_emails.services.activity_log import MemoryActivityLogStore
 from sl_emails.services.admin_settings import MemoryAdminSettingsStore
-from sl_emails.services.event_shapes import PosterEvent
+from sl_emails.services.event_shapes import PosterEvent, SourceFetchStatus, WeekEventsFetchResult
 from sl_emails.services.request_store import MemoryEventRequestStore
 from sl_emails.services.signage_store import MemorySignageStore
 from sl_emails.services import weekly_ingest
@@ -17,6 +17,16 @@ from sl_emails.web import support as web_support
 class _FailingReviewRequestStore(MemoryEventRequestStore):
     def review_request(self, *args, **kwargs):
         raise RuntimeError("review storage unavailable")
+
+
+class _FailingActivityLogStore(MemoryActivityLogStore):
+    def log(self, *args, **kwargs):
+        raise RuntimeError("activity storage unavailable")
+
+
+class _MetadataFailingWeeklyStore(MemoryWeeklyEmailStore):
+    def update_week_metadata(self, week_id, metadata):
+        raise RuntimeError("week metadata unavailable")
 
 
 class AppApiTests(unittest.TestCase):
@@ -374,6 +384,50 @@ class AppApiTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.get_json(), {"ok": True})
 
+    def test_activity_log_failures_do_not_break_successful_mutations(self):
+        self.client.application.config["EMAILS_ACTIVITY_STORE"] = _FailingActivityLogStore()
+
+        response = self.client.put(
+            "/api/emails/weeks/2026-03-09",
+            json={
+                "start_date": "2026-03-09",
+                "end_date": "2026-03-15",
+                "events": [],
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        assert payload is not None
+        self.assertEqual(payload["week"]["week_id"], "2026-03-09")
+
+    def test_activity_api_returns_recent_week_activity(self):
+        activity_store = self.client.application.config["EMAILS_ACTIVITY_STORE"]
+        activity_store.log(
+            event_type="scheduled_ingest",
+            status="success",
+            actor="google-apps-script",
+            week_id="2026-03-09",
+            message="Created draft",
+            details={"reason": "created_from_sources"},
+        )
+        activity_store.log(
+            event_type="send",
+            status="success",
+            actor="google-apps-script",
+            week_id="2026-03-09",
+            message="Marked sent",
+            details={"state": "sent"},
+        )
+
+        response = self.client.get("/api/emails/weeks/2026-03-09/activity?limit=5")
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        assert payload is not None
+        self.assertEqual(len(payload["activity"]), 2)
+        self.assertEqual({item["event_type"] for item in payload["activity"]}, {"scheduled_ingest", "send"})
+
     def test_admin_api_requires_authentication(self):
         self.logout()
 
@@ -433,6 +487,135 @@ class AppApiTests(unittest.TestCase):
         payload = response.get_json()
         assert payload is not None
         self.assertIn("cannot remove your own email", payload["error"].lower())
+
+    def test_scheduled_ingest_does_not_create_week_when_source_fetch_fails(self):
+        self.client.application.config["EMAILS_AUTOMATION_KEY"] = "secret-key"
+        failed_fetch = WeekEventsFetchResult(
+            events=[],
+            source_statuses=[
+                SourceFetchStatus(source="athletics", ok=False, event_count=0, error="athletics source unavailable", fetched_at="2026-03-08T15:00:00Z"),
+                SourceFetchStatus(source="arts", ok=True, event_count=0, error="", fetched_at="2026-03-08T15:00:00Z"),
+            ],
+        )
+
+        with patch.object(weekly_ingest, "fetch_week_events", return_value=failed_fetch):
+            response = self.client.post(
+                "/api/emails/automation/weeks/2026-03-09/scheduled-ingest",
+                headers={"X-Automation-Key": "secret-key"},
+            )
+
+        self.assertEqual(response.status_code, 503)
+        payload = response.get_json()
+        assert payload is not None
+        self.assertIn("source_health", payload)
+        self.assertIsNone(self.client.application.config["EMAILS_STORE"].get_week("2026-03-09"))
+
+    def test_zero_event_ingest_succeeds_when_sources_are_healthy(self):
+        self.client.application.config["EMAILS_AUTOMATION_KEY"] = "secret-key"
+        empty_fetch = WeekEventsFetchResult(
+            events=[],
+            source_statuses=[
+                SourceFetchStatus(source="athletics", ok=True, event_count=0, error="", fetched_at="2026-03-08T15:00:00Z"),
+                SourceFetchStatus(source="arts", ok=True, event_count=0, error="", fetched_at="2026-03-08T15:00:00Z"),
+            ],
+        )
+
+        with patch.object(weekly_ingest, "fetch_week_events", return_value=empty_fetch):
+            response = self.client.post(
+                "/api/emails/automation/weeks/2026-03-09/scheduled-ingest",
+                headers={"X-Automation-Key": "secret-key"},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        assert payload is not None
+        self.assertEqual(payload["source_summary"]["total_events"], 0)
+        self.assertEqual(len(payload["source_health"]), 2)
+        self.assertEqual(len(payload["week"]["events"]), 0)
+
+    def test_source_refresh_failure_does_not_overwrite_existing_week(self):
+        self.client.put(
+            "/api/emails/weeks/2026-03-09",
+            json={
+                "start_date": "2026-03-09",
+                "end_date": "2026-03-15",
+                "events": [
+                    {
+                        "id": "existing-event",
+                        "source": "custom",
+                        "kind": "event",
+                        "title": "Keep Me",
+                        "start_date": "2026-03-11",
+                        "end_date": "2026-03-11",
+                        "time_text": "All Day",
+                        "location": "Campus",
+                        "category": "Community",
+                        "audiences": ["middle-school", "upper-school"],
+                    }
+                ],
+            },
+        )
+
+        failed_fetch = WeekEventsFetchResult(
+            events=[],
+            source_statuses=[
+                SourceFetchStatus(source="athletics", ok=True, event_count=0, error="", fetched_at="2026-03-08T15:00:00Z"),
+                SourceFetchStatus(source="arts", ok=False, event_count=0, error="arts calendar timeout", fetched_at="2026-03-08T15:00:00Z"),
+            ],
+        )
+
+        with patch.object(weekly_ingest, "fetch_week_events", return_value=failed_fetch):
+            response = self.client.post("/api/emails/weeks/2026-03-09/source-refresh")
+
+        self.assertEqual(response.status_code, 503)
+        week = self.client.application.config["EMAILS_STORE"].get_week("2026-03-09")
+        assert week is not None
+        self.assertEqual([event.title for event in week.events], ["Keep Me"])
+        self.assertEqual(week.metadata["manual_refresh"]["status"], "failed")
+
+    def test_signage_refresh_failure_does_not_blank_existing_day(self):
+        self.client.application.config["EMAILS_AUTOMATION_KEY"] = "secret-key"
+        failed_fetch = WeekEventsFetchResult(
+            events=[],
+            source_statuses=[
+                SourceFetchStatus(source="athletics", ok=False, event_count=0, error="athletics source unavailable", fetched_at="2026-03-24T06:00:00Z"),
+                SourceFetchStatus(source="arts", ok=True, event_count=1, error="", fetched_at="2026-03-24T06:00:00Z"),
+            ],
+        )
+
+        with patch.object(signage_ingest, "fetch_signage_events", return_value=failed_fetch):
+            response = self.client.post(
+                "/api/signage/automation/days/2026-03-23/refresh",
+                headers={"X-Automation-Key": "secret-key", "X-Email-Actor": "google-apps-script"},
+            )
+
+        self.assertEqual(response.status_code, 503)
+        day = self.client.application.config["SIGNAGE_STORE"].get_day("2026-03-23")
+        assert day is not None
+        self.assertEqual(day.events[0].title, "Varsity Soccer")
+        self.assertEqual(day.metadata["ingest"]["status"], "failed")
+
+    def test_metadata_update_failures_do_not_break_successful_ingest(self):
+        self.client.application.config["EMAILS_AUTOMATION_KEY"] = "secret-key"
+        self.client.application.config["EMAILS_STORE"] = _MetadataFailingWeeklyStore()
+        success_fetch = WeekEventsFetchResult(
+            events=[],
+            source_statuses=[
+                SourceFetchStatus(source="athletics", ok=True, event_count=0, error="", fetched_at="2026-03-08T15:00:00Z"),
+                SourceFetchStatus(source="arts", ok=True, event_count=0, error="", fetched_at="2026-03-08T15:00:00Z"),
+            ],
+        )
+
+        with patch.object(weekly_ingest, "fetch_week_events", return_value=success_fetch):
+            response = self.client.post(
+                "/api/emails/automation/weeks/2026-03-09/scheduled-ingest",
+                headers={"X-Automation-Key": "secret-key"},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        assert payload is not None
+        self.assertEqual(payload["action"], "created")
 
     @patch.object(weekly_ingest, "fetch_week_events")
     def test_scheduled_ingest_creates_week_then_skips_existing_draft(self, mock_fetch_week_events):

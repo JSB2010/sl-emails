@@ -155,6 +155,7 @@ class AppApiTests(unittest.TestCase):
             )
         ]
 
+        self.client.application.config["EMAILS_AUTOMATION_KEY"] = ""
         forbidden = self.client.post("/api/signage/automation/days/2026-03-24/refresh")
         self.assertEqual(forbidden.status_code, 503)
 
@@ -654,6 +655,7 @@ class AppApiTests(unittest.TestCase):
             ),
         ]
 
+        self.client.application.config["EMAILS_AUTOMATION_KEY"] = ""
         forbidden = self.client.post("/api/emails/automation/weeks/2026-03-09/scheduled-ingest")
         self.assertEqual(forbidden.status_code, 503)
 

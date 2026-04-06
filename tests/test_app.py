@@ -7,6 +7,7 @@ from sl_emails.services import signage_ingest
 from sl_emails.services.activity_log import MemoryActivityLogStore
 from sl_emails.services.admin_settings import MemoryAdminSettingsStore
 from sl_emails.services.event_shapes import PosterEvent, SourceFetchStatus, WeekEventsFetchResult
+from sl_emails.services.gemini_copy import GeminiCopyError
 from sl_emails.services.request_store import MemoryEventRequestStore
 from sl_emails.services.signage_store import MemorySignageStore
 from sl_emails.services import weekly_ingest
@@ -29,6 +30,28 @@ class _FailingActivityLogStore(MemoryActivityLogStore):
 class _MetadataFailingWeeklyStore(MemoryWeeklyEmailStore):
     def update_week_metadata(self, week_id, metadata):
         raise RuntimeError("week metadata unavailable")
+
+
+class _RuntimeFailingRequestStore(MemoryEventRequestStore):
+    def list_requests(self, week_id):
+        raise RuntimeError("request storage unavailable")
+
+
+class _LegacyRequestStore:
+    def __init__(self):
+        self._store = MemoryEventRequestStore()
+
+    def submit_request(self, payload):
+        return self._store.submit_request(payload)
+
+    def list_requests(self, week_id):
+        return self._store.list_requests(week_id)
+
+    def get_request(self, week_id, request_id):
+        return self._store.get_request(week_id, request_id)
+
+    def review_request(self, week_id, request_id, **kwargs):
+        return self._store.review_request(week_id, request_id, **kwargs)
 
 
 class AppApiTests(unittest.TestCase):
@@ -276,6 +299,50 @@ class AppApiTests(unittest.TestCase):
         self.assertEqual(payload["day"]["metadata"]["ingest"]["actor"], "local-dev")
         self.assertEqual(payload["day"]["events"][0]["title"], "April Preview Game")
 
+    def test_local_signage_refresh_endpoint_is_not_available_outside_local_dev(self):
+        with patch("sl_emails.web.routes.signage_api.is_local_dev_or_testing", return_value=False):
+            response = self.client.post("/api/signage/local/days/2026-04-02/refresh")
+
+        self.assertEqual(response.status_code, 404)
+
+    def test_signage_refresh_endpoints_return_400_and_503_for_route_level_errors(self):
+        self.client.application.config["EMAILS_AUTOMATION_KEY"] = "secret-key"
+
+        with patch("sl_emails.web.routes.signage_api.refresh_signage_day", side_effect=ValueError("bad date")):
+            response = self.client.post(
+                "/api/signage/automation/days/2026-04-02/refresh",
+                headers={"X-Automation-Key": "secret-key"},
+            )
+        self.assertEqual(response.status_code, 400)
+
+        with patch("sl_emails.web.routes.signage_api.refresh_signage_day", side_effect=RuntimeError("signage unavailable")):
+            response = self.client.post(
+                "/api/signage/automation/days/2026-04-02/refresh",
+                headers={"X-Automation-Key": "secret-key"},
+            )
+        self.assertEqual(response.status_code, 503)
+
+        with patch("sl_emails.web.routes.signage_api.refresh_signage_day", side_effect=ValueError("bad date")):
+            response = self.client.post("/api/signage/local/days/2026-04-02/refresh")
+        self.assertEqual(response.status_code, 400)
+
+        with patch("sl_emails.web.routes.signage_api.refresh_signage_day", side_effect=RuntimeError("signage unavailable")):
+            response = self.client.post("/api/signage/local/days/2026-04-02/refresh")
+        self.assertEqual(response.status_code, 503)
+
+        with patch(
+            "sl_emails.web.routes.signage_api.refresh_signage_day",
+            side_effect=signage_ingest.SignageSourceFetchError(
+                "source failed",
+                source_health=[{"source": "athletics", "ok": False}],
+            ),
+        ):
+            response = self.client.post("/api/signage/local/days/2026-04-02/refresh")
+        self.assertEqual(response.status_code, 503)
+        payload = response.get_json()
+        assert payload is not None
+        self.assertIn("source_health", payload)
+
     def test_emails_route_requires_login_when_unauthenticated(self):
         self.logout()
         response = self.client.get("/emails")
@@ -387,6 +454,37 @@ class AppApiTests(unittest.TestCase):
         self.assertTrue(payload["request"]["metadata"]["submission"]["ip_hash"])
         self.assertTrue(payload["request"]["metadata"]["submission"]["user_agent_hash"])
 
+    def test_public_request_submission_returns_400_and_503_for_store_failures(self):
+        self.logout()
+
+        bad_request = self.client.post(
+            "/api/emails/requests",
+            json={
+                "title": "",
+                "start_date": "2026-03-11",
+                "requester_name": "Jordan Smith",
+                "requester_email": "jordan@kentdenver.org",
+            },
+        )
+        self.assertEqual(bad_request.status_code, 400)
+
+        class _FailingSubmitStore(MemoryEventRequestStore):
+            def submit_request(self, payload):
+                raise RuntimeError("request storage unavailable")
+
+        self.client.application.config["EMAILS_REQUEST_STORE"] = _FailingSubmitStore()
+        unavailable = self.client.post(
+            "/api/emails/requests",
+            json={
+                "title": "Robotics Night",
+                "start_date": "2026-03-11",
+                "requester_name": "Jordan Smith",
+                "requester_email": "jordan@kentdenver.org",
+            },
+        )
+        self.assertEqual(unavailable.status_code, 503)
+        self.client.application.config["EMAILS_REQUEST_STORE"] = MemoryEventRequestStore()
+
     def test_public_request_submission_blocks_honeypot_payloads(self):
         self.logout()
 
@@ -488,6 +586,19 @@ class AppApiTests(unittest.TestCase):
         self.assertEqual(len(payload["activity"]), 2)
         self.assertEqual({item["event_type"] for item in payload["activity"]}, {"scheduled_ingest", "send"})
 
+    def test_activity_api_validates_limit_and_handles_store_failure(self):
+        bad_limit = self.client.get("/api/emails/weeks/2026-03-09/activity?limit=abc")
+        self.assertEqual(bad_limit.status_code, 400)
+
+        class _FailingActivityStore(MemoryActivityLogStore):
+            def list_recent(self, *, week_id="", limit=20):
+                raise RuntimeError("activity unavailable")
+
+        self.client.application.config["EMAILS_ACTIVITY_STORE"] = _FailingActivityStore()
+        unavailable = self.client.get("/api/emails/weeks/2026-03-09/activity?limit=5")
+        self.assertEqual(unavailable.status_code, 503)
+        self.client.application.config["EMAILS_ACTIVITY_STORE"] = MemoryActivityLogStore()
+
     def test_admin_api_requires_authentication(self):
         self.logout()
 
@@ -579,6 +690,92 @@ class AppApiTests(unittest.TestCase):
         assert payload is not None
         self.assertIn("cannot remove your own email", payload["error"].lower())
 
+    def test_settings_update_rejects_invalid_email_and_sender_metadata(self):
+        empty_admins_response = self.client.put(
+            "/api/emails/settings",
+            json={
+                "allowed_admin_emails": [],
+                "ops_notification_emails": ["ops@kentdenver.org"],
+                "sender_metadata": {
+                    "audience_recipients": {
+                        "middle_school": {"to": "middle@kentdenver.org", "bcc": []},
+                        "upper_school": {"to": "upper@kentdenver.org", "bcc": []},
+                    },
+                },
+            },
+        )
+        self.assertEqual(empty_admins_response.status_code, 400)
+
+        invalid_email_response = self.client.put(
+            "/api/emails/settings",
+            json={
+                "allowed_admin_emails": ["not-an-email"],
+                "ops_notification_emails": ["ops@kentdenver.org"],
+                "sender_metadata": {
+                    "audience_recipients": {
+                        "middle_school": {"to": "middle@kentdenver.org", "bcc": []},
+                        "upper_school": {"to": "upper@kentdenver.org", "bcc": []},
+                    },
+                },
+            },
+        )
+        self.assertEqual(invalid_email_response.status_code, 400)
+
+        invalid_sender_response = self.client.put(
+            "/api/emails/settings",
+            json={
+                "allowed_admin_emails": ["appdev@kentdenver.org"],
+                "ops_notification_emails": ["ops@kentdenver.org"],
+                "sender_metadata": {
+                    "audience_recipients": {
+                        "middle_school": {"to": "", "bcc": []},
+                        "upper_school": {"to": "upper@kentdenver.org", "bcc": []},
+                    },
+                },
+            },
+        )
+        self.assertEqual(invalid_sender_response.status_code, 400)
+
+    def test_settings_update_rejects_changes_when_only_one_admin_exists(self):
+        first = self.client.put(
+            "/api/emails/settings",
+            json={
+                "allowed_admin_emails": ["appdev@kentdenver.org"],
+                "ops_notification_emails": ["ops@kentdenver.org"],
+                "sender_metadata": {
+                    "email_from_name": "Student Leadership",
+                    "reply_to_email": "studentleader@kentdenver.org",
+                    "timezone": "America/Denver",
+                    "audience_recipients": {
+                        "middle_school": {"to": "middle@kentdenver.org", "bcc": []},
+                        "upper_school": {"to": "upper@kentdenver.org", "bcc": []},
+                    },
+                },
+            },
+        )
+        self.assertEqual(first.status_code, 200)
+
+        second = self.client.put(
+            "/api/emails/settings",
+            json={
+                "allowed_admin_emails": ["appdev@kentdenver.org", "studentleader@kentdenver.org"],
+                "ops_notification_emails": ["ops@kentdenver.org"],
+                "sender_metadata": {
+                    "email_from_name": "Student Leadership",
+                    "reply_to_email": "studentleader@kentdenver.org",
+                    "timezone": "America/Denver",
+                    "audience_recipients": {
+                        "middle_school": {"to": "middle@kentdenver.org", "bcc": []},
+                        "upper_school": {"to": "upper@kentdenver.org", "bcc": []},
+                    },
+                },
+            },
+        )
+        self.assertEqual(second.status_code, 400)
+        payload = second.get_json()
+        assert payload is not None
+        self.assertIn("last allowed admin", payload["error"].lower())
+
     def test_automation_key_can_fetch_automation_settings(self):
         self.client.application.config["EMAILS_AUTOMATION_KEY"] = "secret-key"
         self.client.put(
@@ -610,6 +807,66 @@ class AppApiTests(unittest.TestCase):
         self.assertEqual(payload["config"]["admin_notification_emails"], ["ops@kentdenver.org"])
         self.assertEqual(payload["config"]["email_from_name"], "KD Student Leadership")
         self.assertEqual(payload["config"]["email_recipients"]["middle_school"]["to"], "middle@kentdenver.org")
+
+    def test_request_review_routes_cover_404_409_and_runtime_failures(self):
+        missing = self.client.post("/api/emails/weeks/2026-03-09/requests/missing/approve")
+        self.assertEqual(missing.status_code, 404)
+
+        store = self.client.application.config["EMAILS_REQUEST_STORE"]
+        created = store.submit_request(
+            {
+                "title": "Community Night",
+                "start_date": "2026-03-11",
+                "requester_name": "Jordan Smith",
+                "requester_email": "jordan@kentdenver.org",
+            }
+        )
+        store.review_request(created.week_id, created.request_id, decision="denied", reviewed_by="reviewer")
+
+        conflict = self.client.post(f"/api/emails/weeks/{created.week_id}/requests/{created.request_id}/approve")
+        self.assertEqual(conflict.status_code, 409)
+
+        runtime_store = _RuntimeFailingRequestStore()
+        created_runtime = runtime_store.submit_request(
+            {
+                "title": "Robotics Night",
+                "start_date": "2026-03-11",
+                "requester_name": "Jordan Smith",
+                "requester_email": "jordan@kentdenver.org",
+            }
+        )
+        self.client.application.config["EMAILS_REQUEST_STORE"] = runtime_store
+        runtime_response = self.client.get(f"/api/emails/weeks/{created_runtime.week_id}/requests")
+        self.assertEqual(runtime_response.status_code, 503)
+        self.client.application.config["EMAILS_REQUEST_STORE"] = store
+
+    def test_preview_ai_copy_sender_output_and_automation_activity_errors(self):
+        preview_missing = self.client.post("/api/emails/weeks/2026-03-09/preview")
+        self.assertEqual(preview_missing.status_code, 404)
+
+        self.client.put(
+            "/api/emails/weeks/2026-03-09",
+            json={"start_date": "2026-03-09", "end_date": "2026-03-15", "events": []},
+        )
+
+        with patch("sl_emails.web.routes.emails_api.build_weekly_email_outputs", side_effect=RuntimeError("render failed")):
+            preview_failed = self.client.post("/api/emails/weeks/2026-03-09/preview")
+        self.assertEqual(preview_failed.status_code, 503)
+
+        with patch("sl_emails.web.routes.emails_api.generate_week_copy", side_effect=GeminiCopyError("gemini unavailable")):
+            ai_failed = self.client.post("/api/emails/weeks/2026-03-09/ai-copy")
+        self.assertEqual(ai_failed.status_code, 503)
+
+        invalid_audience = self.client.get("/api/emails/weeks/2026-03-09/sender-output?audience=bad-audience")
+        self.assertEqual(invalid_audience.status_code, 400)
+
+        self.client.application.config["EMAILS_AUTOMATION_KEY"] = "secret-key"
+        missing_fields = self.client.post(
+            "/api/emails/automation/weeks/2026-03-09/activity",
+            headers={"X-Automation-Key": "secret-key"},
+            json={"event_type": "", "status": ""},
+        )
+        self.assertEqual(missing_fields.status_code, 400)
 
     def test_scheduled_ingest_does_not_create_week_when_source_fetch_fails(self):
         self.client.application.config["EMAILS_AUTOMATION_KEY"] = "secret-key"
@@ -1179,6 +1436,42 @@ class AppApiTests(unittest.TestCase):
         self.assertEqual(payload["week"]["delivery"]["send_on"], "2026-03-08")
         self.assertEqual(payload["week"]["events"], [])
 
+    def test_save_create_clear_and_approve_routes_cover_runtime_and_missing_paths(self):
+        store = self.client.application.config["EMAILS_STORE"]
+
+        with patch.object(store, "save_week", side_effect=RuntimeError("save unavailable")):
+            save_failed = self.client.put(
+                "/api/emails/weeks/2026-03-09",
+                json={"start_date": "2026-03-09", "end_date": "2026-03-15", "events": []},
+            )
+        self.assertEqual(save_failed.status_code, 503)
+
+        with patch.object(store, "add_event", side_effect=ValueError("Week is locked for sending. Mark it unsent before editing the draft.")):
+            add_failed = self.client.post(
+                "/api/emails/weeks/2026-03-09/events",
+                json={"title": "Community Night", "start_date": "2026-03-11", "end_date": "2026-03-11"},
+            )
+        self.assertEqual(add_failed.status_code, 409)
+
+        missing_clear = self.client.post("/api/emails/weeks/2026-03-09/clear")
+        self.assertEqual(missing_clear.status_code, 404)
+
+        self.client.put(
+            "/api/emails/weeks/2026-03-09",
+            json={"start_date": "2026-03-09", "end_date": "2026-03-15", "events": []},
+        )
+        with patch.object(store, "save_week", side_effect=RuntimeError("clear unavailable")):
+            clear_failed = self.client.post("/api/emails/weeks/2026-03-09/clear")
+        self.assertEqual(clear_failed.status_code, 503)
+
+        with patch.object(store, "approve_week", side_effect=KeyError("2026-03-09")):
+            approve_missing = self.client.post("/api/emails/weeks/2026-03-09/approve")
+        self.assertEqual(approve_missing.status_code, 404)
+
+        with patch.object(store, "approve_week", side_effect=RuntimeError("approval unavailable")):
+            approve_failed = self.client.post("/api/emails/weeks/2026-03-09/approve")
+        self.assertEqual(approve_failed.status_code, 503)
+
     @patch("sl_emails.web.routes.emails_api.generate_week_copy")
     def test_ai_copy_endpoint_updates_editable_copy_fields(self, mock_generate_week_copy):
         self.client.put(
@@ -1214,6 +1507,80 @@ class AppApiTests(unittest.TestCase):
         self.assertEqual(payload["week"]["copy_overrides"]["hero_text"], "Hero")
         self.assertEqual(payload["week"]["copy_overrides"]["cta_text"], "Bring a friend.")
 
+    def test_request_review_fallback_and_runtime_paths(self):
+        self.client.put(
+            "/api/emails/weeks/2026-03-09",
+            json={
+                "start_date": "2026-03-09",
+                "end_date": "2026-03-15",
+                "events": [
+                    {
+                        "id": "existing-event",
+                        "source": "custom",
+                        "kind": "event",
+                        "title": "Keep Me",
+                        "start_date": "2026-03-11",
+                        "end_date": "2026-03-11",
+                        "time_text": "All Day",
+                        "location": "Campus",
+                        "category": "Community",
+                        "audiences": ["middle-school", "upper-school"],
+                    }
+                ],
+            },
+        )
+        emails_store = self.client.application.config["EMAILS_STORE"]
+
+        failing_store = _FailingReviewRequestStore()
+        created = failing_store.submit_request(
+            {
+                "title": "Community Night",
+                "start_date": "2026-03-11",
+                "requester_name": "Jordan Smith",
+                "requester_email": "jordan@kentdenver.org",
+            }
+        )
+        self.client.application.config["EMAILS_REQUEST_STORE"] = failing_store
+        rollback_response = self.client.post(f"/api/emails/weeks/{created.week_id}/requests/{created.request_id}/approve")
+        self.assertEqual(rollback_response.status_code, 503)
+        week_after_rollback = emails_store.get_week("2026-03-09")
+        assert week_after_rollback is not None
+        self.assertEqual([event.title for event in week_after_rollback.events], ["Keep Me"])
+
+        legacy_store = _LegacyRequestStore()
+        legacy_request = legacy_store.submit_request(
+            {
+                "title": "Legacy Approval",
+                "start_date": "2026-03-12",
+                "requester_name": "Jordan Smith",
+                "requester_email": "jordan@kentdenver.org",
+            }
+        )
+        self.client.application.config["EMAILS_REQUEST_STORE"] = legacy_store
+        legacy_response = self.client.post(
+            f"/api/emails/weeks/{legacy_request.week_id}/requests/{legacy_request.request_id}/approve",
+            json={"reviewer_notes": "Looks good"},
+        )
+        self.assertEqual(legacy_response.status_code, 200)
+        legacy_payload = legacy_response.get_json()
+        assert legacy_payload is not None
+        self.assertEqual(legacy_payload["request"]["review"]["resolved_event_id"], f"request-{legacy_request.request_id}")
+
+        deny_store = _FailingReviewRequestStore()
+        deny_request = deny_store.submit_request(
+            {
+                "title": "Denied Later",
+                "start_date": "2026-03-13",
+                "requester_name": "Jordan Smith",
+                "requester_email": "jordan@kentdenver.org",
+            }
+        )
+        self.client.application.config["EMAILS_REQUEST_STORE"] = deny_store
+        deny_failed = self.client.post(f"/api/emails/weeks/{deny_request.week_id}/requests/{deny_request.request_id}/deny")
+        self.assertEqual(deny_failed.status_code, 503)
+
+        self.client.application.config["EMAILS_REQUEST_STORE"] = MemoryEventRequestStore()
+
     def test_ai_copy_endpoint_returns_503_when_gemini_is_unconfigured(self):
         self.client.put(
             "/api/emails/weeks/2026-03-09",
@@ -1226,6 +1593,80 @@ class AppApiTests(unittest.TestCase):
         payload = response.get_json()
         assert payload is not None
         self.assertIn("gemini api key", payload["error"].lower())
+
+    def test_ai_copy_sender_output_send_and_automation_success_paths_cover_remaining_errors(self):
+        missing_ai = self.client.post("/api/emails/weeks/2026-03-09/ai-copy")
+        self.assertEqual(missing_ai.status_code, 404)
+
+        missing_sender = self.client.get("/api/emails/weeks/2026-03-09/sender-output")
+        self.assertEqual(missing_sender.status_code, 404)
+
+        missing_sent = self.client.post("/api/emails/weeks/2026-03-09/sent")
+        self.assertEqual(missing_sent.status_code, 404)
+
+        self.client.put(
+            "/api/emails/weeks/2026-03-09",
+            json={"start_date": "2026-03-09", "end_date": "2026-03-15", "events": []},
+        )
+        store = self.client.application.config["EMAILS_STORE"]
+
+        invalid_state = self.client.post("/api/emails/weeks/2026-03-09/sent", json={"state": "bad-state"})
+        self.assertEqual(invalid_state.status_code, 400)
+
+        with patch("sl_emails.web.routes.emails_api.generate_week_copy", return_value={"heading": "", "notes": "", "subject_overrides": {}, "copy_overrides": {}}):
+            with patch.object(store, "save_week", side_effect=RuntimeError("save unavailable")):
+                ai_save_failed = self.client.post("/api/emails/weeks/2026-03-09/ai-copy")
+        self.assertEqual(ai_save_failed.status_code, 503)
+
+        self.client.post("/api/emails/weeks/2026-03-09/approve", headers={"X-Email-Actor": "reviewer"})
+
+        with patch("sl_emails.web.routes.emails_api.build_weekly_email_outputs", side_effect=RuntimeError("render unavailable")):
+            sender_failed = self.client.get("/api/emails/weeks/2026-03-09/sender-output?audience=middle-school")
+        self.assertEqual(sender_failed.status_code, 503)
+
+        with patch.object(store, "mark_week_sent", side_effect=RuntimeError("send unavailable")):
+            sent_failed = self.client.post("/api/emails/weeks/2026-03-09/sent")
+        self.assertEqual(sent_failed.status_code, 503)
+
+        self.client.application.config["EMAILS_AUTOMATION_KEY"] = "secret-key"
+        activity_response = self.client.post(
+            "/api/emails/automation/weeks/2026-03-09/activity",
+            headers={"X-Automation-Key": "secret-key", "X-Email-Actor": "google-apps-script"},
+            json={
+                "event_type": "gmail_send",
+                "status": "success",
+                "message": "Sent weekly email",
+                "details": {"occurred_at": "2026-03-09T16:00:00Z", "sent_count": 2},
+            },
+        )
+        self.assertEqual(activity_response.status_code, 200)
+        week = store.get_week("2026-03-09")
+        assert week is not None
+        self.assertEqual(week.metadata["gmail_send"]["sent_count"], 2)
+
+    def test_source_refresh_and_scheduled_ingest_cover_value_and_runtime_errors(self):
+        with patch("sl_emails.web.routes.emails_api.source_refresh_week", side_effect=ValueError("bad refresh state")):
+            refresh_value_error = self.client.post("/api/emails/weeks/2026-03-09/source-refresh")
+        self.assertEqual(refresh_value_error.status_code, 400)
+
+        with patch("sl_emails.web.routes.emails_api.source_refresh_week", side_effect=RuntimeError("refresh unavailable")):
+            refresh_runtime_error = self.client.post("/api/emails/weeks/2026-03-09/source-refresh")
+        self.assertEqual(refresh_runtime_error.status_code, 503)
+
+        self.client.application.config["EMAILS_AUTOMATION_KEY"] = "secret-key"
+        with patch("sl_emails.web.routes.emails_api.scheduled_ingest_week", side_effect=ValueError("bad ingest state")):
+            ingest_value_error = self.client.post(
+                "/api/emails/automation/weeks/2026-03-09/scheduled-ingest",
+                headers={"X-Automation-Key": "secret-key"},
+            )
+        self.assertEqual(ingest_value_error.status_code, 400)
+
+        with patch("sl_emails.web.routes.emails_api.scheduled_ingest_week", side_effect=RuntimeError("ingest unavailable")):
+            ingest_runtime_error = self.client.post(
+                "/api/emails/automation/weeks/2026-03-09/scheduled-ingest",
+                headers={"X-Automation-Key": "secret-key"},
+            )
+        self.assertEqual(ingest_runtime_error.status_code, 503)
 
     def test_preview_uses_copy_override_text_when_present(self):
         self.client.put(

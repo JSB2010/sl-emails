@@ -1,95 +1,140 @@
-# Sports Email Deployment & Runbook
+# Deployment & Operations Runbook
 
-This is the live runbook for the sports email system after the GitHub scheduler cutover.
+This runbook reflects the current production shape:
+
+- Firebase Hosting is the public entrypoint
+- Cloud Run hosts the Flask app
+- Google Apps Script owns cron and Gmail delivery
 
 ## Production Architecture
 
-- Cloud Run hosts `sl_emails.web:create_app`
-- Firebase Hosting fronts the public hostname
-- Firestore stores public signage snapshots plus weekly drafts, approval state, and sent state
-- Google Apps Script owns daily signage refresh, Sunday cron automation, and all Gmail sends
-- GitHub Actions handles deploys only
+Request flow:
 
-## Required Runtime Configuration
+1. Firebase Hosting receives public traffic.
+2. Static icon assets under `/static/icons/**` are served and long-cached by Hosting.
+3. All other app traffic is rewritten to the Cloud Run service `sl-emails`.
+4. Cloud Run serves the Flask runtime from `sl_emails.web.wsgi:app`.
+5. Firestore stores:
+   - signage snapshots
+   - weekly drafts
+   - admin settings
+   - public event requests
+   - activity log records
 
-Configure these on the deployed app:
+Automation flow:
+
+1. Apps Script refreshes signage every day at midnight MT.
+2. Apps Script creates or confirms the weekly draft on Sunday at 8:00 AM MT.
+3. Staff review and approve the draft in `/emails`.
+4. Apps Script attempts scheduled sends every day at 4:00 PM MT.
+
+## GitHub Deploy Inputs
+
+The production workflow is `.github/workflows/deploy-main.yml`.
+
+Required GitHub secrets:
+
+- `FIREBASE_SERVICE_ACCOUNT_JSON`
+- `EMAILS_AUTOMATION_KEY`
+- `EMAILS_SESSION_SECRET`
+- `GOOGLE_OAUTH_CLIENT_ID`
+- `GOOGLE_OAUTH_CLIENT_SECRET`
+
+Optional GitHub variables:
+
+- `GCP_PROJECT_ID`
+- `GCP_REGION`
+- `CLOUD_RUN_SERVICE`
+- `CLOUD_RUN_RUNTIME_SERVICE_ACCOUNT`
+- `ARTIFACT_REGISTRY_REPOSITORY`
+- `FIRESTORE_COLLECTION`
+- `FIREBASE_HOSTING_URL`
+- `GOOGLE_OAUTH_CALLBACK_URL`
+- `PUBLIC_BASE_URL`
+- `GEMINI_MODEL`
+- `GEMINI_API_KEY_SECRET_NAME`
+- `EMAILS_BOOTSTRAP_ALLOWED_EMAILS`
+- `EMAILS_BOOTSTRAP_NOTIFICATION_EMAILS`
+
+## Runtime Configuration
+
+Required on Cloud Run:
 
 - `FIREBASE_PROJECT_ID`
-- `FIREBASE_SERVICE_ACCOUNT_JSON`
-- `FIRESTORE_COLLECTION=emailWeeks` (or your chosen collection)
-- `EMAILS_AUTOMATION_KEY=<shared secret for Apps Script>`
-- `EMAILS_SESSION_SECRET=<stable Flask session secret>`
-- `GOOGLE_OAUTH_CLIENT_ID=<Google OAuth web client ID>`
-- `GOOGLE_OAUTH_CLIENT_SECRET=<Google OAuth web client secret>`
-- `GOOGLE_OAUTH_CALLBACK_URL=https://<your-host>/auth/google/callback`
-- `EMAILS_BOOTSTRAP_ALLOWED_EMAILS=appdev@kentdenver.org,studentleader@kentdenver.org`
-- `EMAILS_BOOTSTRAP_NOTIFICATION_EMAILS=appdev@kentdenver.org,studentleader@kentdenver.org`
+- `EMAILS_AUTOMATION_KEY`
+- `EMAILS_SESSION_SECRET`
+- `GOOGLE_OAUTH_CLIENT_ID`
+- `GOOGLE_OAUTH_CLIENT_SECRET`
+
+Recommended in production:
+
+- `GOOGLE_OAUTH_CALLBACK_URL=https://<public-host>/auth/google/callback`
+- `PUBLIC_BASE_URL=https://<public-host>`
+- `GEMINI_MODEL=gemini-3-flash-preview`
+
+Optional depending on Firestore auth strategy:
+
+- attached Cloud Run service account with Firestore access
+- or `FIREBASE_SERVICE_ACCOUNT_JSON`
+
+Optional bootstrap values:
+
+- `EMAILS_BOOTSTRAP_ALLOWED_EMAILS`
+- `EMAILS_BOOTSTRAP_NOTIFICATION_EMAILS`
 
 Local-only:
 
 - `FIRESTORE_EMULATOR_HOST`
-- `EMAILS_LOCAL_DEV=1` when you run the Cloud Run container over plain local HTTP
+- `EMAILS_LOCAL_DEV=1`
 
 ## Required Apps Script Configuration
 
-Set these Script Properties in the Apps Script project:
+Set these Script Properties:
 
 - `API_BASE_URL`
 - `AUTOMATION_API_KEY`
 
-`AUTOMATION_API_KEY` must exactly match the app's `EMAILS_AUTOMATION_KEY`.
-All delivery recipients, ops/admin notification emails, sender display name, reply-to email, and timezone now live in `/emails/settings` inside the Cloud Run app.
+`AUTOMATION_API_KEY` must match `EMAILS_AUTOMATION_KEY`.
 
-## Key Endpoints
+The app now owns these automation settings in `/emails/settings`:
 
-- `POST /api/signage/automation/days/<day-id>/refresh`
-  - Protected by `X-Automation-Key`
-  - Refreshes the Firestore-backed signage snapshot for the target Denver-local date
-- `POST /api/emails/automation/weeks/<week-id>/scheduled-ingest`
-  - Protected by `X-Automation-Key`
-  - Creates a missing week from source events
-  - Skips without mutation if the week already exists
-- `POST /api/emails/weeks/<week-id>/source-refresh`
-  - Manual admin refresh
-  - Replaces source events, preserves custom events/heading/notes, resets review/send state
-- `POST /api/emails/automation/weeks/<week-id>/activity`
-  - Protected by `X-Automation-Key`
-  - Records review-notification/send failure audit entries from Apps Script
-- `GET /api/emails/automation/settings`
-  - Protected by `X-Automation-Key`
-  - Returns the Apps Script sender + recipient settings from Cloud Run
-- `GET /api/emails/weeks/<week-id>/sender-output`
-  - Approved-only payloads for Apps Script delivery
+- admin notification recipients
+- middle-school and upper-school delivery recipients
+- sender display name
+- reply-to email
+- timezone
 
-## Weekly Timeline
+## First Production Bootstrap
 
-- Daily 12:00 AM MT: Apps Script runs `refreshDailySignage`
-- Sunday 8:00 AM MT: Apps Script runs `runSundayDraftCycle`
-- Sunday morning: admin receives review email linking to `/emails?week=<week-id>`
-- Before Sunday 4:00 PM MT: staff review and approve the week
-- Sunday 4:00 PM MT: Apps Script runs `sendSportsEmails`
+1. Deploy Cloud Run and Firebase Hosting from GitHub Actions or manually with equivalent config.
+2. Confirm Firebase Hosting rewrites to the `sl-emails` Cloud Run service.
+3. Configure Google OAuth so the callback URL matches `/auth/google/callback` on the public host.
+4. Sign in once through `/login`.
+5. In `/emails/settings`, set:
+   - allowlisted admin emails
+   - ops/admin notification emails
+   - middle-school and upper-school recipients
+   - sender display name, reply-to email, and timezone
+6. Copy `google-apps-script/sports-email-sender.gs` and `google-apps-script/troubleshooting-functions.gs` into the Apps Script project.
+7. Set Apps Script Script Properties to `API_BASE_URL` and `AUTOMATION_API_KEY`.
+8. Run `debugConfiguration()` in Apps Script.
+9. Run `debugScheduledIngestAccess()` and `refreshDailySignageManual()`.
+10. Confirm `/signage` renders the current day and `/emails?week=<week-id>` loads after sign-in.
+11. Run `setupTriggers()` once production configuration is correct.
 
-## Operator Checklist
+## Weekly Operating Timeline
 
-1. Deploy the app to Cloud Run and keep Firebase Hosting pointed at it.
-2. Set the auth/runtime env vars, especially `EMAILS_AUTOMATION_KEY`, `EMAILS_SESSION_SECRET`, the Google OAuth client credentials, `GEMINI_API_KEY`, and `PUBLIC_BASE_URL`.
-3. Configure the Google OAuth consent/client so the callback URL matches `/auth/google/callback`.
-4. Add any additional admin emails and all automation delivery recipients in `/emails/settings` after the first sign-in bootstrap.
-5. Update Apps Script Script Properties so only `API_BASE_URL` and `AUTOMATION_API_KEY` remain.
-6. Paste `google-apps-script/sports-email-sender.gs` and `google-apps-script/troubleshooting-functions.gs` into the Apps Script project.
-7. Run `debugConfiguration()` and `debugScheduledIngestAccess()` in Apps Script.
-8. Run `refreshDailySignageManual()` and confirm `/signage` renders the current day snapshot.
-9. Run `setupTriggers()` in Apps Script once production config is correct.
-10. Run `runSundayDraftCycleManual()` and confirm:
-- the backend returns a created or skipped result
-- the ops/admin list receives the review email
-- the review link opens `/emails?week=<week-id>` after Google sign-in
-11. Approve a test week in `/emails`.
-12. Run `testApprovedApiAccess()` and then `sendSportsEmailsManual()`.
+- Daily 12:00 AM MT: `refreshDailySignage`
+- Sunday 8:00 AM MT: `runSundayDraftCycle`
+- Sunday morning: admins receive the review email
+- Sunday 4:00 PM MT: default delivery window
+- Monday through Thursday 4:00 PM MT: postponed delivery window
+
+Weeks marked `skip` are intentionally suppressed. Existing drafts are never overwritten by scheduled ingest.
 
 ## Local Cloud Run-Style Run
 
-For local parity with the deployed container, use:
+For container parity with production:
 
 ```bash
 ./scripts/run_cloudrun_local.sh
@@ -97,38 +142,61 @@ For local parity with the deployed container, use:
 
 Notes:
 
-- This builds the repo `Dockerfile` and runs the same Gunicorn entrypoint that Cloud Run uses.
-- The script reads `.env.local` by default. Start from `.env.local.example`.
-- Add `GEMINI_API_KEY` for AI copy generation. `GEMINI_MODEL` defaults to `gemini-3-flash-preview`.
-- Set `PUBLIC_BASE_URL` in deployed environments so email HTML uses absolute icon URLs.
-- For live Firestore without embedding a service-account JSON string, the script mounts local ADC from `~/.config/gcloud/application_default_credentials.json` when present.
-- `EMAILS_LOCAL_DEV=1` switches cookies and generated callback URLs to local HTTP so Google sign-in can work on `localhost`.
-- Local contributor installs should use `python3 -m pip install -r requirements-dev.txt` so pytest is available.
+- the script builds `Dockerfile` and runs the Gunicorn entrypoint used by Cloud Run
+- it reads `.env.local` by default
+- start from `.env.local.example`
+- local ADC is mounted automatically when available
+- `EMAILS_LOCAL_DEV=1` switches cookies and callback generation to local HTTP
+- add `GEMINI_API_KEY` only if you need AI copy generation locally
+
+## Verification Checklist
+
+After any deploy, verify:
+
+1. `/_health` returns `200`.
+2. `/signage` renders HTML and not an error body.
+3. `/login` loads and Google sign-in completes for an allowlisted account.
+4. `/api/emails/automation/settings` succeeds with the automation key.
+5. `refreshDailySignageManual()` succeeds in Apps Script.
+6. `runSundayDraftCycleManual()` creates or skips the target week without error.
+7. A test approval in `/emails` exposes approved sender-output.
+8. `sendSportsEmailsManual()` completes and records send state.
 
 ## Troubleshooting
 
-- If Sunday morning ingest fails:
-  - check Cloud Run logs for `/api/emails/automation/weeks/<week-id>/scheduled-ingest`
-  - confirm `EMAILS_AUTOMATION_KEY` matches the Apps Script `AUTOMATION_API_KEY` Script Property
-  - run `debugScheduledIngestAccess()` in Apps Script
-- If signage is blank or missing:
-  - check Cloud Run logs for `/api/signage/automation/days/<day-id>/refresh`
-  - run `refreshDailySignageManual()` in Apps Script
-  - confirm `/signage` returns HTML for the current Denver-local date
-- If admins cannot sign in:
-  - confirm the deployed app has `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET`, and `EMAILS_SESSION_SECRET`
-  - confirm the OAuth callback URL matches `https://<host>/auth/google/callback`
-  - confirm the Google account is on the allowlist in `/emails/settings`
-- If the review UI needs a manual rebuild:
-  - open `/emails?week=<week-id>`
-  - click `Refresh Events`
-- If send fails:
-  - run `debugApprovedApiAccess()`
-  - inspect the week's approval/sent state in `/emails`
-  - if needed, use `Mark Unsent` in the UI before retrying
+If Sunday draft ingest fails:
 
-## Notes
+- inspect Cloud Run logs for `/api/emails/automation/weeks/<week-id>/scheduled-ingest`
+- confirm `EMAILS_AUTOMATION_KEY` matches Apps Script `AUTOMATION_API_KEY`
+- run `debugScheduledIngestAccess()`
 
-- Firestore is the source of truth for signage and sports emails.
-- Weekly ingest and signage refresh now fail closed. If any source fetch fails, the app records the failure and preserves the last known good week/day data.
-- Scheduled ingest never overwrites an existing week.
+If signage is blank or stale:
+
+- inspect Cloud Run logs for `/api/signage/automation/days/<day-id>/refresh`
+- run `refreshDailySignageManual()`
+- verify the correct Firestore day snapshot exists
+- remember that `/signage` can fall back to the previous day only during the first three Denver-local hours after midnight
+
+If admin sign-in fails:
+
+- confirm `EMAILS_SESSION_SECRET`, `GOOGLE_OAUTH_CLIENT_ID`, and `GOOGLE_OAUTH_CLIENT_SECRET`
+- confirm the callback URL matches the public host exactly
+- confirm the user is allowlisted in `/emails/settings`
+
+If Apps Script cannot send:
+
+- run `debugApprovedApiAccess()`
+- inspect approval and send-state in `/emails`
+- use `Mark Unsent` in the UI only after confirming whether any delivery already happened
+
+If source refresh fails:
+
+- the app intentionally fails closed and preserves the last good week/day
+- inspect `source_health` in the API response or activity log to identify the failing source
+
+## Local Test Commands
+
+```bash
+PYTHONPATH=src pytest --cov=src/sl_emails --cov-report=term-missing -q
+node --test google-apps-script/tests/*.js
+```

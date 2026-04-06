@@ -1136,11 +1136,6 @@ Examples:
         else:
             folder_name = date_str
 
-        # Create folder if it doesn't exist
-        if not os.path.exists(folder_name):
-            os.makedirs(folder_name)
-            print(f"Created folder: {folder_name}")
-
         if not args.output_ms:
             args.output_ms = os.path.join(folder_name, f'games-week-middle-school-{date_str}.html')
         if not args.output_us:
@@ -1219,6 +1214,16 @@ Examples:
         print("DRAFT_REVIEW_STATUS=ready")
 
     if not args.skip_html:
+        created_output_dirs: set[str] = set()
+
+        def ensure_parent_dir(path: str) -> None:
+            parent_dir = os.path.dirname(path) or "."
+            if parent_dir in created_output_dirs or os.path.exists(parent_dir):
+                return
+            os.makedirs(parent_dir, exist_ok=True)
+            created_output_dirs.add(parent_dir)
+            print(f"Created folder: {parent_dir}")
+
         # Generate Middle School email
         if middle_school_events:
             ms_events_by_date = group_games_by_date(middle_school_events)
@@ -1229,6 +1234,7 @@ Examples:
             ms_html_content = generate_html_email(ms_events_by_date, date_range, ms_categories_list,
                                                 start_date, end_date, "Middle School")
 
+            ensure_parent_dir(args.output_ms)
             with open(args.output_ms, 'w', encoding='utf-8') as f:
                 f.write(ms_html_content)
 
@@ -1246,6 +1252,7 @@ Examples:
             us_html_content = generate_html_email(us_events_by_date, date_range, us_categories_list,
                                                 start_date, end_date, "Upper School")
 
+            ensure_parent_dir(args.output_us)
             with open(args.output_us, 'w', encoding='utf-8') as f:
                 f.write(us_html_content)
 

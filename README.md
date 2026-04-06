@@ -1,123 +1,208 @@
 # Kent Denver Student Leadership Emails
 
-Kent Denver's sports email workflow now runs through the deployed app plus Google Apps Script:
+This repo powers two production surfaces for Kent Denver Student Leadership:
 
-1. Daily 12:00 AM MT: Apps Script refreshes the public signage snapshot in Firestore through the app.
-1. Sunday 8:00 AM MT: Apps Script calls the app's protected scheduled-ingest endpoint.
-2. The app fetches athletics + arts sources, creates the next week's Firestore draft if missing, and never overwrites an existing week automatically.
-3. Apps Script emails the ops/admin list a review link to `/emails?week=<YYYY-MM-DD>`.
-4. Staff sign in with Google, review, edit, preview, and approve in `/emails`.
-5. Sunday 4:00 PM MT: Apps Script fetches approved sender-output and sends both audience emails.
+- the public daily signage page at `/signage`
+- the weekly sports/arts email review and delivery workflow at `/emails`
 
-## Production Roles
+The current production entrypoint is Firebase Hosting in front of Cloud Run.
 
-- Cloud Run: Flask runtime serving `/`, `/emails`, and `/api/emails/...`
-- Firebase Hosting: public front door in front of Cloud Run
-- Cloudflare: DNS/registrar only
-- Firestore: signage snapshots, weekly drafts, approval state, and sent state
-- Google Apps Script: daily signage refresh, Sunday cron triggers, and Gmail delivery
-- GitHub Actions: deploy pipeline only
+## System Overview
+
+The live system is split across five pieces:
+
+- Firebase Hosting serves the public hostname, caches static assets, and rewrites app traffic to Cloud Run.
+- Cloud Run runs the Flask app in `src/sl_emails/web`.
+- Firestore stores signage day snapshots, weekly drafts, admin settings, public request submissions, and activity logs.
+- Google Apps Script owns cron-driven automation and Gmail delivery.
+- GitHub Actions runs CI and deploys the app and hosting config from `main`.
+
+## What The App Does
+
+The runtime has four main responsibilities:
+
+- Render the public signage page from Firestore-backed daily snapshots.
+- Provide a Google-authenticated admin UI for weekly review, copy editing, approval, and send-state tracking.
+- Accept public event requests that staff can approve into a week.
+- Expose protected automation endpoints used by Apps Script for scheduled ingest, sender-output retrieval, activity logging, and signage refresh.
+
+## Weekly Automation Flow
+
+1. Every day at midnight in `America/Denver`, Apps Script calls `/api/signage/automation/days/<day-id>/refresh`.
+2. Sunday at 8:00 AM MT, Apps Script calls `/api/emails/automation/weeks/<week-id>/scheduled-ingest`.
+3. The app fetches athletics and arts sources, creates the draft week if it does not exist, and never overwrites an existing draft automatically.
+4. Apps Script emails the admin/ops recipients a review link to `/emails?week=<YYYY-MM-DD>`.
+5. Staff sign in with Google, review or edit the week, optionally generate Gemini copy, and approve it.
+6. Every day at 4:00 PM MT, Apps Script decides whether anything should send that day:
+   - Sunday sends the default week.
+   - Monday through Thursday can send postponed weeks.
+   - weeks marked `skip` are suppressed
+7. Apps Script fetches `/api/emails/weeks/<week-id>/sender-output`, claims the week for sending, delivers both audience emails, and marks the week sent.
+
+## Production Topology
+
+- `firebase.json` rewrites all app traffic to the Cloud Run service `sl-emails` in `us-central1`.
+- `firebase-hosting/` contains the Hosting-only assets, including long-cache icon copies.
+- `Dockerfile` builds the same container image used by Cloud Run.
+- `.github/workflows/deploy-main.yml` runs tests, deploys Cloud Run, deploys Firebase Hosting, and refreshes the current signage day.
+- `deploy/cloudrun/service.template.yaml` is a reference manifest for the Cloud Run service.
 
 ## Key Routes
 
-- `/` — plain-text `200 OK`
-- `/signage` — public signage page rendered from the Firestore day snapshot
-- `/login` — Google sign-in entrypoint for sports email admins
-- `/emails` — weekly admin review UI (Google sign-in + allowlist required)
-- `/emails?week=YYYY-MM-DD` — deep link to a specific Monday week
-- `/emails/settings` — allowlist, ops notifications, and Apps Script delivery settings
-- `/api/emails/weeks/<week-id>` — weekly draft CRUD
-- `/api/emails/automation/settings` — protected Apps Script settings payload
-- `/api/emails/weeks/<week-id>/source-refresh` — manual source refresh that preserves custom events
-- `/api/emails/automation/weeks/<week-id>/scheduled-ingest` — protected Sunday morning ingest endpoint
-- `/api/emails/automation/weeks/<week-id>/activity` — protected automation activity/audit endpoint
-- `/api/emails/weeks/<week-id>/sender-output` — approved output for Apps Script sends
-- `/api/signage/automation/days/<day-id>/refresh` — protected daily signage refresh endpoint
-- `/_health` — health check
+Public:
 
-## Runtime Config
+- `/` returns plain-text `OK`
+- `/signage` renders the current Firestore signage snapshot
+- `/_health` and `/healthz` return `{"ok": true}`
+- `/request` serves the public event request form
+- `/api/emails/requests` accepts public event submissions
 
-The deployed app expects:
+Admin:
+
+- `/login` starts Google sign-in
+- `/emails` serves the weekly review dashboard
+- `/emails/settings` manages allowlist, notifications, and Apps Script delivery settings
+- `/api/emails/settings` reads or updates admin settings
+- `/api/emails/weeks/<week-id>` reads or saves a weekly draft
+- `/api/emails/weeks/<week-id>/preview` renders both audience outputs
+- `/api/emails/weeks/<week-id>/source-refresh` refreshes source events while preserving custom events
+- `/api/emails/weeks/<week-id>/approve` approves a week
+- `/api/emails/weeks/<week-id>/sent` claims, marks sent, or resets send state
+- `/api/emails/weeks/<week-id>/activity` lists activity log records
+- `/api/emails/weeks/<week-id>/requests` lists public requests for that week
+
+Automation:
+
+- `/api/emails/automation/settings` returns Apps Script delivery config
+- `/api/emails/automation/weeks/<week-id>/scheduled-ingest` creates a missing draft week
+- `/api/emails/automation/weeks/<week-id>/activity` records Apps Script audit events
+- `/api/emails/weeks/<week-id>/sender-output` returns approved-only send payloads
+- `/api/signage/automation/days/<day-id>/refresh` refreshes the daily signage snapshot
+- `/api/signage/local/days/<day-id>/refresh` is available only in testing/local-dev
+
+## Runtime Configuration
+
+Required app configuration:
 
 - `FIREBASE_PROJECT_ID`
-- `FIREBASE_SERVICE_ACCOUNT_JSON`
-- `FIRESTORE_COLLECTION` (optional; defaults to `emailWeeks`)
-- `FIRESTORE_EMULATOR_HOST` (local only)
-- `EMAILS_LOCAL_DEV` (local Docker/HTTP only)
-- `EMAILS_AUTOMATION_KEY` (required for scheduled-ingest calls)
-- `EMAILS_SESSION_SECRET` (required for stable admin sessions)
+- `EMAILS_AUTOMATION_KEY`
+- `EMAILS_SESSION_SECRET`
 - `GOOGLE_OAUTH_CLIENT_ID`
 - `GOOGLE_OAUTH_CLIENT_SECRET`
-- `GOOGLE_OAUTH_CALLBACK_URL` (required in production; deploy defaults to `<hosting-url>/auth/google/callback` when unset)
-- `EMAILS_BOOTSTRAP_ALLOWED_EMAILS` (optional; defaults to `appdev@kentdenver.org,studentleader@kentdenver.org`)
-- `EMAILS_BOOTSTRAP_NOTIFICATION_EMAILS` (optional; defaults to the same two emails)
 
-Apps Script expects:
+Required in production unless you deliberately derive them elsewhere:
 
-- Script Properties, not hardcoded constants
-- Required:
-  - `API_BASE_URL`
-  - `AUTOMATION_API_KEY`
-- Cloud Run `/emails/settings` now owns:
-  - ops/admin notification recipients
-  - middle-school and upper-school delivery recipients
-  - sender display name, reply-to email, and timezone
+- `GOOGLE_OAUTH_CALLBACK_URL`
+- `PUBLIC_BASE_URL`
 
-## Supported Commands
+Firestore access:
 
-Install dependencies from the repo root:
+- preferred in production: attach a Cloud Run service account with Firestore access
+- supported fallback: `FIREBASE_SERVICE_ACCOUNT_JSON`
+- local emulator: `FIRESTORE_EMULATOR_HOST`
+- optional override: `FIRESTORE_COLLECTION` defaults to `emailWeeks`
+
+Optional app configuration:
+
+- `EMAILS_LOCAL_DEV=1` for local plain-HTTP development
+- `GEMINI_API_KEY` to enable AI copy generation
+- `GEMINI_MODEL` defaults to `gemini-3-flash-preview`
+- `EMAILS_BOOTSTRAP_ALLOWED_EMAILS`
+- `EMAILS_BOOTSTRAP_NOTIFICATION_EMAILS`
+
+Required Apps Script properties:
+
+- `API_BASE_URL`
+- `AUTOMATION_API_KEY`
+
+Apps Script pulls the rest of its delivery configuration from `/api/emails/automation/settings`:
+
+- ops/admin notification recipients
+- middle-school and upper-school `to`/`bcc` recipients
+- sender display name
+- reply-to email
+- timezone
+
+## Local Development
+
+Install dependencies:
 
 ```bash
 python3 -m pip install -r requirements-dev.txt
 ```
 
-Run the web app locally:
+Start from the sample env file:
+
+```bash
+cp .env.local.example .env.local
+```
+
+Run Flask directly:
 
 ```bash
 PYTHONPATH=src python3 -m flask --app sl_emails.web:create_app run --port 5050
 ```
 
-Run the same container Cloud Run uses, but locally:
+Run the Cloud Run container locally:
 
 ```bash
 ./scripts/run_cloudrun_local.sh
 ```
 
-The Docker runner reads `.env.local` by default, sets `EMAILS_LOCAL_DEV=1`, mounts local ADC automatically when available, and starts Gunicorn on `http://localhost:8080`.
+Notes:
 
-Generate local/manual HTML previews:
+- the Docker runner reads `.env.local` by default
+- it sets `EMAILS_LOCAL_DEV=1`
+- it mounts local ADC automatically when available
+- it serves Gunicorn on `http://localhost:8080`
+
+Utility commands:
 
 ```bash
 PYTHONPATH=src python3 -m sl_emails.ingest.generate_games
-```
-
-Refresh signage locally:
-
-```bash
 PYTHONPATH=src python3 -m sl_emails.signage.generate_signage
 ```
 
-## Repository Structure
+## Testing
+
+Run the Python suite with coverage:
+
+```bash
+PYTHONPATH=src pytest --cov=src/sl_emails --cov-report=term-missing -q
+```
+
+Run the Apps Script tests:
+
+```bash
+node --test google-apps-script/tests/*.js
+```
+
+CI and production deploys run both suites before any release.
+
+## Repository Map
 
 ```text
 sl-emails/
-├── src/sl_emails/                 # Runtime, services, ingest, signage tools
-├── src/sl_emails/web/templates/   # /emails admin UI
-├── src/sl_emails/web/static/      # /emails static assets
-├── google-apps-script/            # Sunday draft/send automation + troubleshooting
-├── scripts/run_cloudrun_local.sh  # Local Cloud Run-style Docker runner
-├── requirements.txt               # Unified Python dependencies
-├── .github/workflows/             # Deploy automation
+├── src/sl_emails/
+│   ├── web/              # Flask runtime, routes, templates, static assets
+│   ├── services/         # Firestore stores, ingest orchestration, outputs
+│   ├── domain/           # Shared data normalization and record models
+│   ├── ingest/           # Source scraping and HTML email rendering
+│   └── signage/          # Signage HTML renderer
+├── google-apps-script/   # Scheduled automation and troubleshooting helpers
+├── firebase-hosting/     # Hosting-served static assets
+├── deploy/cloudrun/      # Reference Cloud Run manifest
+├── scripts/              # Local tooling
+├── .github/workflows/    # CI and deploy automation
 ├── README.md
 └── SETUP.md
 ```
 
-## Notes
+## Operational Notes
 
-- Firestore is the operational source of truth for signage snapshots, sports email weeks, admin allowlists, and app-side audit records.
-- Source refreshes now fail closed: if athletics or arts fetches fail, the app returns `503` and preserves existing week/day data.
-- `/signage` now sends `Cache-Control: public` with a TTL that expires at the next Denver midnight, so Firebase Hosting/CDN and the signage browser reuse the same daily HTML instead of re-hitting Cloud Run on every refresh.
-- If the new day snapshot is briefly unavailable right after midnight Denver time, `/signage` will temporarily serve the previous day's snapshot during a 3-hour rollover grace window with a short 5-minute cache, then require the current day again for the rest of the day.
-- GitHub Actions runs full Python and Apps Script test suites before production deploys, and pull requests run the same checks in `.github/workflows/ci.yml`.
-- `digital-signage/index.html` is generated on demand for local preview and is not used by the runtime.
-- The legacy Firestore REST publish path remains in the repo for manual tooling compatibility, but it is no longer the production scheduler path.
+- Firestore is the operational source of truth for signage snapshots, weekly drafts, admin settings, request queue records, and activity logs.
+- Source refreshes fail closed. If athletics or arts fetches fail, the app returns `503` and preserves the existing week or day.
+- `/signage` is cacheable through the next Denver midnight. During the first three hours after midnight, it can temporarily fall back to the prior day if the new snapshot is not available yet.
+- Weekly scheduled ingest skips existing drafts by design.
+- `digital-signage/index.html` is only for local/manual preview generation and is not part of the deployed runtime path.
+- The legacy Firestore REST publish tooling remains in the repo for compatibility, but it is not the production scheduling path.

@@ -1,7 +1,13 @@
 import unittest
 from unittest.mock import patch
 
-from sl_emails.web.request_protection import FirestoreRequestProtector, RequestRateLimitExceeded
+from sl_emails.web.request_protection import (
+    FirestoreRequestProtector,
+    PublicRequestProtector,
+    RequestProtectionError,
+    RequestRateLimitExceeded,
+    first_forwarded_ip,
+)
 
 
 class _FakeSnapshot:
@@ -80,6 +86,16 @@ class _FakeFirestoreClient:
         return _FakeCollection(self.documents)
 
 
+class _TransactionalClient(_FakeFirestoreClient):
+    def transaction(self):
+        return _FakeTransaction()
+
+
+class _FakeTransaction:
+    def set(self, ref, payload, merge=False):
+        ref.set(payload, merge=merge)
+
+
 class _FakeWeeklyStore:
     def __init__(self, client):
         self._client = client
@@ -89,6 +105,22 @@ class _FakeWeeklyStore:
 
 
 class FirestoreRequestProtectorTests(unittest.TestCase):
+    def test_public_request_protector_metadata_and_honeypot(self):
+        protector = PublicRequestProtector()
+
+        metadata = protector.submission_metadata(
+            remote_addr="203.0.113.10",
+            user_agent="Mozilla/5.0",
+            referrer="https://example.test/request?foo=1",
+        )
+
+        self.assertEqual(metadata["referrer_host"], "example.test")
+        self.assertTrue(metadata["ip_hash"])
+        self.assertTrue(metadata["user_agent_hash"])
+
+        with self.assertRaises(RequestProtectionError):
+            protector.validate_honeypot({"website": "https://spam.example.test"})
+
     @patch("sl_emails.web.request_protection.time", return_value=1_710_000_000.0)
     def test_rate_limit_is_shared_across_instances(self, _mock_time):
         client = _FakeFirestoreClient()
@@ -101,6 +133,55 @@ class FirestoreRequestProtectorTests(unittest.TestCase):
 
         with self.assertRaises(RequestRateLimitExceeded):
             protector_one.check_rate_limit("203.0.113.10|browser")
+
+    @patch("sl_emails.web.request_protection.time", return_value=1_710_000_000.0)
+    def test_transactional_rate_limit_path_is_enforced(self, _mock_time):
+        client = _TransactionalClient()
+        shared_store = _FakeWeeklyStore(client)
+        protector = FirestoreRequestProtector(max_attempts=2, window_seconds=900, _weekly_store=shared_store)
+
+        class _FakeFirestoreModule:
+            @staticmethod
+            def transactional(fn):
+                return fn
+
+        with patch("sl_emails.web.request_protection.firestore", _FakeFirestoreModule):
+            protector.check_rate_limit("203.0.113.10|browser")
+            protector.check_rate_limit("203.0.113.10|browser")
+            with self.assertRaises(RequestRateLimitExceeded):
+                protector.check_rate_limit("203.0.113.10|browser")
+
+    def test_prune_expired_swallows_query_and_delete_failures(self):
+        protector = FirestoreRequestProtector(_weekly_store=_FakeWeeklyStore(_FakeFirestoreClient()))
+
+        with patch.object(protector, "_collection", side_effect=RuntimeError("query failed")):
+            protector._prune_expired(1_710_000_000.0)
+
+        class _BadRef:
+            def delete(self):
+                raise RuntimeError("delete failed")
+
+        class _BadSnapshot:
+            reference = _BadRef()
+
+        class _BadQuery:
+            def limit(self, _value):
+                return self
+
+            def stream(self):
+                return [_BadSnapshot()]
+
+        class _BadCollection:
+            def where(self, *_args):
+                return _BadQuery()
+
+        with patch.object(protector, "_collection", return_value=_BadCollection()):
+            protector._prune_expired(1_710_000_000.0)
+
+    @patch("sl_emails.web.request_protection.time", return_value=1_710_000_000.0)
+    def test_first_forwarded_ip_prefers_forwarded_header(self, _mock_time):
+        self.assertEqual(first_forwarded_ip("198.51.100.2, 203.0.113.10", "127.0.0.1"), "198.51.100.2")
+        self.assertEqual(first_forwarded_ip("", "127.0.0.1"), "127.0.0.1")
 
 
 if __name__ == "__main__":

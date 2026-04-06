@@ -94,7 +94,7 @@ jobs:
           pip install -r requirements-dev.txt
 
       - name: Run Python test suite
-        run: PYTHONPATH=src pytest -q
+        run: PYTHONPATH=src pytest --cov=src/sl_emails --cov-report=term-missing -q
 
       - name: Run Google Apps Script tests
         run: node --test google-apps-script/tests/*.js

@@ -13,6 +13,7 @@ WEB_DIR = PACKAGE_DIR / "web"
 
 SIGNAGE_OUTPUT_HTML = REPO_ROOT / "digital-signage" / "index.html"
 SIGNAGE_TIMEZONE = "America/Denver"
+SIGNAGE_ROLLOVER_GRACE_HOURS = 3
 WEB_TEMPLATES_DIR = WEB_DIR / "templates"
 WEB_STATIC_DIR = WEB_DIR / "static"
 
@@ -136,6 +137,7 @@ __all__ = [
     "REPO_ROOT",
     "RuntimeFirestoreConfig",
     "SIGNAGE_OUTPUT_HTML",
+    "SIGNAGE_ROLLOVER_GRACE_HOURS",
     "SIGNAGE_TIMEZONE",
     "WEB_DIR",
     "WEB_STATIC_DIR",

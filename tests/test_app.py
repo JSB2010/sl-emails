@@ -1,5 +1,7 @@
 import unittest
+from datetime import datetime
 from unittest.mock import patch
+from zoneinfo import ZoneInfo
 
 from sl_emails.services import signage_ingest
 from sl_emails.services.activity_log import MemoryActivityLogStore
@@ -107,13 +109,16 @@ class AppApiTests(unittest.TestCase):
             session.clear()
 
     @patch.object(web_support, "today_in_timezone")
-    def test_signage_route_serves_firestore_snapshot(self, mock_today):
+    @patch.object(web_support, "_seconds_until_next_signage_midnight")
+    def test_signage_route_serves_firestore_snapshot(self, mock_ttl, mock_today):
+        mock_ttl.return_value = 43200
         mock_today.return_value = weekly_ingest.iso_to_date("2026-03-23")
         response = self.client.get("/signage")
 
         self.assertEqual(response.status_code, 200)
         self.assertIn("Today's Events", response.get_data(as_text=True))
         self.assertIn("Varsity Soccer", response.get_data(as_text=True))
+        self.assertEqual(response.headers.get("Cache-Control"), "public, max-age=43200, s-maxage=43200")
 
     def test_signage_route_accepts_testing_date_override(self):
         response = self.client.get("/signage?date=2026-04-02")
@@ -121,12 +126,60 @@ class AppApiTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn("Thursday, April 02, 2026", response.get_data(as_text=True))
         self.assertIn("Spring Play", response.get_data(as_text=True))
+        self.assertEqual(response.headers.get("Cache-Control"), "no-store, max-age=0")
 
     def test_signage_route_rejects_invalid_testing_date_override(self):
         response = self.client.get("/signage?date=2026-04-31")
 
         self.assertEqual(response.status_code, 400)
         self.assertEqual(response.get_data(as_text=True), "Invalid signage preview date. Use YYYY-MM-DD.")
+        self.assertEqual(response.headers.get("Cache-Control"), "no-store, max-age=0")
+
+    @patch.object(web_support, "today_in_timezone")
+    def test_signage_route_does_not_cache_missing_snapshot(self, mock_today):
+        mock_today.return_value = weekly_ingest.iso_to_date("2026-04-03")
+        response = self.client.get("/signage")
+
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(response.get_data(as_text=True), "Signage snapshot not found.")
+        self.assertEqual(response.headers.get("Cache-Control"), "no-store, max-age=0")
+
+    @patch.object(web_support, "today_in_timezone")
+    @patch.object(web_support, "_signage_now")
+    def test_signage_route_serves_previous_day_during_rollover_grace_window(self, mock_now, mock_today):
+        mock_today.return_value = weekly_ingest.iso_to_date("2026-04-03")
+        mock_now.return_value = datetime(2026, 4, 3, 0, 15, tzinfo=ZoneInfo("America/Denver"))
+        response = self.client.get("/signage")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Today's Events", response.get_data(as_text=True))
+        self.assertIn("Spring Play", response.get_data(as_text=True))
+        self.assertIn("Thursday, April 02, 2026", response.get_data(as_text=True))
+        self.assertEqual(response.headers.get("Cache-Control"), "public, max-age=300, s-maxage=300")
+
+    @patch.object(web_support, "today_in_timezone")
+    @patch.object(web_support, "_signage_now")
+    def test_signage_route_does_not_serve_previous_day_after_rollover_grace_window(self, mock_now, mock_today):
+        mock_today.return_value = weekly_ingest.iso_to_date("2026-04-03")
+        mock_now.return_value = datetime(2026, 4, 3, 6, 0, tzinfo=ZoneInfo("America/Denver"))
+        response = self.client.get("/signage")
+
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(response.get_data(as_text=True), "Signage snapshot not found.")
+        self.assertEqual(response.headers.get("Cache-Control"), "no-store, max-age=0")
+
+    @patch.object(web_support, "today_in_timezone")
+    @patch.object(web_support, "_signage_now")
+    def test_signage_route_returns_503_when_rollover_fallback_lookup_fails(self, mock_now, mock_today):
+        mock_today.return_value = weekly_ingest.iso_to_date("2026-04-03")
+        mock_now.return_value = datetime(2026, 4, 3, 0, 15, tzinfo=ZoneInfo("America/Denver"))
+        signage_store = self.client.application.config["SIGNAGE_STORE"]
+        with patch.object(signage_store, "get_day", side_effect=[None, RuntimeError("signage unavailable")]):
+            response = self.client.get("/signage")
+
+        self.assertEqual(response.status_code, 503)
+        self.assertEqual(response.get_data(as_text=True), "signage unavailable")
+        self.assertEqual(response.headers.get("Cache-Control"), "no-store, max-age=0")
 
     def test_root_returns_plain_text_ok(self):
         response = self.client.get("/")

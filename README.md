@@ -121,6 +121,8 @@ sl-emails/
 
 - Firestore is the operational source of truth for signage snapshots, sports email weeks, admin allowlists, and app-side audit records.
 - Source refreshes now fail closed: if athletics or arts fetches fail, the app returns `503` and preserves existing week/day data.
+- `/signage` now sends `Cache-Control: public` with a TTL that expires at the next Denver midnight, so Firebase Hosting/CDN and the signage browser reuse the same daily HTML instead of re-hitting Cloud Run on every refresh.
+- If the new day snapshot is briefly unavailable right after midnight Denver time, `/signage` will temporarily serve the previous day's snapshot during a 3-hour rollover grace window with a short 5-minute cache, then require the current day again for the rest of the day.
 - GitHub Actions runs full Python and Apps Script test suites before production deploys, and pull requests run the same checks in `.github/workflows/ci.yml`.
 - `digital-signage/index.html` is generated on demand for local preview and is not used by the runtime.
 - The legacy Firestore REST publish path remains in the repo for manual tooling compatibility, but it is no longer the production scheduler path.

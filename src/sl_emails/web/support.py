@@ -2,15 +2,18 @@
 
 from __future__ import annotations
 
+from datetime import datetime, time, timedelta
 from functools import wraps
 from typing import Any, Callable
 from urllib.parse import quote
+from zoneinfo import ZoneInfo
 
 from flask import Response, current_app, jsonify, redirect, request, session, url_for
 
 from sl_emails.config import EMAILS_AUTOMATION_KEY_ENV
 from sl_emails.config import EMAILS_BOOTSTRAP_ALLOWED_EMAILS_ENV
 from sl_emails.config import EMAILS_BOOTSTRAP_NOTIFICATION_EMAILS_ENV
+from sl_emails.config import SIGNAGE_ROLLOVER_GRACE_HOURS
 from sl_emails.config import SIGNAGE_TIMEZONE
 from sl_emails.config import WEB_STATIC_DIR as STATIC_DIR
 from sl_emails.config import WEB_TEMPLATES_DIR as TEMPLATE_DIR
@@ -111,18 +114,76 @@ def _signage_preview_day_id() -> str | None:
     return raw_value
 
 
+def _signage_no_store_response(body: str, *, status: int, mimetype: str) -> Response:
+    response = Response(body, status=status, mimetype=mimetype)
+    response.headers["Cache-Control"] = "no-store, max-age=0"
+    return response
+
+
+def _signage_now(now: datetime | None = None) -> datetime:
+    timezone = ZoneInfo(SIGNAGE_TIMEZONE)
+    return now.astimezone(timezone) if now is not None else datetime.now(timezone)
+
+
+def _seconds_until_next_signage_midnight(now: datetime | None = None) -> int:
+    current = _signage_now(now)
+    timezone = current.tzinfo
+    next_midnight = datetime.combine(current.date() + timedelta(days=1), time.min, tzinfo=timezone)
+    return max(1, int((next_midnight - current).total_seconds()))
+
+
+def _seconds_until_signage_rollover_deadline(now: datetime | None = None) -> int:
+    current = _signage_now(now)
+    timezone = current.tzinfo
+    rollover_deadline = datetime.combine(current.date(), time(hour=SIGNAGE_ROLLOVER_GRACE_HOURS), tzinfo=timezone)
+    return max(1, int((rollover_deadline - current).total_seconds()))
+
+
+def _signage_rollover_fallback_day_id(day_id: str, now: datetime | None = None) -> str | None:
+    current = _signage_now(now)
+    if current.date().isoformat() != day_id:
+        return None
+    if current.hour >= SIGNAGE_ROLLOVER_GRACE_HOURS:
+        return None
+    return (current.date() - timedelta(days=1)).isoformat()
+
+
+def _signage_cache_control(preview_day_id: str | None = None, *, fallback_served: bool = False) -> str:
+    if preview_day_id is not None:
+        return "no-store, max-age=0"
+    if fallback_served:
+        ttl_seconds = min(300, _seconds_until_signage_rollover_deadline())
+        return f"public, max-age={ttl_seconds}, s-maxage={ttl_seconds}"
+    ttl_seconds = _seconds_until_next_signage_midnight()
+    return f"public, max-age={ttl_seconds}, s-maxage={ttl_seconds}"
+
+
 def serve_signage() -> Response:
     try:
-        day_id = _signage_preview_day_id() or today_in_timezone(SIGNAGE_TIMEZONE).isoformat()
+        preview_day_id = _signage_preview_day_id()
+        day_id = preview_day_id or today_in_timezone(SIGNAGE_TIMEZONE).isoformat()
     except ValueError:
-        return Response("Invalid signage preview date. Use YYYY-MM-DD.", status=400, mimetype="text/plain")
+        return _signage_no_store_response("Invalid signage preview date. Use YYYY-MM-DD.", status=400, mimetype="text/plain")
     try:
         day = get_signage_store().get_day(day_id)
     except RuntimeError as exc:
-        return Response(str(exc), status=503, mimetype="text/plain")
+        return _signage_no_store_response(str(exc), status=503, mimetype="text/plain")
+    fallback_served = False
     if day is None:
-        return Response("Signage snapshot not found.", status=404, mimetype="text/plain")
-    return Response(generate_signage_html(day.poster_events(), day_id), mimetype="text/html")
+        fallback_day_id = None if preview_day_id is not None else _signage_rollover_fallback_day_id(day_id)
+        if fallback_day_id is not None:
+            try:
+                day = get_signage_store().get_day(fallback_day_id)
+            except RuntimeError as exc:
+                return _signage_no_store_response(str(exc), status=503, mimetype="text/plain")
+            if day is not None:
+                day_id = fallback_day_id
+                fallback_served = True
+        if day is None:
+            return _signage_no_store_response("Signage snapshot not found.", status=404, mimetype="text/plain")
+    response = Response(generate_signage_html(day.poster_events(), day_id), mimetype="text/html")
+    response.headers["Cache-Control"] = _signage_cache_control(preview_day_id, fallback_served=fallback_served)
+    return response
 
 
 def json_error(message: str, status: int = 400, *, extra: dict[str, Any] | None = None) -> tuple[Response, int]:

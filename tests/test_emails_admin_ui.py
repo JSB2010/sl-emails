@@ -73,6 +73,22 @@ class EmailsAdminUiTests(unittest.TestCase):
         self.assertIn("clearWeek", body)
         self.assertIn("deliveryOptions", body)
 
+    def test_settings_page_exposes_automation_delivery_fields(self):
+        response = self.client.get("/emails/settings")
+
+        self.assertEqual(response.status_code, 200)
+        body = response.get_data(as_text=True)
+        self.assertIn("Automation Delivery", body)
+        self.assertIn('id="email-from-name"', body)
+        self.assertIn('id="reply-to-email"', body)
+        self.assertIn('id="sender-timezone"', body)
+        self.assertIn('id="middle-school-to"', body)
+        self.assertIn('id="middle-school-bcc"', body)
+        self.assertIn('id="upper-school-to"', body)
+        self.assertIn('id="upper-school-bcc"', body)
+        self.assertIn('id="save-settings"', body)
+        self.assertIn("Save All Settings", body)
+
     def test_hidden_events_are_excluded_from_preview_outputs(self):
         self.client.put(
             "/api/emails/weeks/2026-03-09",

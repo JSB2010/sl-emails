@@ -25,8 +25,9 @@ Kent Denver's sports email workflow now runs through the deployed app plus Googl
 - `/login` — Google sign-in entrypoint for sports email admins
 - `/emails` — weekly admin review UI (Google sign-in + allowlist required)
 - `/emails?week=YYYY-MM-DD` — deep link to a specific Monday week
-- `/emails/settings` — allowlist and ops-notification settings
+- `/emails/settings` — allowlist, ops notifications, and Apps Script delivery settings
 - `/api/emails/weeks/<week-id>` — weekly draft CRUD
+- `/api/emails/automation/settings` — protected Apps Script settings payload
 - `/api/emails/weeks/<week-id>/source-refresh` — manual source refresh that preserves custom events
 - `/api/emails/automation/weeks/<week-id>/scheduled-ingest` — protected Sunday morning ingest endpoint
 - `/api/emails/automation/weeks/<week-id>/activity` — protected automation activity/audit endpoint
@@ -57,16 +58,10 @@ Apps Script expects:
 - Required:
   - `API_BASE_URL`
   - `AUTOMATION_API_KEY`
-  - `ADMIN_NOTIFICATION_EMAILS`
-  - `MIDDLE_SCHOOL_TO`
-  - `MIDDLE_SCHOOL_BCC`
-  - `UPPER_SCHOOL_TO`
-  - `UPPER_SCHOOL_BCC`
-- Optional:
-  - `EMAIL_FROM_NAME`
-  - `API_ACTOR`
-  - `REPLY_TO_EMAIL`
-  - `TIMEZONE`
+- Cloud Run `/emails/settings` now owns:
+  - ops/admin notification recipients
+  - middle-school and upper-school delivery recipients
+  - sender display name, reply-to email, and timezone
 
 ## Supported Commands
 

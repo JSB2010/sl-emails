@@ -36,20 +36,9 @@ Set these Script Properties in the Apps Script project:
 
 - `API_BASE_URL`
 - `AUTOMATION_API_KEY`
-- `ADMIN_NOTIFICATION_EMAILS`
-- `MIDDLE_SCHOOL_TO`
-- `MIDDLE_SCHOOL_BCC`
-- `UPPER_SCHOOL_TO`
-- `UPPER_SCHOOL_BCC`
-
-Optional Script Properties:
-
-- `EMAIL_FROM_NAME`
-- `API_ACTOR`
-- `REPLY_TO_EMAIL`
-- `TIMEZONE`
 
 `AUTOMATION_API_KEY` must exactly match the app's `EMAILS_AUTOMATION_KEY`.
+All delivery recipients, ops/admin notification emails, sender display name, reply-to email, and timezone now live in `/emails/settings` inside the Cloud Run app.
 
 ## Key Endpoints
 
@@ -66,6 +55,9 @@ Optional Script Properties:
 - `POST /api/emails/automation/weeks/<week-id>/activity`
   - Protected by `X-Automation-Key`
   - Records review-notification/send failure audit entries from Apps Script
+- `GET /api/emails/automation/settings`
+  - Protected by `X-Automation-Key`
+  - Returns the Apps Script sender + recipient settings from Cloud Run
 - `GET /api/emails/weeks/<week-id>/sender-output`
   - Approved-only payloads for Apps Script delivery
 
@@ -82,8 +74,8 @@ Optional Script Properties:
 1. Deploy the app to Cloud Run and keep Firebase Hosting pointed at it.
 2. Set the auth/runtime env vars, especially `EMAILS_AUTOMATION_KEY`, `EMAILS_SESSION_SECRET`, the Google OAuth client credentials, `GEMINI_API_KEY`, and `PUBLIC_BASE_URL`.
 3. Configure the Google OAuth consent/client so the callback URL matches `/auth/google/callback`.
-4. Add any additional admin emails in `/emails/settings` after the first sign-in bootstrap.
-5. Update Apps Script Script Properties, especially `API_BASE_URL` and `AUTOMATION_API_KEY`.
+4. Add any additional admin emails and all automation delivery recipients in `/emails/settings` after the first sign-in bootstrap.
+5. Update Apps Script Script Properties so only `API_BASE_URL` and `AUTOMATION_API_KEY` remain.
 6. Paste `google-apps-script/sports-email-sender.gs` and `google-apps-script/troubleshooting-functions.gs` into the Apps Script project.
 7. Run `debugConfiguration()` and `debugScheduledIngestAccess()` in Apps Script.
 8. Run `refreshDailySignageManual()` and confirm `/signage` renders the current day snapshot.

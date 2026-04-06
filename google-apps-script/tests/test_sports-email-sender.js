@@ -50,11 +50,16 @@ function buildHarness(options = {}) {
   const properties = {
     API_BASE_URL: 'https://example.test',
     AUTOMATION_API_KEY: 'secret-key',
-    ADMIN_NOTIFICATION_EMAILS: 'admin@example.test',
-    MIDDLE_SCHOOL_TO: 'middle@example.test',
-    MIDDLE_SCHOOL_BCC: 'middlebcc@example.test',
-    UPPER_SCHOOL_TO: 'upper@example.test',
-    UPPER_SCHOOL_BCC: 'upperbcc@example.test',
+  };
+  backendState.remoteConfig = {
+    admin_notification_emails: ['admin@example.test'],
+    email_from_name: 'Student Leadership',
+    reply_to_email: 'studentleader@kentdenver.org',
+    timezone: 'America/Denver',
+    email_recipients: {
+      middle_school: { to: 'middle@example.test', bcc: ['middlebcc@example.test'] },
+      upper_school: { to: 'upper@example.test', bcc: ['upperbcc@example.test'] },
+    },
   };
   const triggers = (options.triggers || []).map((handlerFunction) => ({
     getHandlerFunction() {
@@ -100,6 +105,10 @@ function buildHarness(options = {}) {
     },
     UrlFetchApp: {
       fetch(url, options = {}) {
+        if (url.endsWith('/api/emails/automation/settings')) {
+          return makeResponse(200, { ok: true, config: backendState.remoteConfig });
+        }
+
         if (url.includes('/api/emails/automation/weeks/') && url.endsWith('/activity')) {
           backendState.activityCalls.push(JSON.parse(options.payload || '{}'));
           return makeResponse(200, { ok: true });
@@ -419,6 +428,7 @@ test('timezone helpers derive monday and day ids from configured timezone dates'
 test('apps script sources use app-owned ingest, approved sender flow, and script properties', () => {
   assert.doesNotMatch(senderSource, /raw\.githubusercontent/);
   assert.doesNotMatch(troubleshootingSource, /raw\.githubusercontent/);
+  assert.match(senderSource, /automation\/settings/);
   assert.match(senderSource, /scheduled-ingest/);
   assert.match(senderSource, /api\/signage\/automation\/days/);
   assert.match(senderSource, /sender-output/);

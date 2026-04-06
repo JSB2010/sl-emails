@@ -509,6 +509,8 @@ class AppApiTests(unittest.TestCase):
             payload["settings"]["allowed_admin_emails"],
             ["appdev@kentdenver.org", "studentleader@kentdenver.org"],
         )
+        self.assertEqual(payload["settings"]["sender_metadata"]["email_from_name"], "Student Leadership")
+        self.assertEqual(payload["settings"]["sender_metadata"]["audience_recipients"]["middle_school"]["to"], "")
 
         update_response = self.client.put(
             "/api/emails/settings",
@@ -522,6 +524,21 @@ class AppApiTests(unittest.TestCase):
                     "appdev@kentdenver.org",
                     "ops@kentdenver.org",
                 ],
+                "sender_metadata": {
+                    "email_from_name": "KD Student Leadership",
+                    "reply_to_email": "studentleader@kentdenver.org",
+                    "timezone": "America/Denver",
+                    "audience_recipients": {
+                        "middle_school": {
+                            "to": "middle@kentdenver.org",
+                            "bcc": ["middle-bcc@kentdenver.org"],
+                        },
+                        "upper_school": {
+                            "to": "upper@kentdenver.org",
+                            "bcc": ["upper-bcc@kentdenver.org"],
+                        },
+                    },
+                },
             },
         )
 
@@ -533,6 +550,11 @@ class AppApiTests(unittest.TestCase):
             update_payload["settings"]["ops_notification_emails"],
             ["appdev@kentdenver.org", "ops@kentdenver.org"],
         )
+        self.assertEqual(update_payload["settings"]["sender_metadata"]["email_from_name"], "KD Student Leadership")
+        self.assertEqual(
+            update_payload["settings"]["sender_metadata"]["audience_recipients"]["middle_school"]["to"],
+            "middle@kentdenver.org",
+        )
 
     def test_settings_update_cannot_remove_current_user(self):
         response = self.client.put(
@@ -540,6 +562,15 @@ class AppApiTests(unittest.TestCase):
             json={
                 "allowed_admin_emails": ["studentleader@kentdenver.org"],
                 "ops_notification_emails": ["studentleader@kentdenver.org"],
+                "sender_metadata": {
+                    "email_from_name": "Student Leadership",
+                    "reply_to_email": "studentleader@kentdenver.org",
+                    "timezone": "America/Denver",
+                    "audience_recipients": {
+                        "middle_school": {"to": "middle@kentdenver.org", "bcc": []},
+                        "upper_school": {"to": "upper@kentdenver.org", "bcc": []},
+                    },
+                },
             },
         )
 
@@ -547,6 +578,38 @@ class AppApiTests(unittest.TestCase):
         payload = response.get_json()
         assert payload is not None
         self.assertIn("cannot remove your own email", payload["error"].lower())
+
+    def test_automation_key_can_fetch_automation_settings(self):
+        self.client.application.config["EMAILS_AUTOMATION_KEY"] = "secret-key"
+        self.client.put(
+            "/api/emails/settings",
+            json={
+                "allowed_admin_emails": ["appdev@kentdenver.org", "studentleader@kentdenver.org"],
+                "ops_notification_emails": ["ops@kentdenver.org"],
+                "sender_metadata": {
+                    "email_from_name": "KD Student Leadership",
+                    "reply_to_email": "studentleader@kentdenver.org",
+                    "timezone": "America/Denver",
+                    "audience_recipients": {
+                        "middle_school": {"to": "middle@kentdenver.org", "bcc": ["middle-bcc@kentdenver.org"]},
+                        "upper_school": {"to": "upper@kentdenver.org", "bcc": ["upper-bcc@kentdenver.org"]},
+                    },
+                },
+            },
+        )
+        self.logout()
+
+        response = self.client.get(
+            "/api/emails/automation/settings",
+            headers={"X-Automation-Key": "secret-key", "X-Email-Actor": "google-apps-script"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        assert payload is not None
+        self.assertEqual(payload["config"]["admin_notification_emails"], ["ops@kentdenver.org"])
+        self.assertEqual(payload["config"]["email_from_name"], "KD Student Leadership")
+        self.assertEqual(payload["config"]["email_recipients"]["middle_school"]["to"], "middle@kentdenver.org")
 
     def test_scheduled_ingest_does_not_create_week_when_source_fetch_fails(self):
         self.client.application.config["EMAILS_AUTOMATION_KEY"] = "secret-key"

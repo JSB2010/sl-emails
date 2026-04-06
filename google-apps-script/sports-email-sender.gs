@@ -10,17 +10,14 @@
  * Required Script Properties:
  * - API_BASE_URL
  * - AUTOMATION_API_KEY
- * - ADMIN_NOTIFICATION_EMAILS
- * - MIDDLE_SCHOOL_TO
- * - MIDDLE_SCHOOL_BCC
- * - UPPER_SCHOOL_TO
- * - UPPER_SCHOOL_BCC
+ *
+ * Cloud Run-owned settings fetched from `/api/emails/automation/settings`:
+ * - admin notification emails
+ * - middle-school / upper-school recipient lists
+ * - sender display name, reply-to email, and timezone
  *
  * Optional Script Properties:
- * - EMAIL_FROM_NAME
- * - API_ACTOR
- * - REPLY_TO_EMAIL
- * - TIMEZONE
+ * - none
  */
 
 const CONFIG = {
@@ -31,6 +28,7 @@ const CONFIG = {
 };
 
 const MANAGED_TRIGGER_FUNCTIONS = ['refreshDailySignage', 'runSundayDraftCycle', 'sendSportsEmails'];
+let EFFECTIVE_CONFIG_CACHE = null;
 
 function getScriptProperties() {
   return PropertiesService.getScriptProperties();
@@ -55,55 +53,79 @@ function parseEmailList(value) {
     .filter(Boolean);
 }
 
-function getEffectiveConfig() {
-  const apiBaseUrl = getRequiredProperty('API_BASE_URL').replace(/\/+$/, '');
-  const automationApiKey = getRequiredProperty('AUTOMATION_API_KEY');
-  const adminNotificationEmails = parseEmailList(getRequiredProperty('ADMIN_NOTIFICATION_EMAILS'));
-  const middleSchoolTo = getRequiredProperty('MIDDLE_SCHOOL_TO');
-  const upperSchoolTo = getRequiredProperty('UPPER_SCHOOL_TO');
-  const middleSchoolBcc = parseEmailList(getRequiredProperty('MIDDLE_SCHOOL_BCC'));
-  const upperSchoolBcc = parseEmailList(getRequiredProperty('UPPER_SCHOOL_BCC'));
+function getBaseScriptConfig() {
+  return {
+    API_BASE_URL: getRequiredProperty('API_BASE_URL').replace(/\/+$/, ''),
+    API_ACTOR: CONFIG.API_ACTOR,
+    AUTOMATION_API_KEY: getRequiredProperty('AUTOMATION_API_KEY')
+  };
+}
 
-  if (!adminNotificationEmails.length) {
-    throw new Error('ADMIN_NOTIFICATION_EMAILS must contain at least one email address');
+function fetchAutomationSettings(config) {
+  const url = `${config.API_BASE_URL}/api/emails/automation/settings`;
+  return fetchJson(url, { method: 'GET' }, config);
+}
+
+function getEffectiveConfig() {
+  if (EFFECTIVE_CONFIG_CACHE) {
+    return EFFECTIVE_CONFIG_CACHE;
   }
 
-  return {
-    API_BASE_URL: apiBaseUrl,
-    API_ACTOR: getRawProperty('API_ACTOR') || CONFIG.API_ACTOR,
-    AUTOMATION_API_KEY: automationApiKey,
+  const baseConfig = getBaseScriptConfig();
+  const payload = fetchAutomationSettings(baseConfig);
+  const remoteConfig = payload && payload.config && typeof payload.config === 'object' ? payload.config : {};
+  const adminNotificationEmails = parseEmailList(remoteConfig.admin_notification_emails);
+  const recipients = remoteConfig.email_recipients && typeof remoteConfig.email_recipients === 'object'
+    ? remoteConfig.email_recipients
+    : {};
+  const middleSchool = recipients.middle_school && typeof recipients.middle_school === 'object'
+    ? recipients.middle_school
+    : {};
+  const upperSchool = recipients.upper_school && typeof recipients.upper_school === 'object'
+    ? recipients.upper_school
+    : {};
+
+  EFFECTIVE_CONFIG_CACHE = {
+    API_BASE_URL: baseConfig.API_BASE_URL,
+    API_ACTOR: baseConfig.API_ACTOR,
+    AUTOMATION_API_KEY: baseConfig.AUTOMATION_API_KEY,
     ADMIN_NOTIFICATION_EMAILS: adminNotificationEmails,
-    EMAIL_FROM_NAME: getRawProperty('EMAIL_FROM_NAME') || CONFIG.EMAIL_FROM_NAME,
-    REPLY_TO_EMAIL: getRawProperty('REPLY_TO_EMAIL') || CONFIG.REPLY_TO_EMAIL,
-    TIMEZONE: getRawProperty('TIMEZONE') || CONFIG.TIMEZONE,
+    EMAIL_FROM_NAME: String(remoteConfig.email_from_name || CONFIG.EMAIL_FROM_NAME).trim() || CONFIG.EMAIL_FROM_NAME,
+    REPLY_TO_EMAIL: String(remoteConfig.reply_to_email || CONFIG.REPLY_TO_EMAIL).trim() || CONFIG.REPLY_TO_EMAIL,
+    TIMEZONE: String(remoteConfig.timezone || CONFIG.TIMEZONE).trim() || CONFIG.TIMEZONE,
     EMAIL_RECIPIENTS: {
       MIDDLE_SCHOOL: {
-        to: middleSchoolTo,
-        bcc: middleSchoolBcc
+        to: String(middleSchool.to || '').trim(),
+        bcc: parseEmailList(middleSchool.bcc)
       },
       UPPER_SCHOOL: {
-        to: upperSchoolTo,
-        bcc: upperSchoolBcc
+        to: String(upperSchool.to || '').trim(),
+        bcc: parseEmailList(upperSchool.bcc)
       }
     }
   };
+
+  return EFFECTIVE_CONFIG_CACHE;
 }
 
 function validateConfiguration(options) {
   let config;
+  let errorMessage = '';
   try {
     config = getEffectiveConfig();
   } catch (error) {
-    const missingMatch = String(error && error.message || '').match(/Missing required Script Property: (.+)$/);
+    errorMessage = String(error && error.message || '');
+    const missingMatch = errorMessage.match(/Missing required Script Property: (.+)$/);
     return {
       ok: false,
       missing: missingMatch ? [missingMatch[1]] : ['unknown'],
+      error: errorMessage,
       config: {
         API_BASE_URL: getRawProperty('API_BASE_URL'),
-        ADMIN_NOTIFICATION_EMAILS: parseEmailList(getRawProperty('ADMIN_NOTIFICATION_EMAILS')),
+        ADMIN_NOTIFICATION_EMAILS: [],
         EMAIL_RECIPIENTS: {
-          MIDDLE_SCHOOL: { to: getRawProperty('MIDDLE_SCHOOL_TO'), bcc: parseEmailList(getRawProperty('MIDDLE_SCHOOL_BCC')) },
-          UPPER_SCHOOL: { to: getRawProperty('UPPER_SCHOOL_TO'), bcc: parseEmailList(getRawProperty('UPPER_SCHOOL_BCC')) }
+          MIDDLE_SCHOOL: { to: '', bcc: [] },
+          UPPER_SCHOOL: { to: '', bcc: [] }
         }
       }
     };
@@ -128,6 +150,9 @@ function validateConfiguration(options) {
 function assertConfigured(options) {
   const result = validateConfiguration(options);
   if (!result.ok) {
+    if (result.error) {
+      throw new Error(result.error);
+    }
     throw new Error(`Missing required Script Properties: ${result.missing.join(', ')}`);
   }
   return result.config;

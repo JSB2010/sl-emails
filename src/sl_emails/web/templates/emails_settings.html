@@ -57,6 +57,11 @@
     .settings-textarea {
       width: 100%;
       min-height: 200px;
+    }
+
+    .settings-textarea,
+    .settings-input {
+      width: 100%;
       border: 1px solid rgba(4, 30, 66, 0.18);
       border-radius: 12px;
       background: #fbfcff;
@@ -69,10 +74,31 @@
       box-sizing: border-box;
     }
 
-    .settings-textarea:focus-visible {
+    .settings-input {
+      min-height: 48px;
+    }
+
+    .settings-textarea:focus-visible,
+    .settings-input:focus-visible {
       outline: none;
       border-color: var(--brand-mid);
       box-shadow: 0 0 0 3px rgba(12, 58, 107, 0.14);
+    }
+
+    .settings-form-grid {
+      display: grid;
+      gap: 14px;
+    }
+
+    .settings-field {
+      display: grid;
+      gap: 6px;
+    }
+
+    .settings-field label {
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--ink);
     }
 
     .settings-save-btn {
@@ -96,6 +122,11 @@
       transform: translateY(-1px);
     }
 
+    .settings-save-btn:focus-visible {
+      outline: none;
+      box-shadow: 0 0 0 3px rgba(12, 58, 107, 0.18), 0 6px 18px rgba(4, 30, 66, 0.28);
+    }
+
     .settings-flash {
       min-height: 22px;
       margin-top: 10px;
@@ -105,15 +136,32 @@
 
     .settings-flash.error { color: #7a1818; }
 
+    .settings-note {
+      margin: 0;
+      font-size: 13px;
+      color: var(--muted);
+      line-height: 1.6;
+    }
+
     .settings-meta-text {
       font-size: 13px;
       color: var(--muted);
       line-height: 1.6;
     }
 
+    .settings-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      align-items: center;
+      justify-content: space-between;
+      margin-top: 12px;
+    }
+
     @media (max-width: 640px) {
       .settings-shell { padding: 20px 16px 40px; }
       .settings-grid { grid-template-columns: 1fr; }
+      .settings-actions { align-items: stretch; }
     }
   </style>
 </head>
@@ -136,8 +184,8 @@
     <!-- Hero -->
     <section class="settings-hero">
       <p class="settings-eyebrow">Admin Configuration</p>
-      <h1>Access &amp; Notifications</h1>
-      <p>Manage the Google account allowlist and operations notification recipients used by the sports email workflow.</p>
+      <h1>Access, Notifications &amp; Delivery</h1>
+      <p>Cloud Run is now the source of truth for sports email admin access, automation notifications, and the audience delivery lists Apps Script uses when it sends.</p>
     </section>
 
     <!-- Settings cards -->
@@ -150,19 +198,56 @@
             <p class="panel-subtitle">One email per line. These accounts can sign in, review drafts, approve weeks, and edit settings.</p>
           </div>
         </div>
-        <textarea id="allowed-admins" class="settings-textarea" placeholder="admin@kentdenver.org&#10;another@kentdenver.org"></textarea>
-        <button id="save-admins" type="button" class="settings-save-btn">Save Allowlist</button>
+        <textarea id="allowed-admins" name="allowed_admin_emails" class="settings-textarea" placeholder="admin@kentdenver.org&#10;another@kentdenver.org…" spellcheck="false" autocomplete="off"></textarea>
       </section>
 
       <section class="panel panel-events">
         <div class="panel-head">
           <div>
             <h2>Ops Notifications</h2>
-            <p class="panel-subtitle">One email per line. Keep aligned with Apps Script notification recipients for automation alerts.</p>
+            <p class="panel-subtitle">One email per line. These recipients get automation review links and failure alerts.</p>
           </div>
         </div>
-        <textarea id="ops-notifications" class="settings-textarea" placeholder="ops@kentdenver.org"></textarea>
-        <button id="save-notifications" type="button" class="settings-save-btn">Save Notification List</button>
+        <textarea id="ops-notifications" name="ops_notification_emails" class="settings-textarea" placeholder="ops@kentdenver.org…" spellcheck="false" autocomplete="off"></textarea>
+      </section>
+
+      <section class="panel panel-content">
+        <div class="panel-head">
+          <div>
+            <h2>Automation Delivery</h2>
+            <p class="panel-subtitle">Apps Script fetches these values from Cloud Run before it sends email. Only `API_BASE_URL` and `AUTOMATION_API_KEY` stay in Script Properties.</p>
+          </div>
+        </div>
+        <div class="settings-form-grid">
+          <div class="settings-field">
+            <label for="email-from-name">Email From Name</label>
+            <input id="email-from-name" name="email_from_name" class="settings-input" type="text" placeholder="Student Leadership…" autocomplete="off" />
+          </div>
+          <div class="settings-field">
+            <label for="reply-to-email">Reply-To Email</label>
+            <input id="reply-to-email" name="reply_to_email" class="settings-input" type="email" placeholder="studentleader@kentdenver.org…" autocomplete="off" spellcheck="false" />
+          </div>
+          <div class="settings-field">
+            <label for="sender-timezone">Timezone</label>
+            <input id="sender-timezone" name="timezone" class="settings-input" type="text" placeholder="America/Denver…" autocomplete="off" spellcheck="false" />
+          </div>
+          <div class="settings-field">
+            <label for="middle-school-to">Middle School To</label>
+            <input id="middle-school-to" name="middle_school_to" class="settings-input" type="email" placeholder="middle@kentdenver.org…" autocomplete="off" spellcheck="false" />
+          </div>
+          <div class="settings-field">
+            <label for="middle-school-bcc">Middle School BCC</label>
+            <textarea id="middle-school-bcc" name="middle_school_bcc" class="settings-textarea" placeholder="coach@kentdenver.org&#10;advisor@kentdenver.org…" spellcheck="false" autocomplete="off"></textarea>
+          </div>
+          <div class="settings-field">
+            <label for="upper-school-to">Upper School To</label>
+            <input id="upper-school-to" name="upper_school_to" class="settings-input" type="email" placeholder="upper@kentdenver.org…" autocomplete="off" spellcheck="false" />
+          </div>
+          <div class="settings-field">
+            <label for="upper-school-bcc">Upper School BCC</label>
+            <textarea id="upper-school-bcc" name="upper_school_bcc" class="settings-textarea" placeholder="coach@kentdenver.org&#10;advisor@kentdenver.org…" spellcheck="false" autocomplete="off"></textarea>
+          </div>
+        </div>
       </section>
 
     </div>
@@ -172,10 +257,14 @@
       <div class="panel-head">
         <div>
           <h2>Change Metadata</h2>
-          <p class="panel-subtitle">Last modification info for this settings document.</p>
+          <p class="panel-subtitle">This page saves one shared Cloud Run settings document used by both the admin UI and Apps Script automation.</p>
         </div>
       </div>
       <p class="settings-meta-text" id="settings-meta">No settings metadata available yet.</p>
+      <div class="settings-actions">
+        <p class="settings-note">Save once after updating any section. Delivery recipients are required before the automation can send.</p>
+        <button id="save-settings" type="button" class="settings-save-btn">Save All Settings</button>
+      </div>
       <div class="settings-flash" id="settings-flash" aria-live="polite"></div>
     </section>
 

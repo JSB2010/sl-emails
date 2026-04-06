@@ -4,9 +4,9 @@ from typing import Any
 
 from flask import Blueprint, jsonify, render_template, request
 
-from sl_emails.services.admin_settings import normalize_email, normalize_email_list
+from sl_emails.services.admin_settings import build_automation_settings_payload, normalize_email, normalize_email_list, normalize_sender_metadata, validate_sender_metadata
 
-from ..support import auth_urls, current_user, ensure_admin_settings, get_settings_store, json_error, require_emails_admin, write_activity
+from ..support import auth_urls, current_user, ensure_admin_settings, get_settings_store, json_error, require_automation_key, require_emails_admin, write_activity
 
 
 blueprint = Blueprint("emails_settings", __name__)
@@ -17,7 +17,7 @@ def _serialize_settings() -> dict[str, Any]:
     return {
         "allowed_admin_emails": settings.allowed_admin_emails,
         "ops_notification_emails": settings.ops_notification_emails,
-        "sender_metadata": settings.sender_metadata,
+        "sender_metadata": normalize_sender_metadata(settings.sender_metadata),
         "created_at": settings.created_at,
         "created_by": settings.created_by,
         "updated_at": settings.updated_at,
@@ -45,6 +45,13 @@ def get_settings() -> Any:
     return jsonify({"ok": True, "settings": _serialize_settings()})
 
 
+@blueprint.get("/api/emails/automation/settings")
+@require_automation_key
+def get_automation_settings() -> Any:
+    settings = ensure_admin_settings()
+    return jsonify({"ok": True, "config": build_automation_settings_payload(settings)})
+
+
 @blueprint.put("/api/emails/settings")
 @require_emails_admin
 def update_settings() -> Any:
@@ -65,10 +72,16 @@ def update_settings() -> Any:
     existing = ensure_admin_settings()
     if len(existing.allowed_admin_emails) == 1 and set(allowed_admin_emails) != set(existing.allowed_admin_emails):
         return json_error("You cannot remove the last allowed admin", status=400)
+    try:
+        sender_metadata_source = payload.get("sender_metadata") if payload.get("sender_metadata") is not None else existing.sender_metadata
+        sender_metadata = validate_sender_metadata(sender_metadata_source)
+    except ValueError as exc:
+        return json_error(str(exc), status=400)
 
     settings = get_settings_store().update_settings(
         allowed_admin_emails=allowed_admin_emails,
         ops_notification_emails=ops_notification_emails,
+        sender_metadata=sender_metadata,
         actor=actor or "admin",
     )
     write_activity(
@@ -79,6 +92,7 @@ def update_settings() -> Any:
         details={
             "allowed_admin_emails": settings.allowed_admin_emails,
             "ops_notification_emails": settings.ops_notification_emails,
+            "sender_metadata": normalize_sender_metadata(settings.sender_metadata),
         },
     )
     return jsonify({"ok": True, "settings": _serialize_settings()})

@@ -13,6 +13,9 @@ DEFAULT_ALLOWED_ADMIN_EMAILS = [
     "appdev@kentdenver.org",
     "studentleader@kentdenver.org",
 ]
+DEFAULT_EMAIL_FROM_NAME = "Student Leadership"
+DEFAULT_REPLY_TO_EMAIL = "studentleader@kentdenver.org"
+DEFAULT_TIMEZONE = "America/Denver"
 
 EMAIL_PATTERN = re.compile(r"^[A-Z0-9._%+\-]+@[A-Z0-9.\-]+\.[A-Z]{2,}$", re.IGNORECASE)
 
@@ -47,6 +50,68 @@ def normalize_email_list(values: list[str] | tuple[str, ...] | set[str] | str | 
     return normalized
 
 
+def default_sender_metadata() -> dict[str, Any]:
+    return {
+        "email_from_name": DEFAULT_EMAIL_FROM_NAME,
+        "reply_to_email": DEFAULT_REPLY_TO_EMAIL,
+        "timezone": DEFAULT_TIMEZONE,
+        "audience_recipients": {
+            "middle_school": {"to": "", "bcc": []},
+            "upper_school": {"to": "", "bcc": []},
+        },
+    }
+
+
+def normalize_sender_metadata(value: dict[str, Any] | None) -> dict[str, Any]:
+    defaults = default_sender_metadata()
+    raw = value if isinstance(value, dict) else {}
+    raw_recipients = raw.get("audience_recipients") if isinstance(raw.get("audience_recipients"), dict) else {}
+
+    def _recipient_config(audience_key: str) -> dict[str, Any]:
+        audience_raw = raw_recipients.get(audience_key) if isinstance(raw_recipients.get(audience_key), dict) else {}
+        to_email = normalize_email(str(audience_raw.get("to") or ""))
+        if to_email and not is_valid_email(to_email):
+            raise ValueError(f"Invalid email address: {audience_raw.get('to')}")
+        return {
+            "to": to_email,
+            "bcc": normalize_email_list(audience_raw.get("bcc")),
+        }
+
+    reply_to_email = normalize_email(str(raw.get("reply_to_email") or defaults["reply_to_email"]))
+    if reply_to_email and not is_valid_email(reply_to_email):
+        raise ValueError(f"Invalid email address: {raw.get('reply_to_email')}")
+
+    return {
+        "email_from_name": str(raw.get("email_from_name") or defaults["email_from_name"]).strip() or DEFAULT_EMAIL_FROM_NAME,
+        "reply_to_email": reply_to_email or DEFAULT_REPLY_TO_EMAIL,
+        "timezone": str(raw.get("timezone") or defaults["timezone"]).strip() or DEFAULT_TIMEZONE,
+        "audience_recipients": {
+            "middle_school": _recipient_config("middle_school"),
+            "upper_school": _recipient_config("upper_school"),
+        },
+    }
+
+
+def validate_sender_metadata(value: dict[str, Any] | None) -> dict[str, Any]:
+    sender_metadata = normalize_sender_metadata(value)
+    if not sender_metadata["audience_recipients"]["middle_school"]["to"]:
+        raise ValueError("A middle-school To recipient is required")
+    if not sender_metadata["audience_recipients"]["upper_school"]["to"]:
+        raise ValueError("An upper-school To recipient is required")
+    return sender_metadata
+
+
+def build_automation_settings_payload(settings: "EmailAdminSettings") -> dict[str, Any]:
+    sender_metadata = normalize_sender_metadata(settings.sender_metadata)
+    return {
+        "admin_notification_emails": settings.ops_notification_emails,
+        "email_from_name": sender_metadata["email_from_name"],
+        "reply_to_email": sender_metadata["reply_to_email"],
+        "timezone": sender_metadata["timezone"],
+        "email_recipients": sender_metadata["audience_recipients"],
+    }
+
+
 @dataclass
 class EmailAdminSettings:
     allowed_admin_emails: list[str]
@@ -66,7 +131,7 @@ class EmailAdminSettings:
         return cls(
             allowed_admin_emails=normalize_email_list(data.get("allowed_admin_emails") or DEFAULT_ALLOWED_ADMIN_EMAILS),
             ops_notification_emails=normalize_email_list(data.get("ops_notification_emails") or DEFAULT_ALLOWED_ADMIN_EMAILS),
-            sender_metadata=data.get("sender_metadata") if isinstance(data.get("sender_metadata"), dict) else {},
+            sender_metadata=normalize_sender_metadata(data.get("sender_metadata") if isinstance(data.get("sender_metadata"), dict) else {}),
             created_at=str(data.get("created_at") or ""),
             created_by=str(data.get("created_by") or ""),
             updated_at=str(data.get("updated_at") or ""),
@@ -104,12 +169,13 @@ def _build_settings_payload(
     normalized_notifications = normalize_email_list(ops_notification_emails)
     if not normalized_notifications:
         raise ValueError("At least one ops notification email is required")
+    normalized_sender_metadata = normalize_sender_metadata(sender_metadata if isinstance(sender_metadata, dict) else (existing.sender_metadata if existing else None))
 
     timestamp = utc_now_iso()
     return EmailAdminSettings(
         allowed_admin_emails=normalized_admins,
         ops_notification_emails=normalized_notifications,
-        sender_metadata=sender_metadata if isinstance(sender_metadata, dict) else (existing.sender_metadata if existing else {}),
+        sender_metadata=normalized_sender_metadata,
         created_at=existing.created_at if existing else timestamp,
         created_by=existing.created_by if existing else actor,
         updated_at=timestamp,
@@ -216,10 +282,17 @@ class FirestoreAdminSettingsStore:
 __all__ = [
     "AdminSettingsStore",
     "DEFAULT_ALLOWED_ADMIN_EMAILS",
+    "DEFAULT_EMAIL_FROM_NAME",
+    "DEFAULT_REPLY_TO_EMAIL",
+    "DEFAULT_TIMEZONE",
     "EmailAdminSettings",
     "FirestoreAdminSettingsStore",
     "MemoryAdminSettingsStore",
+    "build_automation_settings_payload",
+    "default_sender_metadata",
     "is_valid_email",
     "normalize_email",
     "normalize_email_list",
+    "normalize_sender_metadata",
+    "validate_sender_metadata",
 ]

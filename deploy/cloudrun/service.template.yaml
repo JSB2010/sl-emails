@@ -20,6 +20,17 @@ spec:
               value: PROJECT_ID
             - name: FIRESTORE_COLLECTION
               value: emailWeeks
+            - name: GEMINI_MODEL
+              value: gemini-3-flash-preview
+            # Set this to the public HTTPS host for absolute icon URLs in email HTML.
+            - name: PUBLIC_BASE_URL
+              value: https://YOUR_HOSTNAME
+            # Recommended: store the Gemini key in Secret Manager instead of inline env.
+            - name: GEMINI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: gemini-api-key
+                  key: latest
             # Optional local/dev-only emulator override:
             # - name: FIRESTORE_EMULATOR_HOST
             #   value: host.docker.internal:8080

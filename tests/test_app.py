@@ -289,6 +289,12 @@ class AppApiTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn('"weekId": "2026-03-09"', response.get_data(as_text=True))
 
+    def test_emails_route_normalizes_non_monday_week_query_parameter(self):
+        response = self.client.get("/emails?week=2026-03-11")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('"weekId": "2026-03-09"', response.get_data(as_text=True))
+
     def test_public_request_page_is_available_without_login(self):
         self.logout()
 
@@ -724,6 +730,11 @@ class AppApiTests(unittest.TestCase):
                 "end_date": "2026-03-15",
                 "heading": "Original Heading",
                 "notes": "Keep these notes",
+                "delivery": {"mode": "postpone", "send_on": "2026-03-11"},
+                "copy_overrides": {
+                    "hero_text": "Hero summary",
+                    "cta_text": "Come support the teams.",
+                },
                 "subject_overrides": {
                     "middle-school": "Middle School Athletics Update",
                     "upper-school": "Upper School Athletics Update",
@@ -775,6 +786,10 @@ class AppApiTests(unittest.TestCase):
         self.assertEqual(payload["reason"], "replaced_source_events_preserved_custom")
         self.assertEqual(payload["week"]["heading"], "Original Heading")
         self.assertEqual(payload["week"]["notes"], "Keep these notes")
+        self.assertEqual(payload["week"]["delivery"]["mode"], "postpone")
+        self.assertEqual(payload["week"]["delivery"]["send_on"], "2026-03-11")
+        self.assertEqual(payload["week"]["copy_overrides"]["hero_text"], "Hero summary")
+        self.assertEqual(payload["week"]["copy_overrides"]["cta_text"], "Come support the teams.")
         self.assertEqual(payload["week"]["subject_overrides"]["middle-school"], "Middle School Athletics Update")
         self.assertEqual(payload["week"]["subject_overrides"]["upper-school"], "Upper School Athletics Update")
         self.assertFalse(payload["week"]["approval"]["approved"])
@@ -841,7 +856,12 @@ class AppApiTests(unittest.TestCase):
         self.assertNotIn("Middle School Boys Basketball", preview_payload["outputs"]["upper-school"]["html"])
 
         blocked_response = self.client.get("/api/emails/weeks/2026-03-09/sender-output")
-        self.assertEqual(blocked_response.status_code, 409)
+        self.assertEqual(blocked_response.status_code, 200)
+        blocked_payload = blocked_response.get_json()
+        assert blocked_payload is not None
+        self.assertFalse(blocked_payload["approved"])
+        self.assertEqual(blocked_payload["delivery"]["mode"], "default")
+        self.assertEqual(blocked_payload["outputs"], {})
 
         approve_response = self.client.post(
             "/api/emails/weeks/2026-03-09/approve",
@@ -951,7 +971,7 @@ class AppApiTests(unittest.TestCase):
         self.assertIn("Families can use the links below for details and campus logistics.", middle_output["html"])
         self.assertIn("Bring a canned good for the service drive.", middle_output["html"])
         self.assertIn("https://www.kentdenver.org/community-night", middle_output["html"])
-        self.assertIn("calendar-days.svg", middle_output["html"])
+        self.assertIn("/static/icons/calendar.svg", middle_output["html"])
 
         self.client.post("/api/emails/weeks/2026-03-09/approve", headers={"X-Email-Actor": "tester"})
         sender_response = self.client.get("/api/emails/weeks/2026-03-09/sender-output?audience=upper-school")
@@ -960,7 +980,167 @@ class AppApiTests(unittest.TestCase):
         sender_payload = sender_response.get_json()
         assert sender_payload is not None
         self.assertEqual(sender_payload["output"]["subject"], "Upper School Weekly Highlights")
-        self.assertIn("calendar-days.svg", sender_payload["output"]["html"])
+        self.assertIn("/static/icons/calendar.svg", sender_payload["output"]["html"])
+
+    def test_save_week_normalizes_non_monday_request_to_week_monday(self):
+        response = self.client.put(
+            "/api/emails/weeks/2026-03-11",
+            json={
+                "start_date": "2026-03-11",
+                "end_date": "2026-03-15",
+                "events": [],
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        assert payload is not None
+        self.assertEqual(payload["week"]["week_id"], "2026-03-09")
+        self.assertEqual(payload["week"]["start_date"], "2026-03-09")
+
+    def test_skip_delivery_blocks_approval_and_sender_output_reflects_skip(self):
+        self.client.put(
+            "/api/emails/weeks/2026-03-09",
+            json={
+                "start_date": "2026-03-09",
+                "end_date": "2026-03-15",
+                "delivery": {"mode": "skip"},
+                "events": [],
+            },
+        )
+
+        approve = self.client.post("/api/emails/weeks/2026-03-09/approve", headers={"X-Email-Actor": "reviewer"})
+        self.assertEqual(approve.status_code, 409)
+        approve_payload = approve.get_json()
+        assert approve_payload is not None
+        self.assertIn("no email this week", approve_payload["error"].lower())
+
+        sender_output = self.client.get("/api/emails/weeks/2026-03-09/sender-output")
+        self.assertEqual(sender_output.status_code, 200)
+        sender_payload = sender_output.get_json()
+        assert sender_payload is not None
+        self.assertFalse(sender_payload["approved"])
+        self.assertEqual(sender_payload["delivery"]["mode"], "skip")
+
+    def test_clear_week_resets_events_copy_subjects_and_delivery(self):
+        self.client.put(
+            "/api/emails/weeks/2026-03-09",
+            json={
+                "start_date": "2026-03-09",
+                "end_date": "2026-03-15",
+                "heading": "Loaded Week",
+                "notes": "Clear me",
+                "subject_overrides": {"middle-school": "Keep?", "upper-school": "Nope"},
+                "delivery": {"mode": "postpone", "send_on": "2026-03-11"},
+                "copy_overrides": {"hero_text": "Generated copy", "cta_text": "Bring someone"},
+                "events": [
+                    {
+                        "id": "custom-row",
+                        "source": "custom",
+                        "kind": "event",
+                        "title": "Custom Row",
+                        "start_date": "2026-03-11",
+                        "end_date": "2026-03-11",
+                        "time_text": "All Day",
+                        "location": "Campus",
+                        "category": "Community",
+                        "audiences": ["middle-school", "upper-school"],
+                    }
+                ],
+            },
+        )
+
+        clear = self.client.post("/api/emails/weeks/2026-03-09/clear", headers={"X-Email-Actor": "admin-ui"})
+        self.assertEqual(clear.status_code, 200)
+        payload = clear.get_json()
+        assert payload is not None
+        self.assertEqual(payload["week"]["heading"], "This Week at Kent Denver")
+        self.assertEqual(payload["week"]["notes"], "")
+        self.assertEqual(payload["week"]["subject_overrides"], {})
+        self.assertEqual(payload["week"]["copy_overrides"]["hero_text"], "")
+        self.assertEqual(payload["week"]["copy_overrides"]["cta_text"], "")
+        self.assertEqual(payload["week"]["delivery"]["mode"], "default")
+        self.assertEqual(payload["week"]["delivery"]["send_on"], "2026-03-08")
+        self.assertEqual(payload["week"]["events"], [])
+
+    @patch("sl_emails.web.routes.emails_api.generate_week_copy")
+    def test_ai_copy_endpoint_updates_editable_copy_fields(self, mock_generate_week_copy):
+        self.client.put(
+            "/api/emails/weeks/2026-03-09",
+            json={"start_date": "2026-03-09", "end_date": "2026-03-15", "events": []},
+        )
+        mock_generate_week_copy.return_value = {
+            "heading": "AI Week",
+            "notes": "AI note",
+            "subject_overrides": {"middle-school": "AI MS", "upper-school": "AI US"},
+            "copy_overrides": {
+                "hero_text": "Hero",
+                "intro_title": "Intro",
+                "intro_text": "Summary",
+                "spotlight_label": "Spotlight",
+                "schedule_label": "Schedule",
+                "also_on_schedule_label": "Also on schedule",
+                "empty_day_template": "Nothing on {weekday}.",
+                "cta_eyebrow": "Join Us",
+                "cta_title": "See You There",
+                "cta_text": "Bring a friend.",
+            },
+        }
+
+        response = self.client.post("/api/emails/weeks/2026-03-09/ai-copy", headers={"X-Email-Actor": "admin-ui"})
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        assert payload is not None
+        self.assertEqual(payload["week"]["heading"], "AI Week")
+        self.assertEqual(payload["week"]["notes"], "AI note")
+        self.assertEqual(payload["week"]["subject_overrides"]["middle-school"], "AI MS")
+        self.assertEqual(payload["week"]["copy_overrides"]["hero_text"], "Hero")
+        self.assertEqual(payload["week"]["copy_overrides"]["cta_text"], "Bring a friend.")
+
+    def test_ai_copy_endpoint_returns_503_when_gemini_is_unconfigured(self):
+        self.client.put(
+            "/api/emails/weeks/2026-03-09",
+            json={"start_date": "2026-03-09", "end_date": "2026-03-15", "events": []},
+        )
+
+        response = self.client.post("/api/emails/weeks/2026-03-09/ai-copy", headers={"X-Email-Actor": "admin-ui"})
+
+        self.assertEqual(response.status_code, 503)
+        payload = response.get_json()
+        assert payload is not None
+        self.assertIn("gemini api key", payload["error"].lower())
+
+    def test_preview_uses_copy_override_text_when_present(self):
+        self.client.put(
+            "/api/emails/weeks/2026-03-09",
+            json={
+                "start_date": "2026-03-09",
+                "end_date": "2026-03-15",
+                "copy_overrides": {
+                    "hero_text": "Custom hero line",
+                    "intro_title": "Custom intro",
+                    "intro_text": "Personalized weekly summary.",
+                    "cta_eyebrow": "Show Up",
+                    "cta_title": "Make Some Noise",
+                    "cta_text": "Bring the blue and white.",
+                },
+                "events": [],
+            },
+        )
+
+        response = self.client.post("/api/emails/weeks/2026-03-09/preview")
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        assert payload is not None
+        html = payload["outputs"]["middle-school"]["html"]
+        self.assertIn("Custom hero line", html)
+        self.assertIn("Custom intro", html)
+        self.assertIn("Personalized weekly summary.", html)
+        self.assertIn("Show Up", html)
+        self.assertIn("Make Some Noise", html)
+        self.assertIn("Bring the blue and white.", html)
 
     def test_weekly_save_infers_middle_school_audience_for_source_imports(self):
         save_response = self.client.put(

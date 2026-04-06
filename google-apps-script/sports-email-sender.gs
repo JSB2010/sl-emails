@@ -5,7 +5,7 @@
  * 0. Daily at midnight MT: refresh the public signage snapshot in the web app.
  * 1. Sunday 8:00 AM MT: create or confirm the weekly draft in the web app.
  * 2. Email the admin/ops list a review link to /emails?week=<YYYY-MM-DD>.
- * 3. Sunday 4:00 PM MT: send only approved payloads.
+ * 3. Daily 4:00 PM MT: dispatch only the approved payloads scheduled for that day.
  *
  * Required Script Properties:
  * - API_BASE_URL
@@ -140,6 +140,18 @@ function runSundayDraftCycle() {
   try {
     console.log(`📥 Starting Sunday draft cycle for ${weekId}...`);
     const ingestResult = triggerScheduledIngest(weekId, config);
+    if (shouldSuppressReviewNotification(ingestResult)) {
+      const message = `Suppressed review notification for ${weekId} because the week is marked “No email this week”.`;
+      reportAutomationActivity(
+        weekId,
+        'review_notification',
+        'suppressed',
+        message,
+        { reason: 'week_marked_skip', delivery: ingestResult.week.delivery }
+      );
+      logEmailActivity('SKIP', message);
+      return;
+    }
     sendAdminReviewNotification(weekId, ingestResult, config);
     reportAutomationActivity(
       weekId,
@@ -196,14 +208,28 @@ function sendSportsEmails() {
   let sendClaimed = false;
 
   try {
-    console.log('🏈 Starting automated sports email sending...');
+    const dispatch = resolveSendDispatch(config);
+    if (!dispatch.shouldAttempt) {
+      console.log(`⏭️ No scheduled send window today (${dispatch.todayIso || 'unknown day'}).`);
+      logEmailActivity('SKIP', `No scheduled send window today (${dispatch.dayType})`);
+      return;
+    }
+    weekId = dispatch.weekId;
 
-    weekId = getCurrentWeekId();
-    console.log(`📅 Looking for approved emails for week: ${weekId}`);
+    console.log('🏈 Starting automated sports email sending...');
+    console.log(`📅 Evaluating scheduled delivery for week: ${weekId}`);
 
     const payload = fetchApprovedEmailPayloads(weekId, config);
+    const readiness = evaluatePayloadForDispatch(payload, dispatch);
+    if (!readiness.shouldSend) {
+      console.log(`⏭️ ${readiness.message}`);
+      reportAutomationActivity(weekId, 'send', 'skipped', readiness.message, { delivery: payload.delivery || {}, approved: !!payload.approved });
+      logEmailActivity('SKIP', readiness.message);
+      return;
+    }
 
     if (!ensureWeekCanSend(payload.sent, weekId)) {
+      reportAutomationActivity(weekId, 'send', 'skipped', `Week ${weekId} already marked sent; no delivery attempted.`);
       return;
     }
 
@@ -242,6 +268,7 @@ function sendSportsEmails() {
 
     console.log(`✅ Successfully sent ${sentCount} approved sports emails for week ${weekId}!`);
     console.log(`📝 Backend sent-state recorded: ${JSON.stringify(sentState)}`);
+    reportAutomationActivity(weekId, 'send', 'success', `Delivered ${sentCount} audience emails for ${weekId}`);
     logEmailActivity('SUCCESS', `Sent ${sentCount} emails for week ${weekId}`);
   } catch (error) {
     console.error('❌ Error in sendSportsEmails:', error);
@@ -275,6 +302,14 @@ function getTargetMondayDate() {
   return addDaysUtc(today, daysUntilMonday);
 }
 
+function getCurrentMondayDate() {
+  const timezone = getEffectiveConfig().TIMEZONE;
+  const today = getTodayInTimezone(timezone);
+  const isoWeekday = getIsoWeekdayInTimezone(today, timezone);
+  const daysSinceMonday = isoWeekday === 7 ? 6 : isoWeekday - 1;
+  return addDaysUtc(today, -daysSinceMonday);
+}
+
 function getTodayInTimezone(timezone) {
   const todayIso = Utilities.formatDate(new Date(), timezone, 'yyyy-MM-dd');
   return utcDateFromIso(todayIso);
@@ -301,6 +336,103 @@ function getCurrentWeekId() {
 
 function getCurrentWeekFolder() {
   return Utilities.formatDate(getTargetMondayDate(), getEffectiveConfig().TIMEZONE, 'MMMdd').toLowerCase();
+}
+
+function getCurrentMondayWeekId() {
+  return Utilities.formatDate(getCurrentMondayDate(), getEffectiveConfig().TIMEZONE, 'yyyy-MM-dd');
+}
+
+function getSundayBeforeWeekId(weekId) {
+  return Utilities.formatDate(addDaysUtc(utcDateFromIso(weekId), -1), getEffectiveConfig().TIMEZONE, 'yyyy-MM-dd');
+}
+
+function normalizeDelivery(delivery, weekId) {
+  const source = delivery && typeof delivery === 'object' ? delivery : {};
+  const mode = String(source.mode || 'default').trim().toLowerCase();
+  const normalizedMode = ['default', 'postpone', 'skip'].indexOf(mode) >= 0 ? mode : 'default';
+  return {
+    mode: normalizedMode,
+    send_on: normalizedMode === 'skip'
+      ? ''
+      : String(source.send_on || (normalizedMode === 'default' ? getSundayBeforeWeekId(weekId) : weekId)).trim(),
+    send_time: String(source.send_time || '16:00').trim() || '16:00',
+  };
+}
+
+function resolveSendDispatch(config) {
+  const today = getTodayInTimezone(config.TIMEZONE);
+  const isoWeekday = getIsoWeekdayInTimezone(today, config.TIMEZONE);
+  const todayIso = Utilities.formatDate(today, config.TIMEZONE, 'yyyy-MM-dd');
+
+  if (isoWeekday === 7) {
+    return {
+      shouldAttempt: true,
+      dayType: 'sunday',
+      todayIso,
+      weekId: getCurrentWeekId(),
+      requiredMode: 'default',
+    };
+  }
+
+  if (isoWeekday >= 1 && isoWeekday <= 4) {
+    return {
+      shouldAttempt: true,
+      dayType: 'weekday',
+      todayIso,
+      weekId: getCurrentMondayWeekId(),
+      requiredMode: 'postpone',
+    };
+  }
+
+  return {
+    shouldAttempt: false,
+    dayType: 'off',
+    todayIso,
+    weekId: '',
+    requiredMode: '',
+  };
+}
+
+function evaluatePayloadForDispatch(payload, dispatch) {
+  const delivery = normalizeDelivery(payload && payload.delivery, dispatch.weekId);
+
+  if (delivery.mode === 'skip') {
+    return { shouldSend: false, message: `Week ${dispatch.weekId} is marked “No email this week”; skipping delivery.` };
+  }
+
+  if (dispatch.requiredMode === 'default') {
+    if (delivery.mode !== 'default') {
+      return { shouldSend: false, message: `Week ${dispatch.weekId} is postponed; Sunday dispatcher is skipping it.` };
+    }
+    if (delivery.send_on && delivery.send_on !== dispatch.todayIso) {
+      return { shouldSend: false, message: `Week ${dispatch.weekId} default send is scheduled for ${delivery.send_on}; not sending today.` };
+    }
+  }
+
+  if (dispatch.requiredMode === 'postpone') {
+    if (delivery.mode !== 'postpone') {
+      return { shouldSend: false, message: `Week ${dispatch.weekId} is not scheduled for a weekday postponed send.` };
+    }
+    if (delivery.send_on !== dispatch.todayIso) {
+      return { shouldSend: false, message: `Week ${dispatch.weekId} postponed send is scheduled for ${delivery.send_on}; not sending today.` };
+    }
+  }
+
+  if (!payload || payload.approved !== true) {
+    return { shouldSend: false, message: `Week ${dispatch.weekId} is not approved for sending yet.` };
+  }
+
+  return { shouldSend: true, message: `Week ${dispatch.weekId} is scheduled to send now.` };
+}
+
+function shouldSuppressReviewNotification(ingestResult) {
+  return Boolean(
+    ingestResult
+    && ingestResult.action === 'skipped'
+    && ingestResult.week
+    && ingestResult.week.delivery
+    && String(ingestResult.week.delivery.mode || '').trim().toLowerCase() === 'skip'
+  );
 }
 
 function getCurrentSignageDayId() {
@@ -551,12 +683,11 @@ function setupTriggers() {
 
   ScriptApp.newTrigger('sendSportsEmails')
     .timeBased()
-    .everyWeeks(1)
-    .onWeekDay(ScriptApp.WeekDay.SUNDAY)
+    .everyDays(1)
     .atHour(16)
     .create();
 
-  console.log('✅ Triggers set up successfully. Signage refresh runs daily at midnight, draft review email runs Sunday at 8:00 AM, and approved sends run Sunday at 4:00 PM.');
+  console.log('✅ Triggers set up successfully. Signage refresh runs daily at midnight, draft review email runs Sunday at 8:00 AM, and send dispatch runs daily at 4:00 PM.');
 }
 
 function removeTriggers() {
@@ -581,6 +712,8 @@ function testApprovedApiAccess() {
   console.log(`🧪 Testing approved API access for week: ${weekId}`);
 
   const payload = fetchApprovedEmailPayloads(weekId, config);
+  console.log('Approved state:', !!payload.approved);
+  console.log('Delivery plan:', JSON.stringify(payload.delivery || {}));
   const emails = normalizeApprovedOutputs(payload, weekId);
 
   console.log('Middle School email found:', !!emails.middleSchool);

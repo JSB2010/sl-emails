@@ -80,7 +80,7 @@ Optional Script Properties:
 ## Operator Checklist
 
 1. Deploy the app to Cloud Run and keep Firebase Hosting pointed at it.
-2. Set the auth/runtime env vars, especially `EMAILS_AUTOMATION_KEY`, `EMAILS_SESSION_SECRET`, and the Google OAuth client credentials.
+2. Set the auth/runtime env vars, especially `EMAILS_AUTOMATION_KEY`, `EMAILS_SESSION_SECRET`, the Google OAuth client credentials, `GEMINI_API_KEY`, and `PUBLIC_BASE_URL`.
 3. Configure the Google OAuth consent/client so the callback URL matches `/auth/google/callback`.
 4. Add any additional admin emails in `/emails/settings` after the first sign-in bootstrap.
 5. Update Apps Script Script Properties, especially `API_BASE_URL` and `AUTOMATION_API_KEY`.
@@ -107,6 +107,8 @@ Notes:
 
 - This builds the repo `Dockerfile` and runs the same Gunicorn entrypoint that Cloud Run uses.
 - The script reads `.env.local` by default. Start from `.env.local.example`.
+- Add `GEMINI_API_KEY` for AI copy generation. `GEMINI_MODEL` defaults to `gemini-3-flash-preview`.
+- Set `PUBLIC_BASE_URL` in deployed environments so email HTML uses absolute icon URLs.
 - For live Firestore without embedding a service-account JSON string, the script mounts local ADC from `~/.config/gcloud/application_default_credentials.json` when present.
 - `EMAILS_LOCAL_DEV=1` switches cookies and generated callback URLs to local HTTP so Google sign-in can work on `localhost`.
 - Local contributor installs should use `python3 -m pip install -r requirements-dev.txt` so pytest is available.

@@ -69,7 +69,12 @@ def extract_subject(html: str) -> str:
     return default_subject_for_date_range(date_match.group(1), has_arts=has_arts)
 
 
-def build_weekly_email_outputs(week: WeeklyDraftRecord, *, generate_games_module: Any) -> dict[str, dict[str, Any]]:
+def build_weekly_email_outputs(
+    week: WeeklyDraftRecord,
+    *,
+    generate_games_module: Any,
+    icon_base_url: str = "",
+) -> dict[str, dict[str, Any]]:
     date_range = generate_games_module.format_date_range(week.start_date, week.end_date)
     outputs: dict[str, dict[str, Any]] = {}
     for audience, school_level in (("middle-school", "Middle School"), ("upper-school", "Upper School")):
@@ -90,6 +95,8 @@ def build_weekly_email_outputs(week: WeeklyDraftRecord, *, generate_games_module
             heading=week.heading,
             intro_note=week.notes,
             email_subject=subject,
+            copy_overrides=week.copy_overrides,
+            icon_base_url=icon_base_url,
         )
         outputs[audience] = {
             "audience": audience,

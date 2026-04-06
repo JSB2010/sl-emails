@@ -1,15 +1,97 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
+from datetime import timedelta
 from typing import Any
 from uuid import uuid4
 
+from .dates import default_send_date_for_week, iso_to_date, week_end_for, week_start_for
+from .iconography import normalize_icon_key
 from .styling import SOURCE_ACCENTS
 
 
 AUDIENCES = ("middle-school", "upper-school")
 DEFAULT_HEADING = "This Week at Kent Denver"
 DEFAULT_STATUS = "draft"
+DEFAULT_SEND_TIME = "16:00"
+
+
+def default_copy_overrides() -> dict[str, Any]:
+    return {
+        "hero_text": "",
+        "intro_title": "",
+        "intro_text": "",
+        "spotlight_label": "",
+        "schedule_label": "",
+        "also_on_schedule_label": "",
+        "empty_day_template": "",
+        "cta_eyebrow": "",
+        "cta_title": "",
+        "cta_text": "",
+    }
+
+
+def normalize_copy_overrides(payload: Any) -> dict[str, str]:
+    defaults = default_copy_overrides()
+    if not isinstance(payload, dict):
+        return defaults
+    normalized = dict(defaults)
+    for key in defaults:
+        normalized[key] = str(payload.get(key) or "").strip()
+    return normalized
+
+
+def default_delivery_state(week_id: str = "", *, updated_by: str = "") -> dict[str, Any]:
+    normalized_week_id = week_start_for(week_id) if week_id else ""
+    return {
+        "mode": "default",
+        "send_on": default_send_date_for_week(normalized_week_id) if normalized_week_id else "",
+        "send_time": DEFAULT_SEND_TIME,
+        "updated_at": "",
+        "updated_by": updated_by,
+    }
+
+
+def normalize_delivery(payload: Any, *, week_id: str, fallback: dict[str, Any] | None = None) -> dict[str, Any]:
+    baseline = default_delivery_state(week_id)
+    if isinstance(fallback, dict):
+        baseline.update(
+            {
+                "mode": str(fallback.get("mode") or baseline["mode"]).strip().lower() or baseline["mode"],
+                "send_on": str(fallback.get("send_on") or baseline["send_on"]).strip() or baseline["send_on"],
+                "send_time": str(fallback.get("send_time") or baseline["send_time"]).strip() or baseline["send_time"],
+                "updated_at": str(fallback.get("updated_at") or "").strip(),
+                "updated_by": str(fallback.get("updated_by") or "").strip(),
+            }
+        )
+
+    if not isinstance(payload, dict):
+        payload = {}
+
+    mode = str(payload.get("mode") or baseline["mode"]).strip().lower() or baseline["mode"]
+    if mode not in {"default", "postpone", "skip"}:
+        mode = baseline["mode"]
+
+    send_time = str(payload.get("send_time") or baseline["send_time"]).strip() or baseline["send_time"]
+    send_on = str(payload.get("send_on") or "").strip()
+    monday = week_start_for(week_id)
+    if mode == "default":
+        send_on = default_send_date_for_week(monday)
+    elif mode == "postpone":
+        allowed = {(iso_to_date(monday) + timedelta(days=offset)).isoformat() for offset in range(4)}
+        if send_on not in allowed:
+            fallback_send_on = str(baseline.get("send_on") or "")
+            send_on = fallback_send_on if fallback_send_on in allowed else monday
+    else:
+        send_on = ""
+
+    return {
+        "mode": mode,
+        "send_on": send_on,
+        "send_time": send_time,
+        "updated_at": str(payload.get("updated_at") or baseline.get("updated_at") or "").strip(),
+        "updated_by": str(payload.get("updated_by") or baseline.get("updated_by") or "").strip(),
+    }
 
 
 def default_approval_state() -> dict[str, Any]:
@@ -158,7 +240,7 @@ class WeeklyEventRecord:
             subtitle=str(data.get("subtitle", "")).strip(),
             description=str(data.get("description", "")).strip(),
             link=str(data.get("link", "")).strip(),
-            icon=str(data.get("icon", "")).strip(),
+            icon=normalize_icon_key(str(data.get("icon", "")).strip()),
             badge=str(data.get("badge", "EVENT")).strip().upper() or "EVENT",
             priority=max(1, min(int(data.get("priority", 3)), 5)),
             accent=str(data.get("accent", SOURCE_ACCENTS["custom"])).strip() or SOURCE_ACCENTS["custom"],
@@ -184,6 +266,8 @@ class WeeklyDraftRecord:
     sent: dict[str, Any] = field(default_factory=default_sent_state)
     notes: str = ""
     subject_overrides: dict[str, str] = field(default_factory=dict)
+    delivery: dict[str, Any] = field(default_factory=dict)
+    copy_overrides: dict[str, str] = field(default_factory=default_copy_overrides)
     events: list[WeeklyEventRecord] = field(default_factory=list)
     metadata: dict[str, Any] = field(default_factory=dict)
     created_at: str = ""

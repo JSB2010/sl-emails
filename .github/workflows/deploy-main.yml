@@ -21,6 +21,8 @@ concurrency:
 # - EMAILS_SESSION_SECRET: Flask session signing secret for Google-authenticated admin sessions.
 # - GOOGLE_OAUTH_CLIENT_ID: Google OAuth client ID for the sports email admin UI.
 # - GOOGLE_OAUTH_CLIENT_SECRET: Google OAuth client secret for the sports email admin UI.
+# - GEMINI_API_KEY_SECRET_NAME: Secret Manager secret name for the Gemini API key
+#   (default: gemini-api-key).
 # Optional repository variables (defaults match current production):
 # - GCP_PROJECT_ID (default: student-leadership-media)
 # - GCP_REGION (default: us-central1)
@@ -31,6 +33,8 @@ concurrency:
 # - FIRESTORE_COLLECTION (default: emailWeeks)
 # - FIREBASE_HOSTING_URL (default smoke target: https://<project-id>.web.app)
 # - GOOGLE_OAUTH_CALLBACK_URL (default: https://<project-id>.web.app/auth/google/callback)
+# - PUBLIC_BASE_URL (default: FIREBASE_HOSTING_URL or https://<project-id>.web.app)
+# - GEMINI_MODEL (default: gemini-3-flash-preview)
 # - EMAILS_BOOTSTRAP_ALLOWED_EMAILS
 #   (default: appdev@kentdenver.org,studentleader@kentdenver.org)
 # - EMAILS_BOOTSTRAP_NOTIFICATION_EMAILS
@@ -45,6 +49,9 @@ env:
   ARTIFACT_REGISTRY_REPOSITORY: ${{ vars.ARTIFACT_REGISTRY_REPOSITORY || 'sl-emails' }}
   FIRESTORE_COLLECTION: ${{ vars.FIRESTORE_COLLECTION || 'emailWeeks' }}
   FIREBASE_HOSTING_URL: ${{ vars.FIREBASE_HOSTING_URL || '' }}
+  PUBLIC_BASE_URL: ${{ vars.PUBLIC_BASE_URL || '' }}
+  GEMINI_MODEL: ${{ vars.GEMINI_MODEL || 'gemini-3-flash-preview' }}
+  GEMINI_API_KEY_SECRET_NAME: ${{ vars.GEMINI_API_KEY_SECRET_NAME || 'gemini-api-key' }}
   EMAILS_AUTOMATION_KEY: ${{ secrets.EMAILS_AUTOMATION_KEY }}
   EMAILS_SESSION_SECRET: ${{ secrets.EMAILS_SESSION_SECRET || '' }}
   GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.GOOGLE_OAUTH_CLIENT_ID || '' }}
@@ -132,6 +139,7 @@ jobs:
         run: |
           set -euo pipefail
           DERIVED_CALLBACK_URL="${GOOGLE_OAUTH_CALLBACK_URL:-${HOSTING_URL%/}/auth/google/callback}"
+          DERIVED_PUBLIC_BASE_URL="${PUBLIC_BASE_URL:-${HOSTING_URL%/}}"
 
           require_value() {
             local key="$1"
@@ -147,6 +155,9 @@ jobs:
           require_value "GOOGLE_OAUTH_CLIENT_ID" "${GOOGLE_OAUTH_CLIENT_ID}"
           require_value "GOOGLE_OAUTH_CLIENT_SECRET" "${GOOGLE_OAUTH_CLIENT_SECRET}"
           require_value "GOOGLE_OAUTH_CALLBACK_URL" "${DERIVED_CALLBACK_URL}"
+          require_value "PUBLIC_BASE_URL" "${DERIVED_PUBLIC_BASE_URL}"
+          require_value "GEMINI_MODEL" "${GEMINI_MODEL}"
+          require_value "GEMINI_API_KEY_SECRET_NAME" "${GEMINI_API_KEY_SECRET_NAME}"
 
       - name: Build and publish image
         run: >
@@ -164,6 +175,7 @@ jobs:
         run: |
           set -euo pipefail
           export DERIVED_CALLBACK_URL="${GOOGLE_OAUTH_CALLBACK_URL:-${HOSTING_URL%/}/auth/google/callback}"
+          export DERIVED_PUBLIC_BASE_URL="${PUBLIC_BASE_URL:-${HOSTING_URL%/}}"
           ENV_FILE="$(mktemp)"
           python - <<'PY' > "${ENV_FILE}"
           import os
@@ -175,6 +187,8 @@ jobs:
               "GOOGLE_OAUTH_CLIENT_ID": os.environ["GOOGLE_OAUTH_CLIENT_ID"],
               "GOOGLE_OAUTH_CLIENT_SECRET": os.environ["GOOGLE_OAUTH_CLIENT_SECRET"],
               "GOOGLE_OAUTH_CALLBACK_URL": os.environ["DERIVED_CALLBACK_URL"],
+              "GEMINI_MODEL": os.environ["GEMINI_MODEL"],
+              "PUBLIC_BASE_URL": os.environ["DERIVED_PUBLIC_BASE_URL"],
               "EMAILS_BOOTSTRAP_ALLOWED_EMAILS": os.environ["EMAILS_BOOTSTRAP_ALLOWED_EMAILS"],
               "EMAILS_BOOTSTRAP_NOTIFICATION_EMAILS": os.environ["EMAILS_BOOTSTRAP_NOTIFICATION_EMAILS"],
           }
@@ -191,6 +205,7 @@ jobs:
               --service-account "${CLOUD_RUN_RUNTIME_SERVICE_ACCOUNT}" \
               --allow-unauthenticated \
               --env-vars-file "${ENV_FILE}" \
+              --update-secrets "GEMINI_API_KEY=${GEMINI_API_KEY_SECRET_NAME}:latest" \
               --format='value(status.url)' \
               --quiet
           )"

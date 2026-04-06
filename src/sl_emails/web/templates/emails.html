@@ -35,29 +35,74 @@
     <div class="cmd-inner">
 
       <div class="cmd-cluster cmd-cluster-week">
-        <label class="cmd-label" for="week-id">Review Week</label>
-        <div class="cmd-group cmd-week-group">
-          <input id="week-id" type="date" value="{{ default_week_id }}" class="cmd-date" />
-          <button id="load-week" class="btn btn-primary">Load Draft</button>
-          <button id="create-from-source" class="btn cmd-ghost-btn">Refresh Events</button>
+        <input id="week-id" type="hidden" value="{{ default_week_id }}" />
+        <div class="cmd-cluster-head">
+          <label class="cmd-label" for="week-id">Review Week</label>
+        </div>
+        <div class="week-picker-shell">
+          <div class="week-picker-viewport">
+            <div id="week-picker-rail" class="week-picker-rail" aria-label="Weekly draft selector"></div>
+          </div>
+          <div class="week-picker-footer">
+            <p class="week-picker-note">Browse the selected week with nearby Mondays in view. Use Earlier or Later to step week-by-week.</p>
+            <div class="week-picker-actions">
+              <button id="load-past-weeks" class="btn cmd-ghost-btn btn-sm" type="button">Earlier</button>
+              <button id="load-future-weeks" class="btn cmd-ghost-btn btn-sm" type="button">Later</button>
+            </div>
+          </div>
         </div>
       </div>
 
-      <div class="cmd-cluster cmd-cluster-state">
-        <span class="cmd-label">Current Draft</span>
-        <div class="cmd-group cmd-state-group">
-          <span id="week-summary" class="cmd-week-range">No draft loaded</span>
-          <span id="event-count" class="cmd-event-count">—</span>
+      <div class="cmd-cluster cmd-cluster-controls">
+        <div class="cmd-summary-row">
+          <div class="cmd-summary-block">
+            <span class="cmd-label">Current Draft</span>
+            <div class="cmd-summary-line">
+              <span id="week-summary" class="cmd-week-range">No draft loaded</span>
+              <span id="event-count" class="cmd-event-count">—</span>
+            </div>
+          </div>
+          <div id="delivery-summary" class="status-pill">Sunday default</div>
         </div>
-      </div>
-
-      <div class="cmd-cluster cmd-cluster-actions">
-        <span class="cmd-label">Actions</span>
-        <div class="cmd-group cmd-actions-group">
+        <div class="cmd-delivery-row">
+          <span class="cmd-mini-label">Delivery</span>
+          <div class="cmd-delivery-group" role="radiogroup" aria-label="Delivery schedule">
+            <label class="cmd-delivery-chip">
+              <input type="radio" name="delivery-mode" value="default" checked />
+              <span>Sunday</span>
+            </label>
+            <label class="cmd-delivery-chip">
+              <input type="radio" name="delivery-mode" value="postpone-monday" />
+              <span>Monday</span>
+            </label>
+            <label class="cmd-delivery-chip">
+              <input type="radio" name="delivery-mode" value="postpone-tuesday" />
+              <span>Tuesday</span>
+            </label>
+            <label class="cmd-delivery-chip">
+              <input type="radio" name="delivery-mode" value="postpone-wednesday" />
+              <span>Wednesday</span>
+            </label>
+            <label class="cmd-delivery-chip">
+              <input type="radio" name="delivery-mode" value="postpone-thursday" />
+              <span>Thursday</span>
+            </label>
+            <label class="cmd-delivery-chip cmd-delivery-chip-warning">
+              <input type="radio" name="delivery-mode" value="skip" />
+              <span>Skip Week</span>
+            </label>
+          </div>
+        </div>
+        <div class="cmd-actions-grid cmd-actions-grid-secondary">
           <button id="export-csv" class="btn cmd-ghost-btn" disabled title="Export events to CSV">Export CSV</button>
+          <button id="create-from-source" class="btn btn-ghost" disabled>Refresh Events</button>
           <button id="add-custom" class="btn btn-ghost" disabled>Add Event</button>
-          <button id="save-week" class="btn btn-primary" disabled>Save Draft</button>
+          <button id="generate-ai" class="btn btn-ghost" disabled>Generate With AI</button>
+          <button id="clear-week" class="btn btn-ghost" disabled>Clear Draft</button>
+        </div>
+        <div class="cmd-actions-grid cmd-actions-grid-primary">
           <button id="preview-week" class="btn" disabled>Refresh Preview</button>
+          <button id="save-week" class="btn btn-primary" disabled>Save Draft</button>
           <button id="approve-week" class="btn btn-approve" disabled>Approve Week</button>
           <button id="mark-unsent" class="btn btn-ghost" type="button" hidden>Mark Unsent</button>
         </div>
@@ -87,27 +132,102 @@
         <div class="panel-head">
           <div>
             <h2>Email Content</h2>
-            <p class="panel-subtitle">Customize the heading, intro note, and subject lines for this week's email.</p>
+            <p class="panel-subtitle">Refine the editorial copy, labels, and audience subjects for this week's send.</p>
           </div>
           <p id="save-hint" class="save-hint">Saving edits will return an approved week to draft.</p>
         </div>
         <div class="editor-grid">
-          <label>
-            Email Heading
-            <input id="week-heading" type="text" value="This Week at Kent Denver" maxlength="80" />
-          </label>
-          <label class="editor-span-2">
-            Intro Note
-            <textarea id="week-notes" rows="3" placeholder="Optional intro note shown in the email above the schedule."></textarea>
-          </label>
-          <label>
-            Middle School Subject
-            <input id="week-subject-ms" type="text" maxlength="140" placeholder="Uses the default subject unless you customize it." />
-          </label>
-          <label>
-            Upper School Subject
-            <input id="week-subject-us" type="text" maxlength="140" placeholder="Uses the default subject unless you customize it." />
-          </label>
+          <section class="editor-group editor-group-overview">
+            <div class="editor-group-head">
+              <h3>Overview</h3>
+              <p>Top-level heading and optional note shown before the schedule.</p>
+            </div>
+            <div class="editor-fields">
+              <label>
+                Email Heading
+                <input id="week-heading" type="text" value="This Week at Kent Denver" maxlength="80" />
+              </label>
+              <label class="editor-span-2">
+                Intro Note
+                <textarea id="week-notes" rows="3" placeholder="Optional intro note shown in the email above the schedule."></textarea>
+              </label>
+            </div>
+          </section>
+
+          <section class="editor-group">
+            <div class="editor-group-head">
+              <h3>Intro Copy</h3>
+              <p>Hero and lead-in text that frames the week's events.</p>
+            </div>
+            <div class="editor-fields">
+              <label class="editor-span-2">
+                Hero Text
+                <textarea id="copy-hero-text" rows="3" placeholder="Optional hero copy shown below the week heading."></textarea>
+              </label>
+              <label>
+                Intro Title
+                <input id="copy-intro-title" type="text" maxlength="80" placeholder="Defaults to “This week at a glance”." />
+              </label>
+              <label class="editor-span-2">
+                Intro Text
+                <textarea id="copy-intro-text" rows="3" placeholder="Short summary paragraph above the schedule."></textarea>
+              </label>
+            </div>
+          </section>
+
+          <section class="editor-group">
+            <div class="editor-group-head">
+              <h3>Labels &amp; CTA</h3>
+              <p>Small supporting labels and the closing call to action.</p>
+            </div>
+            <div class="editor-fields">
+              <label>
+                Spotlight Label
+                <input id="copy-spotlight-label" type="text" maxlength="40" placeholder="Spotlight" />
+              </label>
+              <label>
+                Schedule Label
+                <input id="copy-schedule-label" type="text" maxlength="40" placeholder="Schedule" />
+              </label>
+              <label>
+                Also On Schedule Label
+                <input id="copy-also-label" type="text" maxlength="50" placeholder="Also on the schedule" />
+              </label>
+              <label class="editor-span-2">
+                Empty Day Message
+                <input id="copy-empty-day-template" type="text" maxlength="120" placeholder="Use {weekday} where the day name should appear." />
+              </label>
+              <label>
+                CTA Eyebrow
+                <input id="copy-cta-eyebrow" type="text" maxlength="40" placeholder="Share The Schedule" />
+              </label>
+              <label>
+                CTA Title
+                <input id="copy-cta-title" type="text" maxlength="80" placeholder="Bring Someone Along" />
+              </label>
+              <label class="editor-span-2">
+                CTA Text
+                <textarea id="copy-cta-text" rows="3" placeholder="Closing support prompt shown above the schedule link."></textarea>
+              </label>
+            </div>
+          </section>
+
+          <section class="editor-group editor-group-subjects">
+            <div class="editor-group-head">
+              <h3>Audience Subjects</h3>
+              <p>Optional overrides for each audience. Leave blank to use the default subject line.</p>
+            </div>
+            <div class="editor-fields">
+              <label>
+                Middle School Subject
+                <input id="week-subject-ms" type="text" maxlength="140" placeholder="Uses the default subject unless you customize it." />
+              </label>
+              <label>
+                Upper School Subject
+                <input id="week-subject-us" type="text" maxlength="140" placeholder="Uses the default subject unless you customize it." />
+              </label>
+            </div>
+          </section>
         </div>
       </section>
 
@@ -174,31 +294,71 @@
         <div class="panel-head">
           <div>
             <h2>System Status</h2>
-            <p class="panel-subtitle">Automation and delivery history for the selected week.</p>
+            <p class="panel-subtitle">Follow the selected week from ingest through delivery.</p>
           </div>
         </div>
-        <dl class="status-grid">
-          <div class="status-card">
-            <dt>Scheduled Ingest</dt>
-            <dd id="status-ingest">No automation run recorded yet.</dd>
-          </div>
-          <div class="status-card">
-            <dt>Manual Refresh</dt>
-            <dd id="status-refresh">No manual refresh recorded yet.</dd>
-          </div>
-          <div class="status-card">
-            <dt>Review Notification</dt>
-            <dd id="status-review-email">No review notification recorded yet.</dd>
-          </div>
-          <div class="status-card">
-            <dt>Approval</dt>
-            <dd id="status-approval">Week has not been approved yet.</dd>
-          </div>
-          <div class="status-card">
-            <dt>Send Status</dt>
-            <dd id="status-send">No send claim or completion recorded yet.</dd>
-          </div>
-        </dl>
+        <ol class="status-flow">
+          <li id="status-step-ingest" class="status-step" data-step-state="pending">
+            <span class="status-step-number">1</span>
+            <div class="status-step-body">
+              <div class="status-step-head">
+                <span class="status-step-kicker">Automation</span>
+                <strong class="status-step-title">Scheduled ingest</strong>
+              </div>
+              <p id="status-ingest" class="status-step-text">No automation run recorded yet.</p>
+            </div>
+          </li>
+          <li id="status-step-refresh" class="status-step" data-step-state="pending">
+            <span class="status-step-number">2</span>
+            <div class="status-step-body">
+              <div class="status-step-head">
+                <span class="status-step-kicker">Editing</span>
+                <strong class="status-step-title">Manual refresh</strong>
+              </div>
+              <p id="status-refresh" class="status-step-text">No manual refresh recorded yet.</p>
+            </div>
+          </li>
+          <li id="status-step-review-email" class="status-step" data-step-state="pending">
+            <span class="status-step-number">3</span>
+            <div class="status-step-body">
+              <div class="status-step-head">
+                <span class="status-step-kicker">Reminder</span>
+                <strong class="status-step-title">Review notification</strong>
+              </div>
+              <p id="status-review-email" class="status-step-text">No review notification recorded yet.</p>
+            </div>
+          </li>
+          <li id="status-step-delivery" class="status-step" data-step-state="current">
+            <span class="status-step-number">4</span>
+            <div class="status-step-body">
+              <div class="status-step-head">
+                <span class="status-step-kicker">Schedule</span>
+                <strong class="status-step-title">Delivery plan</strong>
+              </div>
+              <p id="status-delivery" class="status-step-text">Sunday default send.</p>
+            </div>
+          </li>
+          <li id="status-step-approval" class="status-step" data-step-state="pending">
+            <span class="status-step-number">5</span>
+            <div class="status-step-body">
+              <div class="status-step-head">
+                <span class="status-step-kicker">Review</span>
+                <strong class="status-step-title">Approval</strong>
+              </div>
+              <p id="status-approval" class="status-step-text">Week has not been approved yet.</p>
+            </div>
+          </li>
+          <li id="status-step-send" class="status-step" data-step-state="pending">
+            <span class="status-step-number">6</span>
+            <div class="status-step-body">
+              <div class="status-step-head">
+                <span class="status-step-kicker">Delivery</span>
+                <strong class="status-step-title">Send status</strong>
+              </div>
+              <p id="status-send" class="status-step-text">No send claim or completion recorded yet.</p>
+            </div>
+          </li>
+        </ol>
       </section>
 
       <section class="panel panel-activity">
@@ -256,6 +416,7 @@
       "weekId": default_week_id,
       "endDate": default_end,
       "iconOptions": icon_options,
+      "iconBaseUrl": icon_base_url,
       "currentUser": {"email": current_user_email, "name": current_user_name},
       "auth": auth
     }|tojson }};

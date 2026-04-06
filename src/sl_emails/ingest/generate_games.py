@@ -39,6 +39,7 @@ from icalendar import Calendar
 
 from sl_emails.config import FirestoreDraftPublishConfig
 from sl_emails.domain.email_presets import ARTS_CONFIG, DEFAULT_ARTS_CONFIG, DEFAULT_SCHOOL_EVENT_CONFIG, DEFAULT_SPORT_CONFIG, SCHOOL_EVENT_CONFIG, SPORT_CONFIG
+from sl_emails.domain.iconography import icon_public_url, normalize_icon_key
 from .firestore_drafts import build_week_draft_document, upsert_week_draft
 
 ATHLETICS_SCHEDULE_URL = "https://www.kentdenver.org/athletics-wellness/schedules-and-scores"
@@ -49,16 +50,16 @@ ATHLETICS_USER_AGENT = (
 )
 ATHLETICS_PAGE_ID_PATTERN = re.compile(r'data-pageid="(?P<page_id>\d+)"')
 
-ICON_CDN_BASE = "https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.5.2/svgs/solid"
 KDS_PRIMARY_LOGO_URL = (
     "https://askthekidz.smmall.cloud/_next/image?url=https%3A%2F%2Fnational.smmallcdn.net%2Faskthekidz%2F1773077145056%2FWhiteOutlineKD-Clear.png&w=3840&q=75"
 )
 
-def build_icon_html(icon_name: Optional[str], alt_text: str, size: int = 20) -> str:
-    """Return inline HTML for a small icon (Font Awesome CDN or letter fallback)."""
+def build_icon_html(icon_name: Optional[str], alt_text: str, size: int = 20, *, icon_base_url: str = "") -> str:
+    """Return inline HTML for a small icon (local SVG asset or letter fallback)."""
     safe_alt_text = escape_html(alt_text)
-    if icon_name:
-        icon_url = f"{ICON_CDN_BASE}/{icon_name}.svg"
+    resolved_icon = normalize_icon_key(icon_name or "")
+    if resolved_icon:
+        icon_url = icon_public_url(resolved_icon, base_url=icon_base_url)
         return (
             f'<img src="{icon_url}" width="{size}" height="{size}" alt="{safe_alt_text}" '
             'style="display:inline-block;vertical-align:middle;" border="0" />'
@@ -610,11 +611,11 @@ def group_games_by_date(games: List[Union[Game, Event]]) -> Dict[str, List[Union
     return games_by_date
 
 
-def generate_featured_event_card_html(event: Event) -> str:
+def generate_featured_event_card_html(event: Event, *, icon_base_url: str = "") -> str:
     '''Generate HTML for a featured arts event card'''
     event_config = event.get_sport_config()
     category_label = event.category.title()
-    icon_html = build_icon_html(event_config.get('icon'), f"{category_label} icon", size=22)
+    icon_html = build_icon_html(event_config.get('icon'), f"{category_label} icon", size=22, icon_base_url=icon_base_url)
     details_html = render_optional_details_html(event.description, event.link, accent_color=event_config['border_color'])
 
     return f'''
@@ -645,10 +646,10 @@ def generate_featured_event_card_html(event: Event) -> str:
                                 </td>
                               </tr>'''
 
-def generate_featured_game_card_html(game: Game) -> str:
+def generate_featured_game_card_html(game: Game, *, icon_base_url: str = "") -> str:
     '''Generate HTML for a featured game card (single column)'''
     sport_config = game.get_sport_config()
-    icon_html = build_icon_html(sport_config.get('icon'), f"{game.sport.title()} icon", size=22)
+    icon_html = build_icon_html(sport_config.get('icon'), f"{game.sport.title()} icon", size=22, icon_base_url=icon_base_url)
     is_varsity = is_varsity_game(game.team)
     details_html = render_optional_details_html(game.description, game.link, accent_color=sport_config['border_color'])
 
@@ -1268,6 +1269,8 @@ def generate_html_email(
     heading: str = "",
     intro_note: str = "",
     email_subject: str = "",
+    copy_overrides: Optional[Dict[str, str]] = None,
+    icon_base_url: str = "",
 ) -> str:
     """Generate the complete HTML email"""
 
@@ -1277,6 +1280,7 @@ def generate_html_email(
 
     # Get dynamic text variations based on whether there are arts events
     text_variations = get_dynamic_text_variations(start_date, has_arts_events)
+    overrides = dict(copy_overrides or {})
     sport_count = len(set(game.sport for games in games_by_date.values() for game in games))
     total_events = len(all_events)
     home_events = sum(1 for event in all_events if getattr(event, 'is_home', False))
@@ -1324,6 +1328,16 @@ def generate_html_email(
     # Determine title based on whether there are arts events
     title_type = "Games and Performances This Week" if has_arts_events else "Games This Week"
     hero_heading = escape_html(heading or text_variations['title_text'])
+    hero_text = escape_html(str(overrides.get("hero_text") or "").strip() or text_variations['hero_text'].format(sport_count=total_events))
+    intro_title = escape_html(str(overrides.get("intro_title") or "").strip() or "This week at a glance")
+    intro_text = escape_html(str(overrides.get("intro_text") or "").strip() or text_variations['intro_text'])
+    spotlight_label = escape_html(str(overrides.get("spotlight_label") or "").strip() or "Spotlight")
+    schedule_label = escape_html(str(overrides.get("schedule_label") or "").strip() or "Schedule")
+    also_on_schedule_label = escape_html(str(overrides.get("also_on_schedule_label") or "").strip() or "Also on the schedule")
+    cta_eyebrow = escape_html(str(overrides.get("cta_eyebrow") or "").strip() or text_variations['cta_button_text'])
+    cta_title = escape_html(str(overrides.get("cta_title") or "").strip() or text_variations['cta_header_text'])
+    cta_text = escape_html(str(overrides.get("cta_text") or "").strip() or text_variations['cta_text'])
+    empty_day_template = str(overrides.get("empty_day_template") or "").strip() or "No events scheduled for {weekday}."
     note_html = (
         f'''
           <table role="presentation" width="100%" cellpadding="0" cellspacing="0" class="body-bg" style="background:#f5f5f5;">
@@ -1442,7 +1456,7 @@ def generate_html_email(
                         {hero_heading}{escape_html(title_suffix)}
                       </h1>
                       <p style="margin:0;color:#cbd5e1;font-size:15px;line-height:24px;font-family:'Red Hat Text',Arial,sans-serif;">
-                        {escape_html(text_variations['hero_text'].format(sport_count=total_events))}
+                        {hero_text}
                       </p>
                       <div style="margin-top:20px;">
                         <span style="display:inline-block;padding:8px 16px;border-radius:999px;background:#f2b900;color:#041e42;font-size:12px;font-weight:700;letter-spacing:.2em;text-transform:uppercase;font-family:'Red Hat Text',Arial,sans-serif;">
@@ -1486,10 +1500,10 @@ def generate_html_email(
                         <tr>
                           <td style="padding:24px 28px;">
                             <h2 class="text-primary" style="margin:0 0 8px 0;color:#041e42;font-family:'Crimson Pro', Georgia, 'Times New Roman', serif;font-weight:700;font-size:22px;line-height:28px;">
-                              This week at a glance
+                              {intro_title}
                             </h2>
                             <p class="text-secondary" style="margin:0;color:#4b5563;font-size:14px;line-height:22px;font-family:'Red Hat Text',Arial,sans-serif;">
-                              {escape_html(text_variations['intro_text'])}
+                              {intro_text}
                             </p>
                           </td>
                         </tr>
@@ -1570,28 +1584,28 @@ def generate_html_email(
                               <tr>
                                 <td style="padding:12px 0;text-align:center;">
                                   <div style="color:#9ca3af;font-size:14px;line-height:20px;font-family:'Red Hat Text',Arial,sans-serif;">
-                                    No events scheduled for {date_obj.strftime('%A')}.
+                                    {escape_html(empty_day_template.format(weekday=date_obj.strftime('%A')))}
                                   </div>
                                 </td>
                               </tr>
 '''
         else:
             if featured_games:
-                html += '''
+                html += f'''
                               <tr>
                                 <td style="padding-bottom:8px;">
-                                  <div style="font-size:11px;letter-spacing:.28em;color:#a11919;text-transform:uppercase;font-family:'Red Hat Text',Arial,sans-serif;font-weight:600;">Spotlight</div>
+                                  <div style="font-size:11px;letter-spacing:.28em;color:#a11919;text-transform:uppercase;font-family:'Red Hat Text',Arial,sans-serif;font-weight:600;">{spotlight_label}</div>
                                 </td>
                               </tr>
 '''
                 for item in featured_games:
                     if isinstance(item, Event):
-                        html += generate_featured_event_card_html(item)
+                        html += generate_featured_event_card_html(item, icon_base_url=icon_base_url)
                     else:
-                        html += generate_featured_game_card_html(item)
+                        html += generate_featured_game_card_html(item, icon_base_url=icon_base_url)
 
             if other_games:
-                label = "Schedule" if not featured_games else "Also on the schedule"
+                label = schedule_label if not featured_games else also_on_schedule_label
                 html += f'''
                               <tr>
                                 <td style="padding:{'14px' if featured_games else '0'} 0 6px 0;">
@@ -1633,12 +1647,12 @@ def generate_html_email(
                         </tr>
                         <tr>
                           <td style="padding:24px 28px;">
-                            <div style="font-size:11px;letter-spacing:.22em;color:#13cf97;text-transform:uppercase;font-family:'Red Hat Text',Arial,sans-serif;font-weight:600;">{text_variations['cta_button_text']}</div>
+                            <div style="font-size:11px;letter-spacing:.22em;color:#13cf97;text-transform:uppercase;font-family:'Red Hat Text',Arial,sans-serif;font-weight:600;">{cta_eyebrow}</div>
                             <div class="text-primary" style="margin:10px 0 8px 0;color:#041e42;font-family:'Crimson Pro',Georgia,'Times New Roman',serif;font-weight:700;font-size:22px;line-height:28px;">
-                              {text_variations['cta_header_text']}
+                              {cta_title}
                             </div>
                             <p class="text-secondary" style="margin:0 0 16px 0;color:#4b5563;font-size:14px;line-height:22px;font-family:'Red Hat Text',Arial,sans-serif;">
-                              {text_variations['cta_text']}
+                              {cta_text}
                             </p>
                             <table role="presentation" cellpadding="0" cellspacing="0">
                               <tr>

@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any, Callable
 
 from ..domain.dates import event_date_for_sort, format_email_date_range, time_for_sort, utc_now_iso
-from ..domain.weekly import DEFAULT_HEADING, default_approval_state, default_sent_state
+from ..domain.weekly import DEFAULT_HEADING, default_approval_state, default_copy_overrides, default_delivery_state, default_sent_state
 from ..services.event_shapes import source_event_to_weekly_event_payload
 
 
@@ -51,9 +51,11 @@ def build_week_draft_document(
             "heading": DEFAULT_HEADING,
             "status": "draft",
             "approval": default_approval_state(),
-            "sent": default_sent_state(include_sending=False),
+            "sent": default_sent_state(),
             "notes": "",
             "subject_overrides": {},
+            "delivery": default_delivery_state(start_date),
+            "copy_overrides": default_copy_overrides(),
             "created_at": timestamp,
             "updated_at": timestamp,
             "week_label": format_email_date_range(start_date, end_date),

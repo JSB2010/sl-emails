@@ -12,9 +12,12 @@ from sl_emails.config import EMAILS_BOOTSTRAP_ALLOWED_EMAILS_ENV
 from sl_emails.config import EMAILS_BOOTSTRAP_NOTIFICATION_EMAILS_ENV
 from sl_emails.config import EMAILS_LOCAL_DEV_ENV
 from sl_emails.config import EMAILS_SESSION_SECRET_ENV
+from sl_emails.config import GEMINI_API_KEY_ENV
+from sl_emails.config import GEMINI_MODEL_ENV
 from sl_emails.config import GOOGLE_OAUTH_CALLBACK_URL_ENV
 from sl_emails.config import GOOGLE_OAUTH_CLIENT_ID_ENV
 from sl_emails.config import GOOGLE_OAUTH_CLIENT_SECRET_ENV
+from sl_emails.config import PUBLIC_BASE_URL_ENV
 
 from .google_oauth import init_google_oauth
 from .routes import register_routes
@@ -57,6 +60,9 @@ def create_app(config: dict[str, Any] | None = None) -> Flask:
     app.config["GOOGLE_OAUTH_CLIENT_ID"] = os.getenv(GOOGLE_OAUTH_CLIENT_ID_ENV, "").strip()
     app.config["GOOGLE_OAUTH_CLIENT_SECRET"] = os.getenv(GOOGLE_OAUTH_CLIENT_SECRET_ENV, "").strip()
     app.config["GOOGLE_OAUTH_CALLBACK_URL"] = os.getenv(GOOGLE_OAUTH_CALLBACK_URL_ENV, "").strip()
+    app.config["GEMINI_API_KEY"] = os.getenv(GEMINI_API_KEY_ENV, "").strip()
+    app.config["GEMINI_MODEL"] = os.getenv(GEMINI_MODEL_ENV, "").strip() or "gemini-3-flash-preview"
+    app.config["PUBLIC_BASE_URL"] = os.getenv(PUBLIC_BASE_URL_ENV, "").strip()
     app.config["EMAILS_BOOTSTRAP_ALLOWED_EMAILS"] = os.getenv(EMAILS_BOOTSTRAP_ALLOWED_EMAILS_ENV, "").strip()
     app.config["EMAILS_BOOTSTRAP_NOTIFICATION_EMAILS"] = os.getenv(EMAILS_BOOTSTRAP_NOTIFICATION_EMAILS_ENV, "").strip()
 

@@ -164,6 +164,13 @@ def auth_urls() -> dict[str, str]:
     }
 
 
+def current_public_base_url() -> str:
+    configured = str(current_app.config.get("PUBLIC_BASE_URL") or "").strip().rstrip("/")
+    if configured:
+        return configured
+    return str(request.url_root or "").strip().rstrip("/")
+
+
 def _unauthorized_response() -> Any:
     login_url = auth_urls()["login"]
     if request.path.startswith("/api/"):

@@ -80,6 +80,9 @@ class FirestoreDraftTests(unittest.TestCase):
         self.assertEqual(document["week"]["status"], "draft")
         self.assertEqual(document["week"]["start_date"], "2026-03-09")
         self.assertEqual(document["week"]["source_summary"]["totalEvents"], 2)
+        self.assertEqual(document["week"]["delivery"]["mode"], "default")
+        self.assertEqual(document["week"]["delivery"]["send_on"], "2026-03-08")
+        self.assertEqual(document["week"]["copy_overrides"]["hero_text"], "")
         self.assertEqual(len(document["events"]), 2)
         self.assertEqual(document["events"][0]["audiences"], ["middle-school"])
         self.assertEqual(document["events"][0]["source"], "athletics")
@@ -152,8 +155,10 @@ class FirestoreDraftTests(unittest.TestCase):
                 "heading": "This Week at Kent Denver",
                 "status": "draft",
                 "approval": {"approved": False, "approved_at": "", "approved_by": ""},
-                "sent": {"sent": False, "sent_at": "", "sent_by": ""},
+                "sent": {"sent": False, "sent_at": "", "sent_by": "", "sending": False, "sending_at": "", "sending_by": ""},
                 "notes": "",
+                "delivery": {"mode": "default", "send_on": "2026-03-08", "send_time": "16:00", "updated_at": "", "updated_by": ""},
+                "copy_overrides": {"hero_text": "", "intro_title": "", "intro_text": "", "spotlight_label": "", "schedule_label": "", "also_on_schedule_label": "", "empty_day_template": "", "cta_eyebrow": "", "cta_title": "", "cta_text": ""},
             },
             "events": [
                 {

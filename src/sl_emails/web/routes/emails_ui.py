@@ -6,10 +6,10 @@ from datetime import datetime
 
 from flask import Blueprint, render_template, request, url_for
 
-from sl_emails.domain.dates import iso_to_date, resolve_week_bounds, week_end_for
+from sl_emails.domain.dates import iso_to_date, resolve_week_bounds, week_end_for, week_start_for
 from sl_emails.domain.email_presets import CURATED_ICON_GROUPS, REQUEST_EVENT_CATEGORY_OPTIONS, REQUEST_SPORT_OPTIONS
 
-from ..support import auth_urls, current_user, require_emails_admin
+from ..support import auth_urls, current_public_base_url, current_user, require_emails_admin
 
 
 blueprint = Blueprint("emails_ui", __name__)
@@ -36,8 +36,9 @@ def emails_index():
 
     if requested_week:
         try:
-            start = iso_to_date(requested_week)
-            end = iso_to_date(week_end_for(requested_week))
+            normalized_week = week_start_for(requested_week)
+            start = iso_to_date(normalized_week)
+            end = iso_to_date(week_end_for(normalized_week))
         except ValueError:
             start, end = resolve_week_bounds(mode="next", today=today)
     else:
@@ -52,5 +53,6 @@ def emails_index():
         current_user_email=str(user.get("email") or ""),
         current_user_name=str(user.get("name") or ""),
         icon_options=CURATED_ICON_GROUPS,
+        icon_base_url=current_public_base_url(),
         auth=auth_urls(),
     )

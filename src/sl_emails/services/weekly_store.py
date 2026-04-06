@@ -19,16 +19,21 @@ except ImportError:  # pragma: no cover
 
 from ..contracts.firestore_week_shape import EMAIL_WEEKS_COLLECTION, EVENTS_SUBCOLLECTION
 from ..config import RuntimeFirestoreConfig
-from ..domain.dates import iso_to_date, time_sort_key, utc_now_iso, week_end_for
+from ..domain.dates import iso_to_date, time_sort_key, utc_now_iso, week_end_for, week_start_for
+from ..domain.iconography import normalize_icon_key
 from ..domain.styling import SOURCE_ACCENTS
 from ..domain.weekly import (
     DEFAULT_HEADING,
     DEFAULT_STATUS,
     WeeklyDraftRecord,
     WeeklyEventRecord,
+    default_copy_overrides,
+    default_delivery_state,
     default_sent_state,
     default_approval_state,
     infer_audiences,
+    normalize_copy_overrides,
+    normalize_delivery,
     normalize_sent_state,
     normalize_subject_overrides,
 )
@@ -123,7 +128,7 @@ def normalize_event_payload(
         subtitle=str(payload.get("subtitle") or subtitle_default).strip(),
         description=str(payload.get("description", "")).strip(),
         link=str(payload.get("link", "")).strip(),
-        icon=str(payload.get("icon", "")).strip(),
+        icon=normalize_icon_key(str(payload.get("icon", "")).strip()),
         badge=str(payload.get("badge") or badge_default).strip().upper() or badge_default,
         priority=max(1, min(int(payload.get("priority", 3)), 5)),
         accent=str(payload.get("accent") or accent_default).strip() or accent_default,
@@ -144,9 +149,12 @@ def normalize_week_payload(
     *,
     existing: WeeklyDraftRecord | None = None,
 ) -> WeeklyDraftRecord:
-    start_date = str(payload.get("start_date") or (existing.start_date if existing else week_id)).strip() or week_id
-    end_date = str(payload.get("end_date") or (existing.end_date if existing else week_end_for(start_date))).strip() or week_end_for(start_date)
-    if week_id != start_date:
+    canonical_week_id = week_start_for(week_id)
+    start_value = payload["start_date"] if "start_date" in payload else (existing.start_date if existing else canonical_week_id)
+    start_date = week_start_for(str(start_value or canonical_week_id).strip() or canonical_week_id)
+    end_value = payload["end_date"] if "end_date" in payload else (existing.end_date if existing else week_end_for(start_date))
+    end_date = str(end_value or week_end_for(start_date)).strip() or week_end_for(start_date)
+    if canonical_week_id != start_date:
         raise ValueError("week_id must match the week start_date")
     if iso_to_date(end_date) < iso_to_date(start_date):
         raise ValueError("Week end_date must be on or after start_date")
@@ -166,19 +174,35 @@ def normalize_week_payload(
     ]
     events.sort(key=lambda event: (event.start_date, event.end_date, time_sort_key(event.time_text), event.title.lower()))
     timestamp = utc_now_iso()
+    existing_delivery = existing.delivery if existing else default_delivery_state(start_date)
+    next_delivery = normalize_delivery(
+        payload.get("delivery"),
+        week_id=start_date,
+        fallback=existing_delivery,
+    )
+    next_delivery["updated_at"] = timestamp
+    next_delivery["updated_by"] = str((payload.get("delivery") or {}).get("updated_by") or next_delivery.get("updated_by") or "").strip()
+    heading_value = payload["heading"] if "heading" in payload else (existing.heading if existing else DEFAULT_HEADING)
+    notes_value = payload["notes"] if "notes" in payload else (existing.notes if existing else "")
     return WeeklyDraftRecord(
-        week_id=week_id,
+        week_id=canonical_week_id,
         start_date=start_date,
         end_date=end_date,
-        heading=str(payload.get("heading") or (existing.heading if existing else DEFAULT_HEADING)).strip() or DEFAULT_HEADING,
+        heading=str(heading_value or DEFAULT_HEADING).strip() or DEFAULT_HEADING,
         status=DEFAULT_STATUS,
         approval=default_approval_state(),
         sent=default_sent_state(),
-        notes=str(payload.get("notes") or (existing.notes if existing else "")).strip(),
+        notes=str(notes_value or "").strip(),
         subject_overrides=normalize_subject_overrides(
             payload.get("subject_overrides")
             if isinstance(payload.get("subject_overrides"), dict)
             else (existing.subject_overrides if existing else {})
+        ),
+        delivery=next_delivery,
+        copy_overrides=normalize_copy_overrides(
+            payload.get("copy_overrides")
+            if isinstance(payload.get("copy_overrides"), dict)
+            else (existing.copy_overrides if existing else default_copy_overrides())
         ),
         events=events,
         metadata=merge_metadata(existing.metadata if existing else {}, payload.get("metadata") if isinstance(payload.get("metadata"), dict) else {}),
@@ -187,12 +211,26 @@ def normalize_week_payload(
     )
 
 
+def build_blank_week_payload(week_id: str) -> dict[str, Any]:
+    start_date = week_start_for(week_id)
+    return {
+        "start_date": start_date,
+        "end_date": week_end_for(start_date),
+        "heading": DEFAULT_HEADING,
+        "notes": "",
+        "subject_overrides": {},
+        "delivery": default_delivery_state(start_date),
+        "copy_overrides": default_copy_overrides(),
+        "events": [],
+    }
+
+
 class MemoryWeeklyEmailStore:
     def __init__(self) -> None:
         self._weeks: dict[str, WeeklyDraftRecord] = {}
 
     def get_week(self, week_id: str) -> WeeklyDraftRecord | None:
-        week = self._weeks.get(week_id)
+        week = self._weeks.get(week_start_for(week_id))
         if week is None:
             return None
         return WeeklyDraftRecord(
@@ -205,6 +243,8 @@ class MemoryWeeklyEmailStore:
             sent=normalize_sent_state(week.sent),
             notes=week.notes,
             subject_overrides=dict(week.subject_overrides),
+            delivery=dict(week.delivery),
+            copy_overrides=dict(week.copy_overrides),
             events=[WeeklyEventRecord.from_dict(event.to_dict()) for event in week.events],
             metadata=dict(week.metadata),
             created_at=week.created_at,
@@ -212,49 +252,56 @@ class MemoryWeeklyEmailStore:
         )
 
     def create_week_if_missing(self, week_id: str, payload: dict[str, Any]) -> WeeklyDraftRecord | None:
-        if week_id in self._weeks:
+        canonical_week_id = week_start_for(week_id)
+        if canonical_week_id in self._weeks:
             return None
-        week = normalize_week_payload(week_id, payload)
-        self._weeks[week_id] = week
-        return self.get_week(week_id)  # type: ignore[return-value]
+        week = normalize_week_payload(canonical_week_id, payload)
+        self._weeks[canonical_week_id] = week
+        return self.get_week(canonical_week_id)  # type: ignore[return-value]
 
     def save_week(self, week_id: str, payload: dict[str, Any]) -> WeeklyDraftRecord:
-        existing = self._weeks.get(week_id)
+        canonical_week_id = week_start_for(week_id)
+        existing = self._weeks.get(canonical_week_id)
         assert_week_editable(existing)
-        week = normalize_week_payload(week_id, payload, existing=existing)
-        self._weeks[week_id] = week
-        return self.get_week(week_id)  # type: ignore[return-value]
+        week = normalize_week_payload(canonical_week_id, payload, existing=existing)
+        self._weeks[canonical_week_id] = week
+        return self.get_week(canonical_week_id)  # type: ignore[return-value]
 
     def add_event(self, week_id: str, payload: dict[str, Any]) -> WeeklyDraftRecord:
-        existing = self._weeks.get(week_id)
-        base_payload = existing.to_dict() if existing else {"start_date": week_id, "end_date": week_end_for(week_id), "events": []}
+        canonical_week_id = week_start_for(week_id)
+        existing = self._weeks.get(canonical_week_id)
+        base_payload = existing.to_dict() if existing else build_blank_week_payload(canonical_week_id)
         events = list(base_payload.get("events", []))
         events.append(normalize_event_payload(payload, week_start=base_payload["start_date"], week_end=base_payload["end_date"], force_source="custom").to_dict())
         base_payload["events"] = events
-        return self.save_week(week_id, base_payload)
+        return self.save_week(canonical_week_id, base_payload)
 
     def approve_week(self, week_id: str, approved_by: str = "open-access") -> WeeklyDraftRecord:
-        week = self._weeks.get(week_id)
+        canonical_week_id = week_start_for(week_id)
+        week = self._weeks.get(canonical_week_id)
         if week is None:
-            raise KeyError(week_id)
+            raise KeyError(canonical_week_id)
         if is_send_locked(week.sent):
             raise ValueError("Week is locked for sending. Mark it unsent before approving again.")
+        if str((week.delivery or {}).get("mode") or "").strip().lower() == "skip":
+            raise ValueError("Weeks marked “No email this week” cannot be approved until delivery is changed.")
         timestamp = utc_now_iso()
         week.status = "approved"
         week.approval = {"approved": True, "approved_at": timestamp, "approved_by": approved_by}
         week.updated_at = timestamp
-        self._weeks[week_id] = week
-        return self.get_week(week_id)  # type: ignore[return-value]
+        self._weeks[canonical_week_id] = week
+        return self.get_week(canonical_week_id)  # type: ignore[return-value]
 
     def claim_week_send(self, week_id: str, sending_by: str = "open-access") -> WeeklyDraftRecord:
-        week = self._weeks.get(week_id)
+        canonical_week_id = week_start_for(week_id)
+        week = self._weeks.get(canonical_week_id)
         if week is None:
-            raise KeyError(week_id)
+            raise KeyError(canonical_week_id)
         if not week.approval.get("approved"):
             raise ValueError("Week must be approved before it can be claimed for sending")
         sent_state = normalize_sent_state(week.sent)
         if sent_state.get("sent"):
-            return self.get_week(week_id)  # type: ignore[return-value]
+            return self.get_week(canonical_week_id)  # type: ignore[return-value]
         if sent_state.get("sending"):
             raise ValueError(
                 f"Week is already claimed for sending by {sent_state.get('sending_by') or 'unknown actor'} "
@@ -263,46 +310,49 @@ class MemoryWeeklyEmailStore:
         timestamp = utc_now_iso()
         week.sent = {"sent": False, "sent_at": "", "sent_by": "", "sending": True, "sending_at": timestamp, "sending_by": sending_by}
         week.updated_at = timestamp
-        self._weeks[week_id] = week
-        return self.get_week(week_id)  # type: ignore[return-value]
+        self._weeks[canonical_week_id] = week
+        return self.get_week(canonical_week_id)  # type: ignore[return-value]
 
     def mark_week_sent(self, week_id: str, sent_by: str = "open-access") -> WeeklyDraftRecord:
-        week = self._weeks.get(week_id)
+        canonical_week_id = week_start_for(week_id)
+        week = self._weeks.get(canonical_week_id)
         if week is None:
-            raise KeyError(week_id)
+            raise KeyError(canonical_week_id)
         if not week.approval.get("approved"):
             raise ValueError("Week must be approved before it can be marked sent")
         sent_state = normalize_sent_state(week.sent)
         if sent_state.get("sent"):
-            return self.get_week(week_id)  # type: ignore[return-value]
+            return self.get_week(canonical_week_id)  # type: ignore[return-value]
         if not sent_state.get("sending"):
             raise ValueError("Week must be claimed for sending before it can be marked sent")
         timestamp = utc_now_iso()
         week.sent = {"sent": True, "sent_at": timestamp, "sent_by": sent_by, "sending": False, "sending_at": "", "sending_by": ""}
         week.updated_at = timestamp
-        self._weeks[week_id] = week
-        return self.get_week(week_id)  # type: ignore[return-value]
+        self._weeks[canonical_week_id] = week
+        return self.get_week(canonical_week_id)  # type: ignore[return-value]
 
     def reset_week_send(self, week_id: str) -> WeeklyDraftRecord:
-        week = self._weeks.get(week_id)
+        canonical_week_id = week_start_for(week_id)
+        week = self._weeks.get(canonical_week_id)
         if week is None:
-            raise KeyError(week_id)
+            raise KeyError(canonical_week_id)
         sent_state = normalize_sent_state(week.sent)
         if not sent_state.get("sent") and not sent_state.get("sending"):
-            return self.get_week(week_id)  # type: ignore[return-value]
+            return self.get_week(canonical_week_id)  # type: ignore[return-value]
         week.sent = default_sent_state()
         week.updated_at = utc_now_iso()
-        self._weeks[week_id] = week
-        return self.get_week(week_id)  # type: ignore[return-value]
+        self._weeks[canonical_week_id] = week
+        return self.get_week(canonical_week_id)  # type: ignore[return-value]
 
     def update_week_metadata(self, week_id: str, metadata: dict[str, Any]) -> WeeklyDraftRecord:
-        week = self._weeks.get(week_id)
+        canonical_week_id = week_start_for(week_id)
+        week = self._weeks.get(canonical_week_id)
         if week is None:
-            raise KeyError(week_id)
+            raise KeyError(canonical_week_id)
         week.metadata = merge_metadata(week.metadata, metadata)
         week.updated_at = utc_now_iso()
-        self._weeks[week_id] = week
-        return self.get_week(week_id)  # type: ignore[return-value]
+        self._weeks[canonical_week_id] = week
+        return self.get_week(canonical_week_id)  # type: ignore[return-value]
 
 
 class FirestoreWeeklyEmailStore:
@@ -350,23 +400,26 @@ class FirestoreWeeklyEmailStore:
         return week_ref.get(transaction=transaction)
 
     def get_week(self, week_id: str) -> WeeklyDraftRecord | None:
-        week_ref = self._week_ref(week_id)
-        snapshot = self._week_snapshot(week_id)
+        canonical_week_id = week_start_for(week_id)
+        week_ref = self._week_ref(canonical_week_id)
+        snapshot = self._week_snapshot(canonical_week_id)
         if not snapshot.exists:
             return None
         data = snapshot.to_dict() or {}
         events = [WeeklyEventRecord.from_dict(item.to_dict() or {}) for item in week_ref.collection(EVENTS_SUBCOLLECTION).stream()]
         events.sort(key=lambda event: (event.start_date, event.end_date, time_sort_key(event.time_text), event.title.lower()))
         return WeeklyDraftRecord(
-            week_id=week_id,
-            start_date=str(data.get("start_date") or week_id),
-            end_date=str(data.get("end_date") or week_end_for(week_id)),
+            week_id=canonical_week_id,
+            start_date=week_start_for(str(data.get("start_date") or canonical_week_id)),
+            end_date=str(data.get("end_date") or week_end_for(canonical_week_id)),
             heading=str(data.get("heading") or DEFAULT_HEADING),
             status=str(data.get("status") or DEFAULT_STATUS),
             approval=data.get("approval") if isinstance(data.get("approval"), dict) else default_approval_state(),
             sent=normalize_sent_state(data.get("sent")),
             notes=str(data.get("notes") or ""),
             subject_overrides=normalize_subject_overrides(data.get("subject_overrides")),
+            delivery=normalize_delivery(data.get("delivery"), week_id=canonical_week_id),
+            copy_overrides=normalize_copy_overrides(data.get("copy_overrides")),
             events=events,
             metadata=data.get("metadata") if isinstance(data.get("metadata"), dict) else {},
             created_at=str(data.get("created_at") or ""),
@@ -374,8 +427,9 @@ class FirestoreWeeklyEmailStore:
         )
 
     def create_week_if_missing(self, week_id: str, payload: dict[str, Any]) -> WeeklyDraftRecord | None:
-        week = normalize_week_payload(week_id, payload)
-        week_ref = self._week_ref(week_id)
+        canonical_week_id = week_start_for(week_id)
+        week = normalize_week_payload(canonical_week_id, payload)
+        week_ref = self._week_ref(canonical_week_id)
         batch = self._get_client().batch()
         batch.create(week_ref, week.to_firestore())
         for event in week.events:
@@ -384,13 +438,14 @@ class FirestoreWeeklyEmailStore:
             batch.commit()
         except AlreadyExists:
             return None
-        return self.get_week(week_id)  # type: ignore[return-value]
+        return self.get_week(canonical_week_id)  # type: ignore[return-value]
 
     def save_week(self, week_id: str, payload: dict[str, Any]) -> WeeklyDraftRecord:
-        existing = self.get_week(week_id)
+        canonical_week_id = week_start_for(week_id)
+        existing = self.get_week(canonical_week_id)
         assert_week_editable(existing)
-        week = normalize_week_payload(week_id, payload, existing=existing)
-        week_ref = self._week_ref(week_id)
+        week = normalize_week_payload(canonical_week_id, payload, existing=existing)
+        week_ref = self._week_ref(canonical_week_id)
         current_ids = {item.id for item in (existing.events if existing else [])}
         incoming_ids = {event.id for event in week.events}
         batch = self._get_client().batch()
@@ -400,28 +455,33 @@ class FirestoreWeeklyEmailStore:
         for event in week.events:
             batch.set(week_ref.collection(EVENTS_SUBCOLLECTION).document(event.id), event.to_firestore())
         batch.commit()
-        return self.get_week(week_id)  # type: ignore[return-value]
+        return self.get_week(canonical_week_id)  # type: ignore[return-value]
 
     def add_event(self, week_id: str, payload: dict[str, Any]) -> WeeklyDraftRecord:
-        existing = self.get_week(week_id)
-        base_payload = existing.to_dict() if existing else {"start_date": week_id, "end_date": week_end_for(week_id), "events": []}
+        canonical_week_id = week_start_for(week_id)
+        existing = self.get_week(canonical_week_id)
+        base_payload = existing.to_dict() if existing else build_blank_week_payload(canonical_week_id)
         events = list(base_payload.get("events", []))
         events.append(normalize_event_payload(payload, week_start=base_payload["start_date"], week_end=base_payload["end_date"], force_source="custom").to_dict())
         base_payload["events"] = events
-        return self.save_week(week_id, base_payload)
+        return self.save_week(canonical_week_id, base_payload)
 
     def approve_week(self, week_id: str, approved_by: str = "open-access") -> WeeklyDraftRecord:
+        canonical_week_id = week_start_for(week_id)
         transaction = self._get_client().transaction()
-        week_ref = self._week_ref(week_id)
+        week_ref = self._week_ref(canonical_week_id)
 
         @firestore.transactional
         def apply(transaction: Any) -> None:
-            snapshot = self._week_snapshot(week_id, transaction=transaction)
+            snapshot = self._week_snapshot(canonical_week_id, transaction=transaction)
             if not snapshot.exists:
-                raise KeyError(week_id)
+                raise KeyError(canonical_week_id)
             data = snapshot.to_dict() or {}
             if is_send_locked(data.get("sent")):
                 raise ValueError("Week is locked for sending. Mark it unsent before approving again.")
+            delivery = data.get("delivery") if isinstance(data.get("delivery"), dict) else {}
+            if str(delivery.get("mode") or "").strip().lower() == "skip":
+                raise ValueError("Weeks marked “No email this week” cannot be approved until delivery is changed.")
             timestamp = utc_now_iso()
             transaction.set(
                 week_ref,
@@ -434,17 +494,18 @@ class FirestoreWeeklyEmailStore:
             )
 
         apply(transaction)
-        return self.get_week(week_id)  # type: ignore[return-value]
+        return self.get_week(canonical_week_id)  # type: ignore[return-value]
 
     def claim_week_send(self, week_id: str, sending_by: str = "open-access") -> WeeklyDraftRecord:
+        canonical_week_id = week_start_for(week_id)
         transaction = self._get_client().transaction()
-        week_ref = self._week_ref(week_id)
+        week_ref = self._week_ref(canonical_week_id)
 
         @firestore.transactional
         def apply(transaction: Any) -> None:
-            snapshot = self._week_snapshot(week_id, transaction=transaction)
+            snapshot = self._week_snapshot(canonical_week_id, transaction=transaction)
             if not snapshot.exists:
-                raise KeyError(week_id)
+                raise KeyError(canonical_week_id)
             data = snapshot.to_dict() or {}
             approval = data.get("approval") if isinstance(data.get("approval"), dict) else default_approval_state()
             if not approval.get("approved"):
@@ -475,17 +536,18 @@ class FirestoreWeeklyEmailStore:
             )
 
         apply(transaction)
-        return self.get_week(week_id)  # type: ignore[return-value]
+        return self.get_week(canonical_week_id)  # type: ignore[return-value]
 
     def mark_week_sent(self, week_id: str, sent_by: str = "open-access") -> WeeklyDraftRecord:
+        canonical_week_id = week_start_for(week_id)
         transaction = self._get_client().transaction()
-        week_ref = self._week_ref(week_id)
+        week_ref = self._week_ref(canonical_week_id)
 
         @firestore.transactional
         def apply(transaction: Any) -> None:
-            snapshot = self._week_snapshot(week_id, transaction=transaction)
+            snapshot = self._week_snapshot(canonical_week_id, transaction=transaction)
             if not snapshot.exists:
-                raise KeyError(week_id)
+                raise KeyError(canonical_week_id)
             data = snapshot.to_dict() or {}
             approval = data.get("approval") if isinstance(data.get("approval"), dict) else default_approval_state()
             if not approval.get("approved"):
@@ -513,36 +575,38 @@ class FirestoreWeeklyEmailStore:
             )
 
         apply(transaction)
-        return self.get_week(week_id)  # type: ignore[return-value]
+        return self.get_week(canonical_week_id)  # type: ignore[return-value]
 
     def reset_week_send(self, week_id: str) -> WeeklyDraftRecord:
+        canonical_week_id = week_start_for(week_id)
         transaction = self._get_client().transaction()
-        week_ref = self._week_ref(week_id)
+        week_ref = self._week_ref(canonical_week_id)
 
         @firestore.transactional
         def apply(transaction: Any) -> None:
-            snapshot = self._week_snapshot(week_id, transaction=transaction)
+            snapshot = self._week_snapshot(canonical_week_id, transaction=transaction)
             if not snapshot.exists:
-                raise KeyError(week_id)
+                raise KeyError(canonical_week_id)
             timestamp = utc_now_iso()
             transaction.set(week_ref, {"sent": default_sent_state(), "updated_at": timestamp}, merge=True)
 
         apply(transaction)
-        return self.get_week(week_id)  # type: ignore[return-value]
+        return self.get_week(canonical_week_id)  # type: ignore[return-value]
 
     def update_week_metadata(self, week_id: str, metadata: dict[str, Any]) -> WeeklyDraftRecord:
+        canonical_week_id = week_start_for(week_id)
         transaction = self._get_client().transaction()
-        week_ref = self._week_ref(week_id)
+        week_ref = self._week_ref(canonical_week_id)
 
         @firestore.transactional
         def apply(transaction: Any) -> None:
-            snapshot = self._week_snapshot(week_id, transaction=transaction)
+            snapshot = self._week_snapshot(canonical_week_id, transaction=transaction)
             if not snapshot.exists:
-                raise KeyError(week_id)
+                raise KeyError(canonical_week_id)
             data = snapshot.to_dict() or {}
             merged = merge_metadata(data.get("metadata") if isinstance(data.get("metadata"), dict) else {}, metadata)
             timestamp = utc_now_iso()
             transaction.set(week_ref, {"metadata": merged, "updated_at": timestamp}, merge=True)
 
         apply(transaction)
-        return self.get_week(week_id)  # type: ignore[return-value]
+        return self.get_week(canonical_week_id)  # type: ignore[return-value]

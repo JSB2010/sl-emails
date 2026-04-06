@@ -17,8 +17,17 @@ def iso_to_date(value: str) -> date:
     return datetime.strptime(value, "%Y-%m-%d").date()
 
 
+def week_start_for(value: str) -> str:
+    parsed = iso_to_date(value)
+    return (parsed - timedelta(days=parsed.weekday())).isoformat()
+
+
 def week_end_for(start_date: str) -> str:
-    return (iso_to_date(start_date) + timedelta(days=6)).isoformat()
+    return (iso_to_date(week_start_for(start_date)) + timedelta(days=6)).isoformat()
+
+
+def default_send_date_for_week(week_start: str) -> str:
+    return (iso_to_date(week_start_for(week_start)) - timedelta(days=1)).isoformat()
 
 
 def resolve_week_bounds(
@@ -29,7 +38,7 @@ def resolve_week_bounds(
     end_date: str | None = None,
 ) -> tuple[date, date]:
     if start_date and end_date:
-        start = iso_to_date(start_date)
+        start = iso_to_date(week_start_for(start_date))
         end = iso_to_date(end_date)
         if end < start:
             raise ValueError("end_date must be on or after start_date")

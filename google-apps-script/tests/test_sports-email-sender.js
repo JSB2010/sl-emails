@@ -7,6 +7,25 @@ const vm = require('node:vm');
 const senderSource = fs.readFileSync(path.join(__dirname, '..', 'sports-email-sender.gs'), 'utf8');
 const troubleshootingSource = fs.readFileSync(path.join(__dirname, '..', 'troubleshooting-functions.gs'), 'utf8');
 
+function isoDateFromUtcDate(date) {
+  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}-${String(date.getUTCDate()).padStart(2, '0')}`;
+}
+
+function addDaysIso(isoDate, days) {
+  const [year, month, day] = isoDate.split('-').map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  date.setUTCDate(date.getUTCDate() + days);
+  return isoDateFromUtcDate(date);
+}
+
+function currentMondayIso(isoDate) {
+  const [year, month, day] = isoDate.split('-').map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  const utcDay = date.getUTCDay();
+  const isoWeekday = utcDay === 0 ? 7 : utcDay;
+  return addDaysIso(isoDate, -(isoWeekday - 1));
+}
+
 function makeResponse(status, payload) {
   return {
     getResponseCode() {
@@ -265,7 +284,7 @@ function buildHarness(options = {}) {
 
   vm.createContext(sandbox);
   vm.runInContext(
-    `${senderSource}\nthis.__exports = { refreshDailySignage, runSundayDraftCycle, sendSportsEmails, setupTriggers, removeTriggers, validateConfiguration, getEffectiveConfig, getTargetMondayDate, getCurrentWeekId, getCurrentSignageDayId, CONFIG };`,
+    `${senderSource}\nthis.__exports = { refreshDailySignage, runSundayDraftCycle, sendSportsEmails, setupTriggers, removeTriggers, validateConfiguration, getEffectiveConfig, getTargetMondayDate, getCurrentWeekId, getCurrentSignageDayId, resolveSendDispatch, CONFIG };`,
     sandbox
   );
 
@@ -316,6 +335,64 @@ test('dispatcher sends postponed weeks on the scheduled weekday', () => {
 
   assert.equal(harness.deliveries.length, 2);
   assert.equal(harness.backendState.finalizeAttempts, 1);
+});
+
+test('dispatcher sends default week on sunday without timezone date rollback', () => {
+  class FixedDate extends Date {
+    constructor(...args) {
+      if (args.length) {
+        super(...args);
+        return;
+      }
+      super('2026-04-12T22:51:25Z');
+    }
+    static now() {
+      return new Date('2026-04-12T22:51:25Z').getTime();
+    }
+  }
+
+  const harness = buildHarness({
+    Date: FixedDate,
+    weekId: '2026-04-13',
+    todayIso: '2026-04-12',
+    isoWeekday: 6,
+    delivery: { mode: 'default', send_on: '2026-04-12', send_time: '16:00' },
+  });
+
+  harness.exports.sendSportsEmails();
+
+  assert.equal(harness.deliveries.length, 2);
+  assert.equal(harness.backendState.finalizeAttempts, 1);
+});
+
+test('dispatch calendar does not roll local dates backward across a full year', () => {
+  const start = new Date(Date.UTC(2026, 0, 1));
+  const end = new Date(Date.UTC(2026, 11, 31));
+
+  for (const current = new Date(start); current <= end; current.setUTCDate(current.getUTCDate() + 1)) {
+    const todayIso = isoDateFromUtcDate(current);
+    const harness = buildHarness({ todayIso });
+    const dispatch = harness.exports.resolveSendDispatch(harness.exports.getEffectiveConfig());
+    const isoWeekday = current.getUTCDay() === 0 ? 7 : current.getUTCDay();
+
+    assert.equal(dispatch.todayIso, todayIso);
+    if (isoWeekday === 7) {
+      assert.deepEqual(
+        { shouldAttempt: dispatch.shouldAttempt, dayType: dispatch.dayType, weekId: dispatch.weekId, requiredMode: dispatch.requiredMode },
+        { shouldAttempt: true, dayType: 'sunday', weekId: addDaysIso(todayIso, 1), requiredMode: 'default' }
+      );
+    } else if (isoWeekday >= 1 && isoWeekday <= 4) {
+      assert.deepEqual(
+        { shouldAttempt: dispatch.shouldAttempt, dayType: dispatch.dayType, weekId: dispatch.weekId, requiredMode: dispatch.requiredMode },
+        { shouldAttempt: true, dayType: 'weekday', weekId: currentMondayIso(todayIso), requiredMode: 'postpone' }
+      );
+    } else {
+      assert.deepEqual(
+        { shouldAttempt: dispatch.shouldAttempt, dayType: dispatch.dayType, weekId: dispatch.weekId, requiredMode: dispatch.requiredMode },
+        { shouldAttempt: false, dayType: 'off', weekId: '', requiredMode: '' }
+      );
+    }
+  }
 });
 
 test('dispatcher no-ops for skipped weeks', () => {

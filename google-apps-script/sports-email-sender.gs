@@ -313,7 +313,7 @@ function sendSportsEmailsManual() {
 function getTargetMondayDate() {
   const timezone = getEffectiveConfig().TIMEZONE;
   const today = getTodayInTimezone(timezone);
-  const isoWeekday = getIsoWeekdayInTimezone(today, timezone);
+  const isoWeekday = getIsoWeekdayInTimezone(today);
 
   let daysUntilMonday;
   if (isoWeekday === 7) {
@@ -330,18 +330,22 @@ function getTargetMondayDate() {
 function getCurrentMondayDate() {
   const timezone = getEffectiveConfig().TIMEZONE;
   const today = getTodayInTimezone(timezone);
-  const isoWeekday = getIsoWeekdayInTimezone(today, timezone);
+  const isoWeekday = getIsoWeekdayInTimezone(today);
   const daysSinceMonday = isoWeekday === 7 ? 6 : isoWeekday - 1;
   return addDaysUtc(today, -daysSinceMonday);
 }
 
-function getTodayInTimezone(timezone) {
-  const todayIso = Utilities.formatDate(new Date(), timezone, 'yyyy-MM-dd');
-  return utcDateFromIso(todayIso);
+function getTodayIsoInTimezone(timezone) {
+  return Utilities.formatDate(new Date(), timezone, 'yyyy-MM-dd');
 }
 
-function getIsoWeekdayInTimezone(date, timezone) {
-  return Number(Utilities.formatDate(date, timezone, 'u'));
+function getTodayInTimezone(timezone) {
+  return utcDateFromIso(getTodayIsoInTimezone(timezone));
+}
+
+function getIsoWeekdayInTimezone(date) {
+  const day = date.getUTCDay();
+  return day === 0 ? 7 : day;
 }
 
 function utcDateFromIso(isoDate) {
@@ -356,19 +360,19 @@ function addDaysUtc(date, days) {
 }
 
 function getCurrentWeekId() {
-  return Utilities.formatDate(getTargetMondayDate(), getEffectiveConfig().TIMEZONE, 'yyyy-MM-dd');
+  return formatUtcIsoDate(getTargetMondayDate());
 }
 
 function getCurrentWeekFolder() {
-  return Utilities.formatDate(getTargetMondayDate(), getEffectiveConfig().TIMEZONE, 'MMMdd').toLowerCase();
+  return Utilities.formatDate(getTargetMondayDate(), 'UTC', 'MMMdd').toLowerCase();
 }
 
 function getCurrentMondayWeekId() {
-  return Utilities.formatDate(getCurrentMondayDate(), getEffectiveConfig().TIMEZONE, 'yyyy-MM-dd');
+  return formatUtcIsoDate(getCurrentMondayDate());
 }
 
 function getSundayBeforeWeekId(weekId) {
-  return Utilities.formatDate(addDaysUtc(utcDateFromIso(weekId), -1), getEffectiveConfig().TIMEZONE, 'yyyy-MM-dd');
+  return formatUtcIsoDate(addDaysUtc(utcDateFromIso(weekId), -1));
 }
 
 function normalizeDelivery(delivery, weekId) {
@@ -386,8 +390,8 @@ function normalizeDelivery(delivery, weekId) {
 
 function resolveSendDispatch(config) {
   const today = getTodayInTimezone(config.TIMEZONE);
-  const isoWeekday = getIsoWeekdayInTimezone(today, config.TIMEZONE);
-  const todayIso = Utilities.formatDate(today, config.TIMEZONE, 'yyyy-MM-dd');
+  const isoWeekday = getIsoWeekdayInTimezone(today);
+  const todayIso = formatUtcIsoDate(today);
 
   if (isoWeekday === 7) {
     return {
@@ -416,6 +420,10 @@ function resolveSendDispatch(config) {
     weekId: '',
     requiredMode: '',
   };
+}
+
+function formatUtcIsoDate(date) {
+  return Utilities.formatDate(date, 'UTC', 'yyyy-MM-dd');
 }
 
 function evaluatePayloadForDispatch(payload, dispatch) {

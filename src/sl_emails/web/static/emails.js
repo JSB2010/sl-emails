@@ -43,6 +43,7 @@
     saveBtn: document.getElementById("save-week"),
     previewBtn: document.getElementById("preview-week"),
     approveBtn: document.getElementById("approve-week"),
+    sendNowBtn: document.getElementById("send-now"),
     markUnsentBtn: document.getElementById("mark-unsent"),
     addBtn: document.getElementById("add-custom"),
     exportBtn: document.getElementById("export-csv"),
@@ -1276,6 +1277,7 @@
     const isSending = Boolean(week?.sent?.sending);
     const isSendLocked = isSent || isSending;
     const isSkipped = week?.delivery?.mode === "skip";
+    const isApproved = Boolean(week?.approval?.approved);
     els.exportBtn.disabled = !week || !(week.events || []).length;
     els.createBtn.disabled = !state.week || isSendLocked;
     els.addBtn.disabled = !state.week || isSendLocked;
@@ -1284,6 +1286,8 @@
     els.saveBtn.disabled = !state.week || isSendLocked;
     els.previewBtn.disabled = !state.week;
     els.approveBtn.disabled = !state.week || isSendLocked || isSkipped;
+    els.sendNowBtn.disabled = !state.week || state.dirty || isSendLocked || isSkipped;
+    els.sendNowBtn.textContent = !state.week || isApproved ? "Send Now" : "Approve & Send";
     els.markUnsentBtn.hidden = !isSendLocked;
     els.markUnsentBtn.disabled = !state.week || !isSendLocked;
     els.deliveryOptions.forEach((input) => {
@@ -1586,6 +1590,55 @@
       setFlash(error.message || "Unable to approve the week.", true);
     } finally {
       setButtonBusy(els.approveBtn, false);
+    }
+  }
+
+  async function sendWeekNow() {
+    if (!state.week) return;
+    if (state.dirty) {
+      setFlash("Save or discard draft changes before sending now.", true);
+      return;
+    }
+    if (state.week.delivery?.mode === "skip") {
+      setFlash("Weeks marked “No email this week” cannot be sent until delivery is changed.", true);
+      return;
+    }
+    const weekId = state.week.week_id;
+    const isApproved = Boolean(state.week.approval?.approved);
+    const confirmationMessage = isApproved
+      ? "Send this approved week now? This will deliver both audience emails and mark the week sent."
+      : "This week is not approved yet. Approve it and send both audience emails now?";
+    const confirmed = typeof window.confirm !== "function"
+      || window.confirm(confirmationMessage);
+    if (!confirmed) return;
+
+    setButtonBusy(els.sendNowBtn, true);
+    setFlash(isApproved ? `Sending ${weekId} now...` : `Approving and sending ${weekId} now...`);
+
+    try {
+      if (!isApproved) {
+        const approvalData = await fetchJson(`/api/emails/weeks/${weekId}/approve`, {
+          method: "POST",
+          headers: { "X-Email-Actor": "admin-ui" },
+        });
+        state.outputs = approvalData.outputs || null;
+        applyWeek(approvalData.week);
+        setButtonBusy(els.sendNowBtn, true);
+      }
+
+      const data = await fetchJson(`/api/emails/weeks/${weekId}/manual-send`, {
+        method: "POST",
+        headers: { "X-Email-Actor": "admin-ui" },
+      });
+      state.outputs = null;
+      applyWeek(data.week);
+      await fetchWeekActivity(data.week.week_id);
+      setFlash("Manual send completed and the week is marked sent.");
+    } catch (error) {
+      setFlash(error.message || "Unable to send the week now.", true);
+    } finally {
+      setButtonBusy(els.sendNowBtn, false);
+      renderActionState();
     }
   }
 
@@ -1959,6 +2012,7 @@
     els.saveBtn.addEventListener("click", () => saveWeek());
     els.previewBtn.addEventListener("click", () => previewWeek());
     els.approveBtn.addEventListener("click", approveWeek);
+    els.sendNowBtn.addEventListener("click", sendWeekNow);
     els.markUnsentBtn.addEventListener("click", markWeekUnsent);
     els.exportBtn.addEventListener("click", exportEvents);
     els.addBtn.addEventListener("click", addCustomEvent);

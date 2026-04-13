@@ -5,8 +5,10 @@ from sl_emails.services.admin_settings import (
     FirestoreAdminSettingsStore,
     MemoryAdminSettingsStore,
     build_automation_settings_payload,
+    normalize_automation_metadata,
     normalize_email_list,
     normalize_sender_metadata,
+    validate_automation_metadata,
     validate_sender_metadata,
 )
 
@@ -158,6 +160,25 @@ class AdminSettingsTests(unittest.TestCase):
         self.assertEqual(payload["email_from_name"], "KD Athletics")
         self.assertEqual(payload["reply_to_email"], "reply@kentdenver.org")
         self.assertEqual(payload["email_recipients"]["middle_school"]["to"], "middle@kentdenver.org")
+        self.assertNotIn("automation_key", payload)
+
+    def test_automation_metadata_normalizes_and_validates_script_urls(self):
+        metadata = normalize_automation_metadata(
+            {
+                "automation_key": " secret-key ",
+                "apps_script_web_app_url": " https://script.google.com/macros/s/deployment/exec ",
+            }
+        )
+
+        self.assertEqual(metadata["automation_key"], "secret-key")
+        self.assertEqual(metadata["apps_script_web_app_url"], "https://script.google.com/macros/s/deployment/exec")
+        self.assertEqual(validate_automation_metadata(metadata), metadata)
+
+        with self.assertRaises(ValueError):
+            validate_automation_metadata({"automation_key": "secret-key", "apps_script_web_app_url": "https://example.test/exec"})
+
+        with self.assertRaises(ValueError):
+            validate_automation_metadata({"automation_key": "", "apps_script_web_app_url": ""}, require_complete=True)
 
     def test_memory_store_get_settings_returns_none_until_bootstrapped(self):
         store = MemoryAdminSettingsStore()
@@ -201,6 +222,10 @@ class AdminSettingsTests(unittest.TestCase):
                     "upper_school": {"to": "upper@kentdenver.org", "bcc": []},
                 },
             },
+            automation_metadata={
+                "automation_key": "secret-key",
+                "apps_script_web_app_url": "https://script.google.com/macros/s/deployment/exec",
+            },
             actor="admin-user",
         )
 
@@ -213,6 +238,7 @@ class AdminSettingsTests(unittest.TestCase):
             updated.sender_metadata["audience_recipients"]["middle_school"]["to"],
             "middle@kentdenver.org",
         )
+        self.assertEqual(updated.automation_metadata["automation_key"], "secret-key")
 
     def test_firestore_store_can_ensure_and_update_settings(self):
         client = _FakeFirestoreClient()
@@ -238,6 +264,10 @@ class AdminSettingsTests(unittest.TestCase):
                     "upper_school": {"to": "upper@kentdenver.org", "bcc": []},
                 },
             },
+            automation_metadata={
+                "automation_key": "secret-key",
+                "apps_script_web_app_url": "https://script.google.com/macros/s/deployment/exec",
+            },
             actor="admin-user",
         )
 
@@ -249,6 +279,7 @@ class AdminSettingsTests(unittest.TestCase):
             client.documents[store.document_id]["sender_metadata"]["audience_recipients"]["upper_school"]["to"],
             "upper@kentdenver.org",
         )
+        self.assertEqual(client.documents[store.document_id]["automation_metadata"]["automation_key"], "secret-key")
 
 
 if __name__ == "__main__":

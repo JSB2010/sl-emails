@@ -4,10 +4,12 @@ from __future__ import annotations
 
 from typing import Any
 
+import requests
 from flask import Blueprint, current_app, jsonify, request
 
 from sl_emails.domain.dates import format_email_date_range, week_end_for, week_start_for
 from sl_emails.ingest import generate_games
+from sl_emails.services.admin_settings import normalize_automation_metadata
 from sl_emails.services.gemini_copy import GeminiCopyError, generate_week_copy
 from sl_emails.services.request_store import event_payload_for_request
 from sl_emails.services.weekly_ingest import WeeklyIngestResult, WeeklySourceFetchError, scheduled_ingest_week, source_refresh_week
@@ -15,7 +17,7 @@ from sl_emails.services.weekly_outputs import build_weekly_email_outputs as rend
 from sl_emails.services.weekly_store import build_blank_week_payload
 from sl_emails.web.request_protection import HONEYPOT_FIELD, RequestProtectionError, first_forwarded_ip
 
-from ..support import current_public_base_url, current_user_email, get_activity_store, get_emails_store, get_request_protector, get_request_store, json_error, require_automation_key, require_emails_admin, require_emails_operator, update_week_metadata_safely, write_activity
+from ..support import current_public_base_url, current_user_email, ensure_admin_settings, get_activity_store, get_emails_store, get_request_protector, get_request_store, json_error, require_automation_key, require_emails_admin, require_emails_operator, update_week_metadata_safely, write_activity
 
 
 blueprint = Blueprint("emails_api", __name__, url_prefix="/api/emails")
@@ -467,6 +469,86 @@ def approve_week(week_id: str) -> Any:
 
     write_activity(event_type="approval", status="success", actor=actor, week_id=normalized_week_id, message="Approved weekly draft")
     return jsonify({"ok": True, "week": week.to_dict(), "outputs": outputs})
+
+
+@blueprint.post("/weeks/<week_id>/manual-send")
+@require_emails_admin
+def manual_send_week(week_id: str) -> Any:
+    actor = actor_for_request()
+    normalized_week_id = canonical_week_id(week_id)
+    store = get_emails_store()
+    week = store.get_week(normalized_week_id)
+    if week is None:
+        return json_error(f"No weekly draft found for {normalized_week_id}", status=404)
+    if str((week.delivery or {}).get("mode") or "").strip().lower() == "skip":
+        return json_error("Weeks marked “No email this week” cannot be sent until delivery is changed", status=409)
+    if not week.approval.get("approved"):
+        return json_error("Week must be approved before it can be sent manually", status=409)
+    if week.sent.get("sent"):
+        return json_error("Week is already marked sent. Mark it unsent before sending again.", status=409)
+    if week.sent.get("sending"):
+        return json_error("Week is already claimed for sending. Clear the send lock before retrying.", status=409)
+
+    automation_metadata = normalize_automation_metadata(ensure_admin_settings().automation_metadata)
+    web_app_url = automation_metadata["apps_script_web_app_url"]
+    automation_key = automation_metadata["automation_key"]
+    if not web_app_url or not automation_key:
+        return json_error(
+            "Manual send is not configured. Add the Apps Script web app URL and automation key in /emails/settings.",
+            status=503,
+        )
+
+    write_activity(
+        event_type="manual_send",
+        status="requested",
+        actor=actor,
+        week_id=normalized_week_id,
+        message=f"Requested manual send for {normalized_week_id}",
+    )
+
+    try:
+        response = requests.post(
+            web_app_url,
+            json={
+                "action": "send_sports_email",
+                "week_id": normalized_week_id,
+                "automation_key": automation_key,
+                "actor": actor,
+            },
+            timeout=60,
+            allow_redirects=True,
+        )
+        try:
+            payload = response.json()
+        except ValueError as exc:
+            raise RuntimeError(f"Apps Script returned a non-JSON response ({response.status_code})") from exc
+        if response.status_code < 200 or response.status_code >= 300:
+            message = (payload.get("error") or payload.get("message")) if isinstance(payload, dict) else ""
+            raise RuntimeError(message or f"Apps Script request failed with status {response.status_code}")
+        if not isinstance(payload, dict) or payload.get("ok") is not True:
+            message = (payload.get("error") or payload.get("message")) if isinstance(payload, dict) else ""
+            raise RuntimeError(message or "Apps Script manual send failed")
+    except requests.RequestException as exc:
+        message = f"Unable to reach Apps Script manual send endpoint: {exc}"
+        write_activity(event_type="manual_send", status="failed", actor=actor, week_id=normalized_week_id, message=message)
+        return json_error(message, status=502)
+    except RuntimeError as exc:
+        message = str(exc)
+        write_activity(event_type="manual_send", status="failed", actor=actor, week_id=normalized_week_id, message=message)
+        return json_error(message, status=502)
+
+    refreshed = store.get_week(normalized_week_id)
+    if refreshed is None:
+        return json_error(f"No weekly draft found for {normalized_week_id}", status=404)
+    write_activity(
+        event_type="manual_send",
+        status="success",
+        actor=actor,
+        week_id=normalized_week_id,
+        message=f"Manual send completed for {normalized_week_id}",
+        details={"apps_script": {key: value for key, value in payload.items() if key != "automation_key"}},
+    )
+    return jsonify({"ok": True, "week": refreshed.to_dict(), "apps_script": payload})
 
 
 @blueprint.post("/weeks/<week_id>/sent")

@@ -13,6 +13,12 @@
     middleSchoolBcc: document.getElementById('middle-school-bcc'),
     upperSchoolTo: document.getElementById('upper-school-to'),
     upperSchoolBcc: document.getElementById('upper-school-bcc'),
+    appsScriptWebAppUrl: document.getElementById('apps-script-web-app-url'),
+    automationKey: document.getElementById('automation-key'),
+    revealAutomationKey: document.getElementById('reveal-automation-key'),
+    copyAutomationKey: document.getElementById('copy-automation-key'),
+    rotateAutomationKey: document.getElementById('rotate-automation-key'),
+    testAppsScript: document.getElementById('test-apps-script'),
     saveSettings: document.getElementById('save-settings'),
     meta: document.getElementById('settings-meta'),
     flash: document.getElementById('settings-flash'),
@@ -31,6 +37,7 @@
 
   function populate(nextSettings) {
     const sender = nextSettings.sender_metadata || {};
+    const automation = nextSettings.automation_metadata || {};
     const recipients = sender.audience_recipients || {};
     const middleSchool = recipients.middle_school || {};
     const upperSchool = recipients.upper_school || {};
@@ -44,6 +51,9 @@
     els.middleSchoolBcc.value = (middleSchool.bcc || []).join('\n');
     els.upperSchoolTo.value = upperSchool.to || '';
     els.upperSchoolBcc.value = (upperSchool.bcc || []).join('\n');
+    els.appsScriptWebAppUrl.value = automation.apps_script_web_app_url || '';
+    els.automationKey.value = automation.automation_key || '';
+    els.revealAutomationKey.textContent = els.automationKey.type === 'password' ? 'Show Key' : 'Hide Key';
     renderMeta(nextSettings);
   }
 
@@ -52,6 +62,73 @@
       .split(/\n+/)
       .map((value) => value.trim().toLowerCase())
       .filter(Boolean);
+  }
+
+  function generateAutomationKey() {
+    const bytes = new Uint8Array(32);
+    window.crypto.getRandomValues(bytes);
+    return Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('');
+  }
+
+  function rotateAutomationKey() {
+    els.automationKey.value = generateAutomationKey();
+    setFlash('Generated a new key. Save settings, then update the Apps Script AUTOMATION_API_KEY Script Property to match.');
+  }
+
+  async function copyAutomationKey() {
+    const value = String(els.automationKey.value || '').trim();
+    if (!value) {
+      setFlash('No automation key to copy.', true);
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(value);
+      setFlash('Automation key copied. Keep it in sync with Apps Script.');
+    } catch (error) {
+      setFlash('Unable to copy the key from this browser.', true);
+    }
+  }
+
+  function toggleAutomationKeyVisibility() {
+    els.automationKey.type = els.automationKey.type === 'password' ? 'text' : 'password';
+    els.revealAutomationKey.textContent = els.automationKey.type === 'password' ? 'Show Key' : 'Hide Key';
+  }
+
+  function automationMetadataFromForm() {
+    return {
+      apps_script_web_app_url: String(els.appsScriptWebAppUrl.value || '').trim(),
+      automation_key: String(els.automationKey.value || '').trim(),
+    };
+  }
+
+  async function testAppsScriptConnection() {
+    const automationMetadata = automationMetadataFromForm();
+    if (!automationMetadata.apps_script_web_app_url || !automationMetadata.automation_key) {
+      setFlash('Add the Apps Script web app URL and automation key before testing.', true);
+      return;
+    }
+
+    els.testAppsScript.disabled = true;
+    els.testAppsScript.textContent = 'Testing...';
+    setFlash('Testing Apps Script connection...');
+
+    try {
+      const response = await fetch('/api/emails/settings/test-apps-script', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ automation_metadata: automationMetadata }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || payload.ok === false) {
+        throw new Error(payload.error || `Request failed (${response.status})`);
+      }
+      setFlash('Apps Script connection succeeded. No email was sent.');
+    } catch (error) {
+      setFlash(error.message || 'Unable to test Apps Script connection.', true);
+    } finally {
+      els.testAppsScript.disabled = false;
+      els.testAppsScript.textContent = 'Test Connection';
+    }
   }
 
   async function saveSettings() {
@@ -107,6 +184,7 @@
               },
             },
           },
+          automation_metadata: automationMetadataFromForm(),
         }),
       });
       const payload = await response.json().catch(() => ({}));
@@ -124,5 +202,9 @@
   }
 
   els.saveSettings.addEventListener('click', saveSettings);
+  els.revealAutomationKey.addEventListener('click', toggleAutomationKeyVisibility);
+  els.copyAutomationKey.addEventListener('click', copyAutomationKey);
+  els.rotateAutomationKey.addEventListener('click', rotateAutomationKey);
+  els.testAppsScript.addEventListener('click', testAppsScriptConnection);
   populate(settings);
 })();

@@ -13,16 +13,18 @@ concurrency:
   group: deploy-production-main
   cancel-in-progress: false
 
-# Required GitHub secret:
+# Required GitHub secrets:
 # - FIREBASE_SERVICE_ACCOUNT_JSON: deploy-capable Google service-account key.
 #   It must be able to run Cloud Build, deploy Cloud Run, act as the runtime
 #   service account, and deploy Firebase Hosting.
-# - EMAILS_AUTOMATION_KEY: shared secret for Apps Script scheduled-ingest calls.
 # - EMAILS_SESSION_SECRET: Flask session signing secret for Google-authenticated admin sessions.
 # - GOOGLE_OAUTH_CLIENT_ID: Google OAuth client ID for the sports email admin UI.
 # - GOOGLE_OAUTH_CLIENT_SECRET: Google OAuth client secret for the sports email admin UI.
 # - GEMINI_API_KEY_SECRET_NAME: Secret Manager secret name for the Gemini API key
 #   (default: gemini-api-key).
+# Optional GitHub secret:
+# - EMAILS_AUTOMATION_KEY: legacy/bootstrap fallback only. Prefer setting the
+#   automation key in /emails/settings.
 # Optional repository variables (defaults match current production):
 # - GCP_PROJECT_ID (default: student-leadership-media)
 # - GCP_REGION (default: us-central1)
@@ -150,7 +152,6 @@ jobs:
             fi
           }
 
-          require_value "EMAILS_AUTOMATION_KEY" "${EMAILS_AUTOMATION_KEY}"
           require_value "EMAILS_SESSION_SECRET" "${EMAILS_SESSION_SECRET}"
           require_value "GOOGLE_OAUTH_CLIENT_ID" "${GOOGLE_OAUTH_CLIENT_ID}"
           require_value "GOOGLE_OAUTH_CLIENT_SECRET" "${GOOGLE_OAUTH_CLIENT_SECRET}"
@@ -182,7 +183,6 @@ jobs:
           values = {
               "FIREBASE_PROJECT_ID": os.environ["GCP_PROJECT_ID"],
               "FIRESTORE_COLLECTION": os.environ["FIRESTORE_COLLECTION"],
-              "EMAILS_AUTOMATION_KEY": os.environ["EMAILS_AUTOMATION_KEY"],
               "EMAILS_SESSION_SECRET": os.environ["EMAILS_SESSION_SECRET"],
               "GOOGLE_OAUTH_CLIENT_ID": os.environ["GOOGLE_OAUTH_CLIENT_ID"],
               "GOOGLE_OAUTH_CLIENT_SECRET": os.environ["GOOGLE_OAUTH_CLIENT_SECRET"],
@@ -192,6 +192,9 @@ jobs:
               "EMAILS_BOOTSTRAP_ALLOWED_EMAILS": os.environ["EMAILS_BOOTSTRAP_ALLOWED_EMAILS"],
               "EMAILS_BOOTSTRAP_NOTIFICATION_EMAILS": os.environ["EMAILS_BOOTSTRAP_NOTIFICATION_EMAILS"],
           }
+          legacy_automation_key = os.environ.get("EMAILS_AUTOMATION_KEY", "").strip()
+          if legacy_automation_key:
+              values["EMAILS_AUTOMATION_KEY"] = legacy_automation_key
           for key, value in values.items():
               escaped = value.replace("\\", "\\\\").replace('"', '\\"')
               print(f'{key}: "{escaped}"')
@@ -224,6 +227,11 @@ jobs:
           set -euo pipefail
 
           DAY_ID="$(python -c 'from datetime import datetime; from zoneinfo import ZoneInfo; print(datetime.now(ZoneInfo("America/Denver")).date().isoformat())')"
+
+          if [ -z "${EMAILS_AUTOMATION_KEY}" ]; then
+            echo "Skipping deploy-time signage refresh because EMAILS_AUTOMATION_KEY is not set as a legacy fallback."
+            exit 0
+          fi
 
           curl \
             --silent \

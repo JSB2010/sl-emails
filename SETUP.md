@@ -35,10 +35,13 @@ The production workflow is `.github/workflows/deploy-main.yml`.
 Required GitHub secrets:
 
 - `FIREBASE_SERVICE_ACCOUNT_JSON`
-- `EMAILS_AUTOMATION_KEY`
 - `EMAILS_SESSION_SECRET`
 - `GOOGLE_OAUTH_CLIENT_ID`
 - `GOOGLE_OAUTH_CLIENT_SECRET`
+
+Optional GitHub secret:
+
+- `EMAILS_AUTOMATION_KEY` only if you need the legacy/bootstrap fallback before `/emails/settings` is configured
 
 Optional GitHub variables:
 
@@ -61,7 +64,6 @@ Optional GitHub variables:
 Required on Cloud Run:
 
 - `FIREBASE_PROJECT_ID`
-- `EMAILS_AUTOMATION_KEY`
 - `EMAILS_SESSION_SECRET`
 - `GOOGLE_OAUTH_CLIENT_ID`
 - `GOOGLE_OAUTH_CLIENT_SECRET`
@@ -86,6 +88,7 @@ Local-only:
 
 - `FIRESTORE_EMULATOR_HOST`
 - `EMAILS_LOCAL_DEV=1`
+- `EMAILS_AUTOMATION_KEY` as a local or legacy fallback before `/emails/settings` is configured
 
 ## Required Apps Script Configuration
 
@@ -94,10 +97,12 @@ Set these Script Properties:
 - `API_BASE_URL`
 - `AUTOMATION_API_KEY`
 
-`AUTOMATION_API_KEY` must match `EMAILS_AUTOMATION_KEY`.
+`AUTOMATION_API_KEY` must match the automation key stored in `/emails/settings`. `EMAILS_AUTOMATION_KEY` is only a legacy/bootstrap fallback for Cloud Run.
 
 The app now owns these automation settings in `/emails/settings`:
 
+- automation key
+- Apps Script web app URL for manual sends
 - admin notification recipients
 - middle-school and upper-school delivery recipients
 - sender display name
@@ -115,12 +120,15 @@ The app now owns these automation settings in `/emails/settings`:
    - ops/admin notification emails
    - middle-school and upper-school recipients
    - sender display name, reply-to email, and timezone
+   - automation key
 6. Copy `google-apps-script/sports-email-sender.gs` and `google-apps-script/troubleshooting-functions.gs` into the Apps Script project.
-7. Set Apps Script Script Properties to `API_BASE_URL` and `AUTOMATION_API_KEY`.
-8. Run `debugConfiguration()` in Apps Script.
-9. Run `debugScheduledIngestAccess()` and `refreshDailySignageManual()`.
-10. Confirm `/signage` renders the current day and `/emails?week=<week-id>` loads after sign-in.
-11. Run `setupTriggers()` once production configuration is correct.
+7. Deploy the Apps Script project as a web app, set it to execute as the script owner, and copy the `/exec` URL into `/emails/settings`.
+8. Set Apps Script Script Properties to `API_BASE_URL` and `AUTOMATION_API_KEY`. The property value must match `/emails/settings`.
+9. Run `debugConfiguration()` in Apps Script.
+10. Run `debugBackendConnection()` in Apps Script and use `Test Connection` in `/emails/settings`.
+11. Run `debugScheduledIngestAccess()` and `refreshDailySignageManual()`.
+12. Confirm `/signage` renders the current day and `/emails?week=<week-id>` loads after sign-in.
+13. Run `setupTriggers()` once production configuration is correct.
 
 ## Weekly Operating Timeline
 
@@ -157,17 +165,20 @@ After any deploy, verify:
 2. `/signage` renders HTML and not an error body.
 3. `/login` loads and Google sign-in completes for an allowlisted account.
 4. `/api/emails/automation/settings` succeeds with the automation key.
-5. `refreshDailySignageManual()` succeeds in Apps Script.
-6. `runSundayDraftCycleManual()` creates or skips the target week without error.
-7. A test approval in `/emails` exposes approved sender-output.
-8. `sendSportsEmailsManual()` completes and records send state.
+5. `debugBackendConnection()` succeeds in Apps Script.
+6. `Test Connection` succeeds in `/emails/settings`.
+7. `refreshDailySignageManual()` succeeds in Apps Script.
+8. `runSundayDraftCycleManual()` creates or skips the target week without error.
+9. A test approval in `/emails` exposes approved sender-output.
+10. `sendSportsEmailsManualForWeek("<week-id>")` completes and records send state in Apps Script.
+11. The `Send Now` button on `/emails?week=<week-id>` completes for an approved, unsent week.
 
 ## Troubleshooting
 
 If Sunday draft ingest fails:
 
 - inspect Cloud Run logs for `/api/emails/automation/weeks/<week-id>/scheduled-ingest`
-- confirm `EMAILS_AUTOMATION_KEY` matches Apps Script `AUTOMATION_API_KEY`
+- confirm `/emails/settings` automation key matches Apps Script `AUTOMATION_API_KEY`
 - run `debugScheduledIngestAccess()`
 
 If signage is blank or stale:
@@ -185,8 +196,10 @@ If admin sign-in fails:
 
 If Apps Script cannot send:
 
+- run `debugBackendConnection()`
 - run `debugApprovedApiAccess()`
 - inspect approval and send-state in `/emails`
+- confirm the Apps Script web app URL is set in `/emails/settings` if the UI `Send Now` button is failing
 - use `Mark Unsent` in the UI only after confirming whether any delivery already happened
 
 If source refresh fails:

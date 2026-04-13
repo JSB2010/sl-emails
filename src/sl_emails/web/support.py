@@ -19,7 +19,7 @@ from sl_emails.config import WEB_STATIC_DIR as STATIC_DIR
 from sl_emails.config import WEB_TEMPLATES_DIR as TEMPLATE_DIR
 from sl_emails.domain.dates import iso_to_date, today_in_timezone
 from sl_emails.services.activity_log import FirestoreActivityLogStore
-from sl_emails.services.admin_settings import DEFAULT_ALLOWED_ADMIN_EMAILS, FirestoreAdminSettingsStore, normalize_email_list
+from sl_emails.services.admin_settings import DEFAULT_ALLOWED_ADMIN_EMAILS, FirestoreAdminSettingsStore, normalize_automation_metadata, normalize_email_list
 from sl_emails.services.request_store import FirestoreEventRequestStore
 from sl_emails.services.signage_store import FirestoreSignageStore
 from sl_emails.services.weekly_store import FirestoreWeeklyEmailStore
@@ -259,13 +259,20 @@ def require_emails_admin(view_func: Callable[..., Any]) -> Callable[..., Any]:
 
 
 def has_valid_automation_key() -> bool:
-    configured_key = str(
-        current_app.config.get("EMAILS_AUTOMATION_KEY")
-        or current_app.config.get(EMAILS_AUTOMATION_KEY_ENV)
-        or ""
-    ).strip()
+    configured_key = current_automation_key()
     supplied_key = str(request.headers.get("X-Automation-Key", "")).strip()
     return bool(configured_key and supplied_key == configured_key)
+
+
+def current_automation_key() -> str:
+    try:
+        settings = ensure_admin_settings()
+        settings_key = normalize_automation_metadata(settings.automation_metadata).get("automation_key", "")
+        if settings_key:
+            return settings_key
+    except Exception:
+        current_app.logger.exception("Failed to load DB-backed automation key")
+    return str(current_app.config.get("EMAILS_AUTOMATION_KEY") or current_app.config.get(EMAILS_AUTOMATION_KEY_ENV) or "").strip()
 
 
 def require_emails_operator(view_func: Callable[..., Any]) -> Callable[..., Any]:
@@ -281,7 +288,7 @@ def require_emails_operator(view_func: Callable[..., Any]) -> Callable[..., Any]
 def require_automation_key(view_func: Callable[..., Any]) -> Callable[..., Any]:
     @wraps(view_func)
     def wrapped(*args: Any, **kwargs: Any):
-        configured_key = str(current_app.config.get("EMAILS_AUTOMATION_KEY") or current_app.config.get(EMAILS_AUTOMATION_KEY_ENV) or "").strip()
+        configured_key = current_automation_key()
         if not configured_key:
             return json_error("Automation key is not configured", status=503)
 
@@ -339,6 +346,7 @@ __all__ = [
     "bootstrap_notification_emails",
     "current_user",
     "current_user_email",
+    "current_automation_key",
     "ensure_admin_settings",
     "get_activity_store",
     "get_emails_store",

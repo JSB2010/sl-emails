@@ -62,6 +62,35 @@ function debugApprovedApiAccessForWeek(weekId) {
   }
 }
 
+/**
+ * Test whether Apps Script can authenticate to the backend without sending email
+ * or changing any week state.
+ */
+function debugBackendConnection() {
+  console.log('🔍 Debugging backend automation connection...');
+
+  try {
+    const baseConfig = getBaseScriptConfig();
+    const pingPayload = pingBackend(baseConfig);
+    console.log(`Backend ping status: ${pingPayload.status || '(no status)'}`);
+    console.log(`Backend service: ${pingPayload.service || '(unknown)'}`);
+    console.log(`Backend checked at: ${pingPayload.checked_at || '(unknown)'}`);
+
+    const settingsPayload = fetchAutomationSettings(baseConfig);
+    const remoteConfig = settingsPayload && settingsPayload.config ? settingsPayload.config : {};
+    console.log(`Automation settings reachable: ${!!(settingsPayload && settingsPayload.ok)}`);
+    console.log(`Timezone: ${remoteConfig.timezone || '(unset)'}`);
+    console.log(`Notification recipients: ${parseEmailList(remoteConfig.admin_notification_emails).length}`);
+
+    const recipients = remoteConfig.email_recipients || {};
+    logRecipientConfig('Middle School', recipients.middle_school || {});
+    logRecipientConfig('Upper School', recipients.upper_school || {});
+    console.log('✅ Backend automation connection succeeded. No email was sent.');
+  } catch (error) {
+    console.error('❌ Backend automation connection failed:', error);
+  }
+}
+
 function logApprovedPayloadSummary(payload, weekId) {
   console.log('Backend ok:', !!(payload && payload.ok));
   console.log('Week approved:', !!(payload && payload.approved));

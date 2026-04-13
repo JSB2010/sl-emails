@@ -39,7 +39,6 @@ def _validate_runtime_config(app: Flask) -> None:
 
     required = {
         EMAILS_SESSION_SECRET_ENV: str(app.config.get("SECRET_KEY") or "").strip(),
-        EMAILS_AUTOMATION_KEY_ENV: str(app.config.get("EMAILS_AUTOMATION_KEY") or "").strip(),
         GOOGLE_OAUTH_CLIENT_ID_ENV: str(app.config.get("GOOGLE_OAUTH_CLIENT_ID") or "").strip(),
         GOOGLE_OAUTH_CLIENT_SECRET_ENV: str(app.config.get("GOOGLE_OAUTH_CLIENT_SECRET") or "").strip(),
     }

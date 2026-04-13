@@ -229,20 +229,44 @@ function refreshDailySignageManual() {
 
 function sendSportsEmails() {
   const config = assertConfigured();
+  const dispatch = resolveSendDispatch(config);
+  dispatchSportsEmails(dispatch, config, {
+    label: 'automated',
+    notifyOnError: true,
+    throwOnError: false
+  });
+}
+
+function sendSportsEmailsManual() {
+  sendSportsEmails();
+}
+
+function sendSportsEmailsManualForWeek(weekId) {
+  const config = assertConfigured();
+  return dispatchSportsEmails(resolveManualSendDispatch(weekId, config), config, {
+    label: 'manual',
+    notifyOnError: true,
+    throwOnError: true
+  });
+}
+
+function dispatchSportsEmails(dispatch, config, options) {
   let weekId = 'unknown';
   let sendClaimed = false;
+  const label = options && options.label ? options.label : 'automated';
+  const notifyOnError = !options || options.notifyOnError !== false;
+  const throwOnError = Boolean(options && options.throwOnError);
 
   try {
-    const dispatch = resolveSendDispatch(config);
     if (!dispatch.shouldAttempt) {
       console.log(`⏭️ No scheduled send window today (${dispatch.todayIso || 'unknown day'}).`);
       logEmailActivity('SKIP', `No scheduled send window today (${dispatch.dayType})`);
-      return;
+      return { ok: false, status: 'skipped', week_id: weekId, message: `No scheduled send window today (${dispatch.dayType})` };
     }
     weekId = dispatch.weekId;
 
-    console.log('🏈 Starting automated sports email sending...');
-    console.log(`📅 Evaluating scheduled delivery for week: ${weekId}`);
+    console.log(`🏈 Starting ${label} sports email sending...`);
+    console.log(`📅 Evaluating ${label} delivery for week: ${weekId}`);
 
     const payload = fetchApprovedEmailPayloads(weekId, config);
     const readiness = evaluatePayloadForDispatch(payload, dispatch);
@@ -250,12 +274,12 @@ function sendSportsEmails() {
       console.log(`⏭️ ${readiness.message}`);
       reportAutomationActivity(weekId, 'send', 'skipped', readiness.message, { delivery: payload.delivery || {}, approved: !!payload.approved });
       logEmailActivity('SKIP', readiness.message);
-      return;
+      return { ok: false, status: 'skipped', week_id: weekId, message: readiness.message };
     }
 
     if (!ensureWeekCanSend(payload.sent, weekId)) {
       reportAutomationActivity(weekId, 'send', 'skipped', `Week ${weekId} already marked sent; no delivery attempted.`);
-      return;
+      return { ok: false, status: 'skipped', week_id: weekId, message: `Week ${weekId} already marked sent; no delivery attempted.` };
     }
 
     const emails = normalizeApprovedOutputs(payload, weekId);
@@ -295,19 +319,71 @@ function sendSportsEmails() {
     console.log(`📝 Backend sent-state recorded: ${JSON.stringify(sentState)}`);
     reportAutomationActivity(weekId, 'send', 'success', `Delivered ${sentCount} audience emails for ${weekId}`);
     logEmailActivity('SUCCESS', `Sent ${sentCount} emails for week ${weekId}`);
+    return { ok: true, status: 'sent', week_id: weekId, sent_count: sentCount, sent: sentState };
   } catch (error) {
     console.error('❌ Error in sendSportsEmails:', error);
     const errorMessage = sendClaimed
       ? `Error sending sports emails: ${error.message}\n\nWeek ${weekId} remains claimed as sending to prevent duplicate reruns. Verify whether any audience emails were delivered before resolving the backend sent-state.`
       : `Error sending sports emails: ${error.message}`;
-    sendErrorNotification(errorMessage, config);
+    if (notifyOnError) {
+      sendErrorNotification(errorMessage, config);
+    }
     reportAutomationActivity(weekId, 'send', 'failed', errorMessage);
     logEmailActivity('ERROR', errorMessage);
+    if (throwOnError) {
+      throw new Error(errorMessage);
+    }
+    return { ok: false, status: 'failed', week_id: weekId, message: errorMessage };
   }
 }
 
-function sendSportsEmailsManual() {
-  sendSportsEmails();
+function doPost(e) {
+  try {
+    const payload = parseJsonPostPayload(e);
+    if (payload.action === 'ping') {
+      const suppliedKey = String(payload.automation_key || '').trim();
+      if (!suppliedKey || suppliedKey !== getRequiredProperty('AUTOMATION_API_KEY')) {
+        return jsonResponse({ ok: false, error: 'Invalid automation key' });
+      }
+      return jsonResponse({
+        ok: true,
+        status: 'pong',
+        service: 'sports-email-sender',
+        actor: String(payload.actor || 'unknown').trim() || 'unknown'
+      });
+    }
+    if (payload.action !== 'send_sports_email') {
+      return jsonResponse({ ok: false, error: 'Unsupported action' });
+    }
+    const suppliedKey = String(payload.automation_key || '').trim();
+    if (!suppliedKey || suppliedKey !== getRequiredProperty('AUTOMATION_API_KEY')) {
+      return jsonResponse({ ok: false, error: 'Invalid automation key' });
+    }
+    const weekId = String(payload.week_id || '').trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(weekId)) {
+      return jsonResponse({ ok: false, error: 'week_id must use YYYY-MM-DD format' });
+    }
+    const result = sendSportsEmailsManualForWeek(weekId);
+    return jsonResponse(result);
+  } catch (error) {
+    return jsonResponse({ ok: false, error: String(error && error.message || error) });
+  }
+}
+
+function parseJsonPostPayload(e) {
+  const contents = e && e.postData && e.postData.contents ? e.postData.contents : '{}';
+  try {
+    const payload = JSON.parse(contents);
+    return payload && typeof payload === 'object' ? payload : {};
+  } catch (error) {
+    throw new Error('Request body must be valid JSON');
+  }
+}
+
+function jsonResponse(payload) {
+  return ContentService
+    .createTextOutput(JSON.stringify(payload || {}))
+    .setMimeType(ContentService.MimeType.JSON);
 }
 
 function getTargetMondayDate() {
@@ -422,6 +498,16 @@ function resolveSendDispatch(config) {
   };
 }
 
+function resolveManualSendDispatch(weekId, config) {
+  return {
+    shouldAttempt: true,
+    dayType: 'manual',
+    todayIso: getTodayIsoInTimezone(config.TIMEZONE),
+    weekId,
+    requiredMode: 'manual',
+  };
+}
+
 function formatUtcIsoDate(date) {
   return Utilities.formatDate(date, 'UTC', 'yyyy-MM-dd');
 }
@@ -455,7 +541,12 @@ function evaluatePayloadForDispatch(payload, dispatch) {
     return { shouldSend: false, message: `Week ${dispatch.weekId} is not approved for sending yet.` };
   }
 
-  return { shouldSend: true, message: `Week ${dispatch.weekId} is scheduled to send now.` };
+  return {
+    shouldSend: true,
+    message: dispatch.requiredMode === 'manual'
+      ? `Week ${dispatch.weekId} is approved for manual send.`
+      : `Week ${dispatch.weekId} is scheduled to send now.`
+  };
 }
 
 function shouldSuppressReviewNotification(ingestResult) {
@@ -488,6 +579,12 @@ function triggerSignageRefresh(dayId, config) {
   const url = `${config.API_BASE_URL}/api/signage/automation/days/${encodeURIComponent(dayId)}/refresh`;
   console.log(`📥 Triggering signage refresh at: ${url}`);
   return fetchJson(url, { method: 'POST' }, config);
+}
+
+function pingBackend(config) {
+  const url = `${config.API_BASE_URL}/api/emails/automation/ping`;
+  console.log(`📥 Pinging backend automation API at: ${url}`);
+  return fetchJson(url, { method: 'GET' }, config);
 }
 
 function reportAutomationActivity(weekId, eventType, status, message, details) {

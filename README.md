@@ -38,6 +38,7 @@ The runtime has four main responsibilities:
    - Monday through Thursday can send postponed weeks.
    - weeks marked `skip` are suppressed
 7. Apps Script fetches `/api/emails/weeks/<week-id>/sender-output`, claims the week for sending, delivers both audience emails, and marks the week sent.
+8. If a week is approved after its scheduled window, staff can use `Send Now` on `/emails`; the Flask app calls the Apps Script web app with the shared settings-backed automation key.
 
 ## Production Topology
 
@@ -63,16 +64,19 @@ Admin:
 - `/emails` serves the weekly review dashboard
 - `/emails/settings` manages allowlist, notifications, and Apps Script delivery settings
 - `/api/emails/settings` reads or updates admin settings
+- `/api/emails/settings/test-apps-script` tests the Apps Script web app URL and key without sending email
 - `/api/emails/weeks/<week-id>` reads or saves a weekly draft
 - `/api/emails/weeks/<week-id>/preview` renders both audience outputs
 - `/api/emails/weeks/<week-id>/source-refresh` refreshes source events while preserving custom events
 - `/api/emails/weeks/<week-id>/approve` approves a week
+- `/api/emails/weeks/<week-id>/manual-send` asks the Apps Script web app to send an approved, unsent week immediately
 - `/api/emails/weeks/<week-id>/sent` claims, marks sent, or resets send state
 - `/api/emails/weeks/<week-id>/activity` lists activity log records
 - `/api/emails/weeks/<week-id>/requests` lists public requests for that week
 
 Automation:
 
+- `/api/emails/automation/ping` verifies Apps Script shared-key access without changing data
 - `/api/emails/automation/settings` returns Apps Script delivery config
 - `/api/emails/automation/weeks/<week-id>/scheduled-ingest` creates a missing draft week
 - `/api/emails/automation/weeks/<week-id>/activity` records Apps Script audit events
@@ -85,7 +89,6 @@ Automation:
 Required app configuration:
 
 - `FIREBASE_PROJECT_ID`
-- `EMAILS_AUTOMATION_KEY`
 - `EMAILS_SESSION_SECRET`
 - `GOOGLE_OAUTH_CLIENT_ID`
 - `GOOGLE_OAUTH_CLIENT_SECRET`
@@ -109,6 +112,7 @@ Optional app configuration:
 - `GEMINI_MODEL` defaults to `gemini-3-flash-preview`
 - `EMAILS_BOOTSTRAP_ALLOWED_EMAILS`
 - `EMAILS_BOOTSTRAP_NOTIFICATION_EMAILS`
+- `EMAILS_AUTOMATION_KEY` as a legacy/bootstrap fallback before the settings-backed key is configured
 
 Required Apps Script properties:
 
@@ -122,6 +126,8 @@ Apps Script pulls the rest of its delivery configuration from `/api/emails/autom
 - sender display name
 - reply-to email
 - timezone
+
+Manual sends also require the Apps Script web app `/exec` URL and the automation key in `/emails/settings`. When rotating the key there, update the Apps Script `AUTOMATION_API_KEY` Script Property to the same value.
 
 ## Local Development
 

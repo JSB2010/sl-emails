@@ -119,6 +119,24 @@ class WebSupportTests(unittest.TestCase):
             self.app.config["EMAILS_AUTOMATION_KEY"] = "secret-key"
             self.assertFalse(web_support.has_valid_automation_key())
 
+    def test_automation_key_validation_prefers_db_secret(self):
+        settings_store = self.app.config["EMAILS_SETTINGS_STORE"]
+        settings_store.update_settings(
+            automation_metadata={
+                "automation_key": "db-secret",
+                "apps_script_web_app_url": "https://script.google.com/macros/s/deployment/exec",
+            },
+            actor="admin",
+        )
+
+        with self.app.test_request_context("/api/emails/automation/settings", headers={"X-Automation-Key": "db-secret"}):
+            self.app.config["EMAILS_AUTOMATION_KEY"] = "legacy-secret"
+            self.assertTrue(web_support.has_valid_automation_key())
+
+        with self.app.test_request_context("/api/emails/automation/settings", headers={"X-Automation-Key": "legacy-secret"}):
+            self.app.config["EMAILS_AUTOMATION_KEY"] = "legacy-secret"
+            self.assertFalse(web_support.has_valid_automation_key())
+
     def test_safe_metadata_and_activity_updates_swallow_store_failures(self):
         with self.app.app_context():
             self.app.config["EMAILS_ACTIVITY_STORE"] = _FailingActivityStore()

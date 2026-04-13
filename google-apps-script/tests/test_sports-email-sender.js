@@ -49,10 +49,11 @@ function buildHarness(options = {}) {
   };
   const ingestWeekDelivery = options.ingestWeekDelivery || senderDelivery;
   const backendState = {
-    sent: { sent: false, sent_at: '', sent_by: '', sending: false, sending_at: '', sending_by: '' },
+    sent: options.sent || { sent: false, sent_at: '', sent_by: '', sending: false, sending_at: '', sending_by: '' },
     finalizeAttempts: 0,
     ingestCalls: 0,
     signageRefreshCalls: 0,
+    backendPingCalls: 0,
     activityCalls: [],
     failIngest: Boolean(options.failIngest),
     failSignageRefresh: Boolean(options.failSignageRefresh),
@@ -63,6 +64,7 @@ function buildHarness(options = {}) {
     isoWeekday,
     approved: options.senderApproved !== false,
     delivery: senderDelivery,
+    finalizeSuccess: Boolean(options.finalizeSuccess),
   };
   const deliveries = [];
   const adminEmails = [];
@@ -113,6 +115,22 @@ function buildHarness(options = {}) {
         };
       },
     },
+    ContentService: {
+      MimeType: { JSON: 'application/json' },
+      createTextOutput(text) {
+        return {
+          text,
+          mimeType: '',
+          setMimeType(mimeType) {
+            this.mimeType = mimeType;
+            return this;
+          },
+          getContent() {
+            return this.text;
+          },
+        };
+      },
+    },
     Session: {
       getActiveUser() {
         return {
@@ -124,6 +142,17 @@ function buildHarness(options = {}) {
     },
     UrlFetchApp: {
       fetch(url, options = {}) {
+        if (url.endsWith('/api/emails/automation/ping')) {
+          backendState.backendPingCalls += 1;
+          return makeResponse(200, {
+            ok: true,
+            status: 'pong',
+            service: 'sl-emails',
+            actor: (options.headers && options.headers['X-Email-Actor']) || 'google-apps-script',
+            checked_at: '2026-03-09T16:00:00Z',
+          });
+        }
+
         if (url.endsWith('/api/emails/automation/settings')) {
           return makeResponse(200, { ok: true, config: backendState.remoteConfig });
         }
@@ -212,6 +241,17 @@ function buildHarness(options = {}) {
 
         if (payload.state === 'sent') {
           backendState.finalizeAttempts += 1;
+          if (backendState.finalizeSuccess) {
+            backendState.sent = {
+              sent: true,
+              sent_at: '2026-03-09T16:01:00Z',
+              sent_by: 'google-apps-script',
+              sending: false,
+              sending_at: '',
+              sending_by: '',
+            };
+            return makeResponse(200, { ok: true, sent: { ...backendState.sent } });
+          }
           return makeResponse(503, { ok: false, error: 'backend unavailable while recording sent-state' });
         }
 
@@ -284,11 +324,15 @@ function buildHarness(options = {}) {
 
   vm.createContext(sandbox);
   vm.runInContext(
-    `${senderSource}\nthis.__exports = { refreshDailySignage, runSundayDraftCycle, sendSportsEmails, setupTriggers, removeTriggers, validateConfiguration, getEffectiveConfig, getTargetMondayDate, getCurrentWeekId, getCurrentSignageDayId, resolveSendDispatch, CONFIG };`,
+    `${senderSource}\n${troubleshootingSource}\nthis.__exports = { refreshDailySignage, runSundayDraftCycle, sendSportsEmails, sendSportsEmailsManualForWeek, doPost, debugBackendConnection, setupTriggers, removeTriggers, validateConfiguration, getEffectiveConfig, getTargetMondayDate, getCurrentWeekId, getCurrentSignageDayId, resolveSendDispatch, CONFIG };`,
     sandbox
   );
 
   return { exports: sandbox.__exports, backendState, deliveries, adminEmails, triggers, properties };
+}
+
+function parseJsonOutput(output) {
+  return JSON.parse(output.getContent());
 }
 
 test('configuration validation fails fast when script properties are missing', () => {
@@ -406,6 +450,112 @@ test('dispatcher no-ops for skipped weeks', () => {
 
   assert.equal(harness.deliveries.length, 0);
   assert.equal(harness.backendState.activityCalls[0].status, 'skipped');
+});
+
+test('web app doPost rejects bad requests', () => {
+  const harness = buildHarness();
+
+  const ping = parseJsonOutput(harness.exports.doPost({
+    postData: { contents: JSON.stringify({ action: 'ping', automation_key: 'secret-key', actor: 'admin-ui' }) },
+  }));
+  const badAction = parseJsonOutput(harness.exports.doPost({
+    postData: { contents: JSON.stringify({ action: 'unknown', automation_key: 'secret-key', week_id: '2026-03-09' }) },
+  }));
+  const badKey = parseJsonOutput(harness.exports.doPost({
+    postData: { contents: JSON.stringify({ action: 'send_sports_email', automation_key: 'wrong', week_id: '2026-03-09' }) },
+  }));
+  const badWeek = parseJsonOutput(harness.exports.doPost({
+    postData: { contents: JSON.stringify({ action: 'send_sports_email', automation_key: 'secret-key', week_id: 'not-a-date' }) },
+  }));
+
+  assert.equal(ping.ok, true);
+  assert.equal(ping.status, 'pong');
+  assert.equal(badAction.ok, false);
+  assert.match(badAction.error, /unsupported action/i);
+  assert.equal(badKey.ok, false);
+  assert.match(badKey.error, /invalid automation key/i);
+  assert.equal(badWeek.ok, false);
+  assert.match(badWeek.error, /week_id/i);
+  assert.equal(harness.deliveries.length, 0);
+});
+
+test('debugBackendConnection pings backend and fetches automation settings without sending', () => {
+  const harness = buildHarness();
+
+  harness.exports.debugBackendConnection();
+
+  assert.equal(harness.backendState.backendPingCalls, 1);
+  assert.equal(harness.deliveries.length, 0);
+});
+
+test('web app doPost manually sends approved week outside scheduled window', () => {
+  const harness = buildHarness({
+    todayIso: '2026-03-13',
+    isoWeekday: 5,
+    finalizeSuccess: true,
+    delivery: { mode: 'default', send_on: '2026-03-08', send_time: '16:00' },
+  });
+
+  const payload = parseJsonOutput(harness.exports.doPost({
+    postData: {
+      contents: JSON.stringify({
+        action: 'send_sports_email',
+        automation_key: 'secret-key',
+        week_id: '2026-03-09',
+        actor: 'admin-ui',
+      }),
+    },
+  }));
+
+  assert.equal(payload.ok, true);
+  assert.equal(payload.status, 'sent');
+  assert.equal(payload.week_id, '2026-03-09');
+  assert.equal(harness.deliveries.length, 2);
+  assert.equal(harness.backendState.sent.sent, true);
+  assert.equal(harness.backendState.finalizeAttempts, 1);
+});
+
+test('web app manual send rejects skipped unapproved sent and claimed weeks', () => {
+  const skipped = buildHarness({
+    finalizeSuccess: true,
+    delivery: { mode: 'skip', send_on: '', send_time: '16:00' },
+  });
+  const skippedPayload = parseJsonOutput(skipped.exports.doPost({
+    postData: { contents: JSON.stringify({ action: 'send_sports_email', automation_key: 'secret-key', week_id: '2026-03-09' }) },
+  }));
+  assert.equal(skippedPayload.ok, false);
+  assert.match(skippedPayload.message || skippedPayload.error, /no email this week/i);
+  assert.equal(skipped.deliveries.length, 0);
+
+  const unapproved = buildHarness({ senderApproved: false, finalizeSuccess: true });
+  const unapprovedPayload = parseJsonOutput(unapproved.exports.doPost({
+    postData: { contents: JSON.stringify({ action: 'send_sports_email', automation_key: 'secret-key', week_id: '2026-03-09' }) },
+  }));
+  assert.equal(unapprovedPayload.ok, false);
+  assert.match(unapprovedPayload.message || unapprovedPayload.error, /not approved/i);
+  assert.equal(unapproved.deliveries.length, 0);
+
+  const sent = buildHarness({
+    finalizeSuccess: true,
+    sent: { sent: true, sent_at: '2026-03-09T16:00:00Z', sent_by: 'sender', sending: false, sending_at: '', sending_by: '' },
+  });
+  const sentPayload = parseJsonOutput(sent.exports.doPost({
+    postData: { contents: JSON.stringify({ action: 'send_sports_email', automation_key: 'secret-key', week_id: '2026-03-09' }) },
+  }));
+  assert.equal(sentPayload.ok, false);
+  assert.match(sentPayload.message || sentPayload.error, /already marked sent/i);
+  assert.equal(sent.deliveries.length, 0);
+
+  const claimed = buildHarness({
+    finalizeSuccess: true,
+    sent: { sent: false, sent_at: '', sent_by: '', sending: true, sending_at: '2026-03-09T16:00:00Z', sending_by: 'sender' },
+  });
+  const claimedPayload = parseJsonOutput(claimed.exports.doPost({
+    postData: { contents: JSON.stringify({ action: 'send_sports_email', automation_key: 'secret-key', week_id: '2026-03-09' }) },
+  }));
+  assert.equal(claimedPayload.ok, false);
+  assert.match(claimedPayload.error, /already claimed/i);
+  assert.equal(claimed.deliveries.length, 0);
 });
 
 test('sunday draft cycle emails review link when a draft is created', () => {

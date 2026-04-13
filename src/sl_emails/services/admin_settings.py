@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass, field
 from typing import Any, Protocol
 import re
+from urllib.parse import urlparse
 
 from sl_emails.config import EMAILS_SETTINGS_COLLECTION, EMAILS_SETTINGS_DOC_ID
 from sl_emails.domain.dates import utc_now_iso
@@ -62,6 +63,13 @@ def default_sender_metadata() -> dict[str, Any]:
     }
 
 
+def default_automation_metadata() -> dict[str, str]:
+    return {
+        "automation_key": "",
+        "apps_script_web_app_url": "",
+    }
+
+
 def normalize_sender_metadata(value: dict[str, Any] | None) -> dict[str, Any]:
     defaults = default_sender_metadata()
     raw = value if isinstance(value, dict) else {}
@@ -92,6 +100,37 @@ def normalize_sender_metadata(value: dict[str, Any] | None) -> dict[str, Any]:
     }
 
 
+def normalize_automation_metadata(value: dict[str, Any] | None) -> dict[str, str]:
+    raw = value if isinstance(value, dict) else {}
+    return {
+        "automation_key": str(raw.get("automation_key") or "").strip(),
+        "apps_script_web_app_url": str(raw.get("apps_script_web_app_url") or "").strip(),
+    }
+
+
+def is_valid_apps_script_web_app_url(value: str) -> bool:
+    parsed = urlparse(str(value or "").strip())
+    return (
+        parsed.scheme == "https"
+        and parsed.netloc == "script.google.com"
+        and (parsed.path.endswith("/exec") or parsed.path.endswith("/dev"))
+    )
+
+
+def validate_automation_metadata(value: dict[str, Any] | None, *, require_complete: bool = False) -> dict[str, str]:
+    automation_metadata = normalize_automation_metadata(value)
+    automation_key = automation_metadata["automation_key"]
+    web_app_url = automation_metadata["apps_script_web_app_url"]
+
+    if require_complete and not automation_key:
+        raise ValueError("An automation key is required")
+    if require_complete and not web_app_url:
+        raise ValueError("An Apps Script web app URL is required")
+    if web_app_url and not is_valid_apps_script_web_app_url(web_app_url):
+        raise ValueError("Apps Script web app URL must be a script.google.com /exec or /dev URL")
+    return automation_metadata
+
+
 def validate_sender_metadata(value: dict[str, Any] | None) -> dict[str, Any]:
     sender_metadata = normalize_sender_metadata(value)
     if not sender_metadata["audience_recipients"]["middle_school"]["to"]:
@@ -117,6 +156,7 @@ class EmailAdminSettings:
     allowed_admin_emails: list[str]
     ops_notification_emails: list[str]
     sender_metadata: dict[str, Any] = field(default_factory=dict)
+    automation_metadata: dict[str, str] = field(default_factory=dict)
     created_at: str = ""
     created_by: str = ""
     updated_at: str = ""
@@ -132,6 +172,7 @@ class EmailAdminSettings:
             allowed_admin_emails=normalize_email_list(data.get("allowed_admin_emails") or DEFAULT_ALLOWED_ADMIN_EMAILS),
             ops_notification_emails=normalize_email_list(data.get("ops_notification_emails") or DEFAULT_ALLOWED_ADMIN_EMAILS),
             sender_metadata=normalize_sender_metadata(data.get("sender_metadata") if isinstance(data.get("sender_metadata"), dict) else {}),
+            automation_metadata=normalize_automation_metadata(data.get("automation_metadata") if isinstance(data.get("automation_metadata"), dict) else {}),
             created_at=str(data.get("created_at") or ""),
             created_by=str(data.get("created_by") or ""),
             updated_at=str(data.get("updated_at") or ""),
@@ -150,6 +191,7 @@ class AdminSettingsStore(Protocol):
         allowed_admin_emails: list[str] | None = None,
         ops_notification_emails: list[str] | None = None,
         sender_metadata: dict[str, Any] | None = None,
+        automation_metadata: dict[str, Any] | None = None,
         actor: str,
     ) -> EmailAdminSettings: ...
 
@@ -161,6 +203,7 @@ def _build_settings_payload(
     existing: EmailAdminSettings | None,
     actor: str,
     sender_metadata: dict[str, Any] | None = None,
+    automation_metadata: dict[str, Any] | None = None,
 ) -> EmailAdminSettings:
     normalized_admins = normalize_email_list(allowed_admin_emails)
     if not normalized_admins:
@@ -170,12 +213,16 @@ def _build_settings_payload(
     if not normalized_notifications:
         raise ValueError("At least one ops notification email is required")
     normalized_sender_metadata = normalize_sender_metadata(sender_metadata if isinstance(sender_metadata, dict) else (existing.sender_metadata if existing else None))
+    normalized_automation_metadata = normalize_automation_metadata(
+        automation_metadata if isinstance(automation_metadata, dict) else (existing.automation_metadata if existing else None)
+    )
 
     timestamp = utc_now_iso()
     return EmailAdminSettings(
         allowed_admin_emails=normalized_admins,
         ops_notification_emails=normalized_notifications,
         sender_metadata=normalized_sender_metadata,
+        automation_metadata=normalized_automation_metadata,
         created_at=existing.created_at if existing else timestamp,
         created_by=existing.created_by if existing else actor,
         updated_at=timestamp,
@@ -208,6 +255,7 @@ class MemoryAdminSettingsStore:
         allowed_admin_emails: list[str] | None = None,
         ops_notification_emails: list[str] | None = None,
         sender_metadata: dict[str, Any] | None = None,
+        automation_metadata: dict[str, Any] | None = None,
         actor: str,
     ) -> EmailAdminSettings:
         existing = self._settings or self.ensure_settings(
@@ -219,6 +267,7 @@ class MemoryAdminSettingsStore:
             allowed_admin_emails=allowed_admin_emails if allowed_admin_emails is not None else existing.allowed_admin_emails,
             ops_notification_emails=ops_notification_emails if ops_notification_emails is not None else existing.ops_notification_emails,
             sender_metadata=sender_metadata,
+            automation_metadata=automation_metadata,
             existing=existing,
             actor=actor,
         )
@@ -259,6 +308,7 @@ class FirestoreAdminSettingsStore:
         allowed_admin_emails: list[str] | None = None,
         ops_notification_emails: list[str] | None = None,
         sender_metadata: dict[str, Any] | None = None,
+        automation_metadata: dict[str, Any] | None = None,
         actor: str,
     ) -> EmailAdminSettings:
         existing = self.get_settings()
@@ -272,6 +322,7 @@ class FirestoreAdminSettingsStore:
             allowed_admin_emails=allowed_admin_emails if allowed_admin_emails is not None else existing.allowed_admin_emails,
             ops_notification_emails=ops_notification_emails if ops_notification_emails is not None else existing.ops_notification_emails,
             sender_metadata=sender_metadata,
+            automation_metadata=automation_metadata,
             existing=existing,
             actor=actor,
         )
@@ -289,10 +340,14 @@ __all__ = [
     "FirestoreAdminSettingsStore",
     "MemoryAdminSettingsStore",
     "build_automation_settings_payload",
+    "default_automation_metadata",
     "default_sender_metadata",
     "is_valid_email",
+    "is_valid_apps_script_web_app_url",
     "normalize_email",
+    "normalize_automation_metadata",
     "normalize_email_list",
     "normalize_sender_metadata",
+    "validate_automation_metadata",
     "validate_sender_metadata",
 ]

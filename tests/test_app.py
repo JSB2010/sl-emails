@@ -37,6 +37,17 @@ class _RuntimeFailingRequestStore(MemoryEventRequestStore):
         raise RuntimeError("request storage unavailable")
 
 
+class _FakeManualSendResponse:
+    def __init__(self, status_code=200, payload=None):
+        self.status_code = status_code
+        self._payload = payload if payload is not None else {"ok": True}
+
+    def json(self):
+        if isinstance(self._payload, Exception):
+            raise self._payload
+        return self._payload
+
+
 class _LegacyRequestStore:
     def __init__(self):
         self._store = MemoryEventRequestStore()
@@ -807,6 +818,48 @@ class AppApiTests(unittest.TestCase):
         self.assertEqual(payload["config"]["admin_notification_emails"], ["ops@kentdenver.org"])
         self.assertEqual(payload["config"]["email_from_name"], "KD Student Leadership")
         self.assertEqual(payload["config"]["email_recipients"]["middle_school"]["to"], "middle@kentdenver.org")
+        self.assertNotIn("automation_key", payload["config"])
+
+    def test_automation_key_can_ping_backend_without_settings_payload(self):
+        self.client.application.config["EMAILS_AUTOMATION_KEY"] = "secret-key"
+        self.logout()
+
+        response = self.client.get(
+            "/api/emails/automation/ping",
+            headers={"X-Automation-Key": "secret-key", "X-Email-Actor": "google-apps-script"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        assert payload is not None
+        self.assertEqual(payload["status"], "pong")
+        self.assertEqual(payload["service"], "sl-emails")
+        self.assertEqual(payload["actor"], "google-apps-script")
+        self.assertIn("checked_at", payload)
+
+    def test_db_automation_key_is_preferred_over_legacy_env_key(self):
+        self.client.application.config["EMAILS_AUTOMATION_KEY"] = "legacy-key"
+        settings_store = self.client.application.config["EMAILS_SETTINGS_STORE"]
+        settings_store.update_settings(
+            automation_metadata={
+                "automation_key": "db-key",
+                "apps_script_web_app_url": "https://script.google.com/macros/s/deployment/exec",
+            },
+            actor="admin-user",
+        )
+        self.logout()
+
+        legacy_response = self.client.get(
+            "/api/emails/automation/settings",
+            headers={"X-Automation-Key": "legacy-key"},
+        )
+        db_response = self.client.get(
+            "/api/emails/automation/settings",
+            headers={"X-Automation-Key": "db-key"},
+        )
+
+        self.assertEqual(legacy_response.status_code, 403)
+        self.assertEqual(db_response.status_code, 200)
 
     def test_request_review_routes_cover_404_409_and_runtime_failures(self):
         missing = self.client.post("/api/emails/weeks/2026-03-09/requests/missing/approve")
@@ -1864,6 +1917,152 @@ class AppApiTests(unittest.TestCase):
         claim_payload = claim_response.get_json()
         assert claim_payload is not None
         self.assertTrue(claim_payload["sent"]["sending"])
+
+    def test_manual_send_requires_approved_unsent_week_and_settings(self):
+        self.client.put(
+            "/api/emails/weeks/2026-03-09",
+            json={"start_date": "2026-03-09", "end_date": "2026-03-15", "events": []},
+        )
+
+        unapproved = self.client.post("/api/emails/weeks/2026-03-09/manual-send")
+        self.assertEqual(unapproved.status_code, 409)
+        self.assertIn("approved", unapproved.get_json()["error"].lower())
+
+        self.client.post("/api/emails/weeks/2026-03-09/approve", headers={"X-Email-Actor": "reviewer"})
+        missing_config = self.client.post("/api/emails/weeks/2026-03-09/manual-send")
+        self.assertEqual(missing_config.status_code, 503)
+        self.assertIn("/emails/settings", missing_config.get_json()["error"])
+
+        settings_store = self.client.application.config["EMAILS_SETTINGS_STORE"]
+        settings_store.update_settings(
+            automation_metadata={
+                "automation_key": "secret-key",
+                "apps_script_web_app_url": "https://script.google.com/macros/s/deployment/exec",
+            },
+            actor="admin-user",
+        )
+        self.client.post(
+            "/api/emails/weeks/2026-03-09/sent",
+            json={"state": "sending"},
+            headers={"X-Email-Actor": "sender-bot"},
+        )
+
+        locked = self.client.post("/api/emails/weeks/2026-03-09/manual-send")
+        self.assertEqual(locked.status_code, 409)
+        self.assertIn("claimed", locked.get_json()["error"].lower())
+
+    @patch("sl_emails.web.routes.emails_api.requests.post")
+    def test_manual_send_posts_to_apps_script_and_returns_refreshed_week(self, mock_post):
+        store = self.client.application.config["EMAILS_STORE"]
+        settings_store = self.client.application.config["EMAILS_SETTINGS_STORE"]
+        settings_store.update_settings(
+            automation_metadata={
+                "automation_key": "secret-key",
+                "apps_script_web_app_url": "https://script.google.com/macros/s/deployment/exec",
+            },
+            actor="admin-user",
+        )
+        self.client.put(
+            "/api/emails/weeks/2026-03-09",
+            json={"start_date": "2026-03-09", "end_date": "2026-03-15", "events": []},
+        )
+        self.client.post("/api/emails/weeks/2026-03-09/approve", headers={"X-Email-Actor": "reviewer"})
+
+        def _send(url, json, timeout, allow_redirects):
+            self.assertEqual(url, "https://script.google.com/macros/s/deployment/exec")
+            self.assertEqual(json["action"], "send_sports_email")
+            self.assertEqual(json["week_id"], "2026-03-09")
+            self.assertEqual(json["automation_key"], "secret-key")
+            self.assertEqual(json["actor"], "admin-ui")
+            self.assertEqual(timeout, 60)
+            self.assertTrue(allow_redirects)
+            store.claim_week_send("2026-03-09", sending_by="google-apps-script")
+            sent = store.mark_week_sent("2026-03-09", sent_by="google-apps-script")
+            return _FakeManualSendResponse(payload={"ok": True, "status": "sent", "sent": sent.sent})
+
+        mock_post.side_effect = _send
+
+        response = self.client.post(
+            "/api/emails/weeks/2026-03-09/manual-send",
+            headers={"X-Email-Actor": "admin-ui"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        assert payload is not None
+        self.assertTrue(payload["week"]["sent"]["sent"])
+        self.assertEqual(payload["week"]["sent"]["sent_by"], "google-apps-script")
+        self.assertEqual(mock_post.call_count, 1)
+
+    @patch("sl_emails.web.routes.emails_api.requests.post")
+    def test_manual_send_maps_apps_script_failure_to_bad_gateway(self, mock_post):
+        settings_store = self.client.application.config["EMAILS_SETTINGS_STORE"]
+        settings_store.update_settings(
+            automation_metadata={
+                "automation_key": "secret-key",
+                "apps_script_web_app_url": "https://script.google.com/macros/s/deployment/exec",
+            },
+            actor="admin-user",
+        )
+        self.client.put(
+            "/api/emails/weeks/2026-03-09",
+            json={"start_date": "2026-03-09", "end_date": "2026-03-15", "events": []},
+        )
+        self.client.post("/api/emails/weeks/2026-03-09/approve", headers={"X-Email-Actor": "reviewer"})
+        mock_post.return_value = _FakeManualSendResponse(payload={"ok": False, "error": "script failed"})
+
+        response = self.client.post("/api/emails/weeks/2026-03-09/manual-send")
+
+        self.assertEqual(response.status_code, 502)
+        payload = response.get_json()
+        assert payload is not None
+        self.assertEqual(payload["error"], "script failed")
+
+    @patch("sl_emails.web.routes.emails_settings.requests.post")
+    def test_settings_app_script_connection_test_posts_ping_only(self, mock_post):
+        mock_post.return_value = _FakeManualSendResponse(payload={"ok": True, "status": "pong", "service": "sports-email-sender"})
+
+        response = self.client.post(
+            "/api/emails/settings/test-apps-script",
+            json={
+                "automation_metadata": {
+                    "automation_key": "secret-key",
+                    "apps_script_web_app_url": "https://script.google.com/macros/s/deployment/exec",
+                }
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        assert payload is not None
+        self.assertEqual(payload["apps_script"]["status"], "pong")
+        mock_post.assert_called_once()
+        _, kwargs = mock_post.call_args
+        self.assertEqual(kwargs["json"]["action"], "ping")
+        self.assertEqual(kwargs["json"]["automation_key"], "secret-key")
+        self.assertNotIn("week_id", kwargs["json"])
+        self.assertEqual(kwargs["timeout"], 20)
+
+    @patch("sl_emails.web.routes.emails_settings.requests.post")
+    def test_settings_app_script_connection_test_maps_failures(self, mock_post):
+        missing = self.client.post(
+            "/api/emails/settings/test-apps-script",
+            json={"automation_metadata": {"automation_key": "", "apps_script_web_app_url": ""}},
+        )
+        self.assertEqual(missing.status_code, 400)
+
+        mock_post.return_value = _FakeManualSendResponse(payload={"ok": False, "error": "bad key"})
+        failed = self.client.post(
+            "/api/emails/settings/test-apps-script",
+            json={
+                "automation_metadata": {
+                    "automation_key": "secret-key",
+                    "apps_script_web_app_url": "https://script.google.com/macros/s/deployment/exec",
+                }
+            },
+        )
+        self.assertEqual(failed.status_code, 502)
+        self.assertEqual(failed.get_json()["error"], "bad key")
 
     def test_mark_unsent_clears_sending_lock_and_save_still_resets_approval(self):
         self.client.put(

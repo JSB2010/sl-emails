@@ -227,6 +227,25 @@ class WeeklyStoreTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             normalize_week_payload("2026-03-09", {"start_date": "2026-03-09", "end_date": "2026-03-15", "events": {}})
 
+    def test_normalize_week_payload_fans_shared_copy_into_audience_copy(self):
+        week = normalize_week_payload(
+            "2026-03-09",
+            {
+                "start_date": "2026-03-09",
+                "end_date": "2026-03-15",
+                "copy_overrides": {"hero_text": "Shared hero", "cta_text": "Shared CTA"},
+                "copy_overrides_by_audience": {
+                    "upper-school": {"intro_text": "Upper summary"},
+                },
+                "events": [],
+            },
+        )
+
+        self.assertEqual(week.copy_overrides_by_audience["middle-school"]["hero_text"], "Shared hero")
+        self.assertEqual(week.copy_overrides_by_audience["middle-school"]["cta_text"], "Shared CTA")
+        self.assertEqual(week.copy_overrides_by_audience["upper-school"]["hero_text"], "Shared hero")
+        self.assertEqual(week.copy_overrides_by_audience["upper-school"]["intro_text"], "Upper summary")
+
     def test_memory_store_lifecycle(self):
         store = MemoryWeeklyEmailStore()
         created = store.create_week_if_missing("2026-03-09", build_blank_week_payload("2026-03-09"))

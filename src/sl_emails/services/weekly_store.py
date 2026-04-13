@@ -27,11 +27,13 @@ from ..domain.weekly import (
     DEFAULT_STATUS,
     WeeklyDraftRecord,
     WeeklyEventRecord,
+    default_audience_copy_overrides,
     default_copy_overrides,
     default_delivery_state,
     default_sent_state,
     default_approval_state,
     infer_audiences,
+    normalize_audience_copy_overrides,
     normalize_copy_overrides,
     normalize_delivery,
     normalize_sent_state,
@@ -184,6 +186,17 @@ def normalize_week_payload(
     next_delivery["updated_by"] = str((payload.get("delivery") or {}).get("updated_by") or next_delivery.get("updated_by") or "").strip()
     heading_value = payload["heading"] if "heading" in payload else (existing.heading if existing else DEFAULT_HEADING)
     notes_value = payload["notes"] if "notes" in payload else (existing.notes if existing else "")
+    copy_overrides = normalize_copy_overrides(
+        payload.get("copy_overrides")
+        if isinstance(payload.get("copy_overrides"), dict)
+        else (existing.copy_overrides if existing else default_copy_overrides())
+    )
+    if isinstance(payload.get("copy_overrides_by_audience"), dict):
+        audience_copy_payload: Any = payload.get("copy_overrides_by_audience")
+    elif "copy_overrides" in payload:
+        audience_copy_payload = {}
+    else:
+        audience_copy_payload = existing.copy_overrides_by_audience if existing else {}
     return WeeklyDraftRecord(
         week_id=canonical_week_id,
         start_date=start_date,
@@ -199,10 +212,10 @@ def normalize_week_payload(
             else (existing.subject_overrides if existing else {})
         ),
         delivery=next_delivery,
-        copy_overrides=normalize_copy_overrides(
-            payload.get("copy_overrides")
-            if isinstance(payload.get("copy_overrides"), dict)
-            else (existing.copy_overrides if existing else default_copy_overrides())
+        copy_overrides=copy_overrides,
+        copy_overrides_by_audience=normalize_audience_copy_overrides(
+            audience_copy_payload,
+            fallback=copy_overrides,
         ),
         events=events,
         metadata=merge_metadata(existing.metadata if existing else {}, payload.get("metadata") if isinstance(payload.get("metadata"), dict) else {}),
@@ -221,6 +234,7 @@ def build_blank_week_payload(week_id: str) -> dict[str, Any]:
         "subject_overrides": {},
         "delivery": default_delivery_state(start_date),
         "copy_overrides": default_copy_overrides(),
+        "copy_overrides_by_audience": default_audience_copy_overrides(),
         "events": [],
     }
 
@@ -245,6 +259,7 @@ class MemoryWeeklyEmailStore:
             subject_overrides=dict(week.subject_overrides),
             delivery=dict(week.delivery),
             copy_overrides=dict(week.copy_overrides),
+            copy_overrides_by_audience={audience: dict(copy) for audience, copy in week.copy_overrides_by_audience.items()},
             events=[WeeklyEventRecord.from_dict(event.to_dict()) for event in week.events],
             metadata=dict(week.metadata),
             created_at=week.created_at,
@@ -420,6 +435,7 @@ class FirestoreWeeklyEmailStore:
             subject_overrides=normalize_subject_overrides(data.get("subject_overrides")),
             delivery=normalize_delivery(data.get("delivery"), week_id=canonical_week_id),
             copy_overrides=normalize_copy_overrides(data.get("copy_overrides")),
+            copy_overrides_by_audience=normalize_audience_copy_overrides(data.get("copy_overrides_by_audience"), fallback=data.get("copy_overrides")),
             events=events,
             metadata=data.get("metadata") if isinstance(data.get("metadata"), dict) else {},
             created_at=str(data.get("created_at") or ""),

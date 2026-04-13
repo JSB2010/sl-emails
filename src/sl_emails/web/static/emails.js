@@ -15,6 +15,7 @@
   };
   const EMPTY_PREVIEW = "<!DOCTYPE html><html><body style=\"font-family:Arial,sans-serif;padding:32px;color:#4a607c;\">Preview not generated yet.</body></html>";
   const DEFAULT_SEND_TIME = "16:00";
+  const AUDIENCES = ["middle-school", "upper-school"];
 
   const state = {
     weekId: normalizeWeekId(defaults.weekId || ""),
@@ -24,6 +25,7 @@
     requests: [],
     activity: [],
     dirty: false,
+    editorialAudience: "middle-school",
     expandedEventIds: new Set(),
     filters: {
       query: "",
@@ -60,6 +62,7 @@
     ctaEyebrow: document.getElementById("copy-cta-eyebrow"),
     ctaTitle: document.getElementById("copy-cta-title"),
     ctaText: document.getElementById("copy-cta-text"),
+    copyAudienceButtons: Array.from(document.querySelectorAll("[data-copy-audience]")),
     msSubjectInput: document.getElementById("week-subject-ms"),
     usSubjectInput: document.getElementById("week-subject-us"),
     deliverySummary: document.getElementById("delivery-summary"),
@@ -198,6 +201,72 @@
       cta_title: "",
       cta_text: "",
     };
+  }
+
+  function defaultAudienceCopyOverrides() {
+    return AUDIENCES.reduce((acc, audience) => {
+      acc[audience] = defaultCopyOverrides();
+      return acc;
+    }, {});
+  }
+
+  function normalizeAudienceCopyOverrides(copyByAudience, sharedCopy) {
+    const shared = { ...defaultCopyOverrides(), ...(sharedCopy && typeof sharedCopy === "object" ? sharedCopy : {}) };
+    const source = copyByAudience && typeof copyByAudience === "object" ? copyByAudience : {};
+    return AUDIENCES.reduce((acc, audience) => {
+      acc[audience] = {
+        ...shared,
+        ...(source[audience] && typeof source[audience] === "object" ? source[audience] : {}),
+      };
+      return acc;
+    }, {});
+  }
+
+  function copyOverridesForAudience(audience) {
+    if (!state.week) return defaultCopyOverrides();
+    return {
+      ...defaultCopyOverrides(),
+      ...(state.week.copy_overrides && typeof state.week.copy_overrides === "object" ? state.week.copy_overrides : {}),
+      ...((state.week.copy_overrides_by_audience || {})[audience] || {}),
+    };
+  }
+
+  function readCopyFields() {
+    return {
+      hero_text: els.heroText.value.trim(),
+      intro_title: els.introTitle.value.trim(),
+      intro_text: els.introText.value.trim(),
+      spotlight_label: els.spotlightLabel.value.trim(),
+      schedule_label: els.scheduleLabel.value.trim(),
+      also_on_schedule_label: els.alsoLabel.value.trim(),
+      empty_day_template: els.emptyDayTemplate.value.trim(),
+      cta_eyebrow: els.ctaEyebrow.value.trim(),
+      cta_title: els.ctaTitle.value.trim(),
+      cta_text: els.ctaText.value.trim(),
+    };
+  }
+
+  function writeCopyFields(copy) {
+    els.heroText.value = copy.hero_text || "";
+    els.introTitle.value = copy.intro_title || "";
+    els.introText.value = copy.intro_text || "";
+    els.spotlightLabel.value = copy.spotlight_label || "";
+    els.scheduleLabel.value = copy.schedule_label || "";
+    els.alsoLabel.value = copy.also_on_schedule_label || "";
+    els.emptyDayTemplate.value = copy.empty_day_template || "";
+    els.ctaEyebrow.value = copy.cta_eyebrow || "";
+    els.ctaTitle.value = copy.cta_title || "";
+    els.ctaText.value = copy.cta_text || "";
+  }
+
+  function syncCurrentCopyFields() {
+    if (!state.week) return;
+    state.week.copy_overrides_by_audience = normalizeAudienceCopyOverrides(
+      state.week.copy_overrides_by_audience,
+      state.week.copy_overrides,
+    );
+    state.week.copy_overrides_by_audience[state.editorialAudience] = readCopyFields();
+    state.week.copy_overrides = defaultCopyOverrides();
   }
 
   function defaultDelivery(weekId) {
@@ -444,6 +513,7 @@
       subject_overrides: typeof week.subject_overrides === "object" && week.subject_overrides ? week.subject_overrides : {},
       delivery: normalizeDelivery(week.delivery, weekId),
       copy_overrides: { ...defaultCopyOverrides(), ...(week.copy_overrides && typeof week.copy_overrides === "object" ? week.copy_overrides : {}) },
+      copy_overrides_by_audience: normalizeAudienceCopyOverrides(week.copy_overrides_by_audience, week.copy_overrides),
       approval: week.approval && typeof week.approval === "object" ? week.approval : { approved: false, approved_at: "", approved_by: "" },
       sent: week.sent && typeof week.sent === "object"
         ? { sent: false, sent_at: "", sent_by: "", sending: false, sending_at: "", sending_by: "", ...week.sent }
@@ -467,6 +537,7 @@
       subject_overrides: {},
       delivery: defaultDelivery(normalizedWeekId),
       copy_overrides: defaultCopyOverrides(),
+      copy_overrides_by_audience: defaultAudienceCopyOverrides(),
       events: [],
       metadata: {},
     });
@@ -833,17 +904,12 @@
   function renderEditorialFields() {
     els.heading.value = state.week?.heading || "This Week at Kent Denver";
     els.notes.value = state.week?.notes || "";
-    const copy = state.week?.copy_overrides || defaultCopyOverrides();
-    els.heroText.value = copy.hero_text || "";
-    els.introTitle.value = copy.intro_title || "";
-    els.introText.value = copy.intro_text || "";
-    els.spotlightLabel.value = copy.spotlight_label || "";
-    els.scheduleLabel.value = copy.schedule_label || "";
-    els.alsoLabel.value = copy.also_on_schedule_label || "";
-    els.emptyDayTemplate.value = copy.empty_day_template || "";
-    els.ctaEyebrow.value = copy.cta_eyebrow || "";
-    els.ctaTitle.value = copy.cta_title || "";
-    els.ctaText.value = copy.cta_text || "";
+    writeCopyFields(copyOverridesForAudience(state.editorialAudience));
+    els.copyAudienceButtons.forEach((button) => {
+      const active = button.dataset.copyAudience === state.editorialAudience;
+      button.classList.toggle("copy-audience-tab-active", active);
+      button.setAttribute("aria-selected", String(active));
+    });
     els.msSubjectInput.value = resolveSubjectInputValue("middle-school");
     els.usSubjectInput.value = resolveSubjectInputValue("upper-school");
   }
@@ -1255,18 +1321,7 @@
     if (!state.week) return;
     state.week.heading = els.heading.value.trim() || "This Week at Kent Denver";
     state.week.notes = els.notes.value.trim();
-    state.week.copy_overrides = {
-      hero_text: els.heroText.value.trim(),
-      intro_title: els.introTitle.value.trim(),
-      intro_text: els.introText.value.trim(),
-      spotlight_label: els.spotlightLabel.value.trim(),
-      schedule_label: els.scheduleLabel.value.trim(),
-      also_on_schedule_label: els.alsoLabel.value.trim(),
-      empty_day_template: els.emptyDayTemplate.value.trim(),
-      cta_eyebrow: els.ctaEyebrow.value.trim(),
-      cta_title: els.ctaTitle.value.trim(),
-      cta_text: els.ctaText.value.trim(),
-    };
+    syncCurrentCopyFields();
 
     const nextSubjects = {};
     const middleValue = els.msSubjectInput.value.trim();
@@ -1350,6 +1405,7 @@
       subject_overrides: state.week.subject_overrides,
       delivery: state.week.delivery,
       copy_overrides: state.week.copy_overrides,
+      copy_overrides_by_audience: state.week.copy_overrides_by_audience,
       events: state.week.events.map(serializeEvent),
     };
   }
@@ -1716,6 +1772,15 @@
     markDirty();
   }
 
+  function onCopyAudienceClick(event) {
+    if (!state.week) return;
+    const audience = event.currentTarget.dataset.copyAudience;
+    if (!AUDIENCES.includes(audience) || audience === state.editorialAudience) return;
+    syncCurrentCopyFields();
+    state.editorialAudience = audience;
+    renderEditorialFields();
+  }
+
   function onDeliveryChange() {
     if (!state.week) return;
     syncWeekFields();
@@ -1899,6 +1964,7 @@
     els.addBtn.addEventListener("click", addCustomEvent);
     els.generateAiBtn.addEventListener("click", generateAiCopy);
     els.clearWeekBtn.addEventListener("click", clearWeek);
+    els.copyAudienceButtons.forEach((button) => button.addEventListener("click", onCopyAudienceClick));
     [
       els.heading,
       els.notes,

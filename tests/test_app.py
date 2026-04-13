@@ -1494,6 +1494,32 @@ class AppApiTests(unittest.TestCase):
                 "cta_title": "See You There",
                 "cta_text": "Bring a friend.",
             },
+            "copy_overrides_by_audience": {
+                "middle-school": {
+                    "hero_text": "MS hero",
+                    "intro_title": "MS intro",
+                    "intro_text": "MS summary",
+                    "spotlight_label": "Spotlight",
+                    "schedule_label": "Schedule",
+                    "also_on_schedule_label": "Also on schedule",
+                    "empty_day_template": "Nothing on {weekday}.",
+                    "cta_eyebrow": "Join Us",
+                    "cta_title": "See You There",
+                    "cta_text": "MS cta.",
+                },
+                "upper-school": {
+                    "hero_text": "US hero",
+                    "intro_title": "US intro",
+                    "intro_text": "US summary",
+                    "spotlight_label": "Spotlight",
+                    "schedule_label": "Schedule",
+                    "also_on_schedule_label": "Also on schedule",
+                    "empty_day_template": "Nothing on {weekday}.",
+                    "cta_eyebrow": "Join Us",
+                    "cta_title": "See You There",
+                    "cta_text": "US cta.",
+                },
+            },
         }
 
         response = self.client.post("/api/emails/weeks/2026-03-09/ai-copy", headers={"X-Email-Actor": "admin-ui"})
@@ -1506,6 +1532,8 @@ class AppApiTests(unittest.TestCase):
         self.assertEqual(payload["week"]["subject_overrides"]["middle-school"], "AI MS")
         self.assertEqual(payload["week"]["copy_overrides"]["hero_text"], "Hero")
         self.assertEqual(payload["week"]["copy_overrides"]["cta_text"], "Bring a friend.")
+        self.assertEqual(payload["week"]["copy_overrides_by_audience"]["middle-school"]["intro_text"], "MS summary")
+        self.assertEqual(payload["week"]["copy_overrides_by_audience"]["upper-school"]["intro_text"], "US summary")
 
     def test_request_review_fallback_and_runtime_paths(self):
         self.client.put(

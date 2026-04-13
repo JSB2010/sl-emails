@@ -7,7 +7,7 @@ from typing import Any
 
 import requests
 
-from sl_emails.domain.weekly import WeeklyDraftRecord, default_copy_overrides
+from sl_emails.domain.weekly import AUDIENCES, WeeklyDraftRecord, default_audience_copy_overrides, default_copy_overrides
 
 
 GEMINI_API_URL_TEMPLATE = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
@@ -61,6 +61,25 @@ def _audience_summary(week: WeeklyDraftRecord, audience: str) -> dict[str, Any]:
     }
 
 
+def _audience_event_lines(week: WeeklyDraftRecord, audience: str, *, limit: int = 24) -> list[str]:
+    visible = [event for event in _visible_events(week) if audience in event.audiences]
+    lines: list[str] = []
+    for event in visible[:limit]:
+        date_text = event.start_date if event.start_date == event.end_date else f"{event.start_date} to {event.end_date}"
+        home_away = "home" if getattr(event, "is_home", False) else "away"
+        if event.kind != "game":
+            home_away = "event"
+        lines.append(
+            f"  - {date_text} {event.time_text} | {event.title} | {event.subtitle or event.category} | "
+            f"{event.location} | type={event.kind} | source={event.source} | {home_away}"
+        )
+    if len(visible) > limit:
+        lines.append(f"  - ... {len(visible) - limit} more {audience} events omitted for prompt length")
+    if not lines:
+        lines.append("  - none")
+    return lines
+
+
 def _week_context_text(week: WeeklyDraftRecord) -> str:
     visible = _visible_events(week)
     lines = [
@@ -69,7 +88,7 @@ def _week_context_text(week: WeeklyDraftRecord) -> str:
         f"Admin note: {week.notes or 'n/a'}",
         f"Visible events: {len(visible)}",
     ]
-    for audience in ("middle-school", "upper-school"):
+    for audience in AUDIENCES:
         summary = _audience_summary(week, audience)
         sports_list = ", ".join(f"{label} ({count})" for label, count in summary["sports"]) or "none"
         terms = ", ".join(summary["noteworthy_terms"]) or "none"
@@ -82,13 +101,9 @@ def _week_context_text(week: WeeklyDraftRecord) -> str:
                 f"  away_events={summary['away_events']}",
                 f"  has_arts={summary['has_arts']}",
                 f"  noteworthy_terms={terms}",
+                "  scoped_events:",
+                *_audience_event_lines(week, audience),
             ]
-        )
-    lines.append("Events:")
-    for event in visible[:30]:
-        lines.append(
-            f"- [{','.join(event.audiences)}] {event.start_date} {event.time_text} | {event.title} | "
-            f"{event.subtitle or event.category} | {event.location} | source={event.source}"
         )
     return "\n".join(lines)
 
@@ -97,14 +112,18 @@ def _build_generation_prompt(week: WeeklyDraftRecord) -> str:
     return (
         "Return JSON matching this exact shape: "
         '{"heading":"","notes":"","subject_overrides":{"middle-school":"","upper-school":""},'
-        '"copy_overrides":{"hero_text":"","intro_title":"","intro_text":"","spotlight_label":"",'
-        '"schedule_label":"","also_on_schedule_label":"","empty_day_template":"","cta_eyebrow":"",'
-        '"cta_title":"","cta_text":""}}.\n\n'
+        '"copy_overrides_by_audience":{"middle-school":{"hero_text":"","intro_title":"","intro_text":"",'
+        '"spotlight_label":"","schedule_label":"","also_on_schedule_label":"","empty_day_template":"",'
+        '"cta_eyebrow":"","cta_title":"","cta_text":""},"upper-school":{"hero_text":"","intro_title":"",'
+        '"intro_text":"","spotlight_label":"","schedule_label":"","also_on_schedule_label":"",'
+        '"empty_day_template":"","cta_eyebrow":"","cta_title":"","cta_text":""}}}.\n\n'
         "Field guidance:\n"
         "- `heading`: optional stronger weekly heading; use the school context, not generic sports hype.\n"
-        "- `hero_text`: one short scene-setting line that reflects the week's biggest themes.\n"
+        "- Each `copy_overrides_by_audience` block must be written only from that audience's scoped_events and counts.\n"
+        "- `hero_text`: one short scene-setting line that reflects that audience's biggest themes.\n"
         "- `intro_title`: prefer calm utility titles such as 'This week at a glance' unless the week truly warrants something more specific.\n"
-        "- `intro_text`: orient the reader to what stands out this week in a factual, readable way.\n"
+        "- `intro_text`: orient the reader to what stands out for that audience in a factual, readable way.\n"
+        "- If one audience has few or no events, say that plainly or keep the copy more general; do not borrow details from the other audience.\n"
         "- `subject_overrides`: tailor only when the audience mix suggests a stronger line than the default; otherwise leave empty.\n"
         "- `cta_eyebrow`, `cta_title`, `cta_text`: short closing support prompt, but keep it subtle rather than promotional.\n\n"
         "Week context:\n"
@@ -133,6 +152,19 @@ def _normalize_generated_copy(raw: dict[str, Any]) -> dict[str, Any]:
     if copy_overrides["empty_day_template"] and "{weekday}" not in copy_overrides["empty_day_template"]:
         copy_overrides["empty_day_template"] = ""
 
+    audience_copy = default_audience_copy_overrides()
+    raw_audience_copy = raw.get("copy_overrides_by_audience") if isinstance(raw.get("copy_overrides_by_audience"), dict) else {}
+    for audience in AUDIENCES:
+        source = raw_audience_copy.get(audience)
+        if not isinstance(source, dict):
+            source = raw_copy
+        normalized_copy = dict(default_copy_overrides())
+        for key in normalized_copy:
+            normalized_copy[key] = str(source.get(key) or "").strip()
+        if normalized_copy["empty_day_template"] and "{weekday}" not in normalized_copy["empty_day_template"]:
+            normalized_copy["empty_day_template"] = ""
+        audience_copy[audience] = normalized_copy
+
     subjects = raw.get("subject_overrides") if isinstance(raw.get("subject_overrides"), dict) else {}
     subject_overrides = {
         audience: str(subjects.get(audience) or "").strip()[:90]
@@ -145,6 +177,7 @@ def _normalize_generated_copy(raw: dict[str, Any]) -> dict[str, Any]:
         "notes": str(raw.get("notes") or "").strip(),
         "subject_overrides": subject_overrides,
         "copy_overrides": copy_overrides,
+        "copy_overrides_by_audience": audience_copy,
     }
 
 

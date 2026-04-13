@@ -408,6 +408,7 @@ def generate_ai_copy(week_id: str) -> Any:
     payload["notes"] = generated.get("notes") if generated.get("notes") is not None else payload.get("notes")
     payload["subject_overrides"] = generated.get("subject_overrides") or {}
     payload["copy_overrides"] = generated.get("copy_overrides") or {}
+    payload["copy_overrides_by_audience"] = generated.get("copy_overrides_by_audience") or {}
     payload["delivery"] = {**(payload.get("delivery") or {}), "updated_by": actor}
     try:
         week = store.save_week(normalized_week_id, payload)

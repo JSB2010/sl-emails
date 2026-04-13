@@ -40,7 +40,7 @@ class _FakeGenerateGamesModule:
         has_arts = "true" if "Music" in sports_list else "false"
         return (
             f'<html><head><meta name="has-arts-events" content="{has_arts}"><title>{title} ({date_range})</title></head>'
-            f"<body>{school_level}|{sports_list}|{'|'.join(rendered_titles)}|{kwargs.get('icon_base_url', '')}</body></html>"
+            f"<body>{school_level}|{sports_list}|{'|'.join(rendered_titles)}|{kwargs.get('copy_overrides', {}).get('intro_text', '')}|{kwargs.get('icon_base_url', '')}</body></html>"
         )
 
 
@@ -133,6 +133,20 @@ class WeeklyOutputsTests(unittest.TestCase):
             extract_subject('<html><head><meta name="has-arts-events" content="true"><title>Weekly Update (March 9–15, 2026)</title></head></html>'),
             "Sports and Performances This Week: March 9 - 15",
         )
+
+    def test_outputs_use_audience_specific_copy_overrides(self):
+        week = self._sample_week()
+        week.copy_overrides = {"intro_text": "Shared summary"}
+        week.copy_overrides_by_audience = {
+            "middle-school": {**default_copy_overrides(), "intro_text": "Middle School schedule summary."},
+            "upper-school": {**default_copy_overrides(), "intro_text": "Upper School away-heavy schedule summary."},
+        }
+
+        outputs = build_weekly_email_outputs(week, generate_games_module=_FakeGenerateGamesModule)
+
+        self.assertIn("Middle School schedule summary.", outputs["middle-school"]["html"])
+        self.assertIn("Upper School away-heavy schedule summary.", outputs["upper-school"]["html"])
+        self.assertNotIn("Upper School away-heavy schedule summary.", outputs["middle-school"]["html"])
         self.assertEqual(
             extract_subject("<html><head><title>Plain Title</title></head></html>"),
             "Plain Title",

@@ -31,6 +31,10 @@ def default_copy_overrides() -> dict[str, Any]:
     }
 
 
+def default_audience_copy_overrides() -> dict[str, dict[str, Any]]:
+    return {audience: default_copy_overrides() for audience in AUDIENCES}
+
+
 def normalize_copy_overrides(payload: Any) -> dict[str, str]:
     defaults = default_copy_overrides()
     if not isinstance(payload, dict):
@@ -38,6 +42,21 @@ def normalize_copy_overrides(payload: Any) -> dict[str, str]:
     normalized = dict(defaults)
     for key in defaults:
         normalized[key] = str(payload.get(key) or "").strip()
+    return normalized
+
+
+def normalize_audience_copy_overrides(payload: Any, *, fallback: Any | None = None) -> dict[str, dict[str, str]]:
+    shared_fallback = normalize_copy_overrides(fallback)
+    normalized: dict[str, dict[str, str]] = {}
+    source = payload if isinstance(payload, dict) else {}
+    for audience in AUDIENCES:
+        audience_payload = source.get(audience)
+        merged = dict(shared_fallback)
+        if isinstance(audience_payload, dict):
+            for key in default_copy_overrides():
+                if key in audience_payload:
+                    merged[key] = str(audience_payload.get(key) or "").strip()
+        normalized[audience] = merged
     return normalized
 
 
@@ -268,6 +287,7 @@ class WeeklyDraftRecord:
     subject_overrides: dict[str, str] = field(default_factory=dict)
     delivery: dict[str, Any] = field(default_factory=dict)
     copy_overrides: dict[str, str] = field(default_factory=default_copy_overrides)
+    copy_overrides_by_audience: dict[str, dict[str, str]] = field(default_factory=default_audience_copy_overrides)
     events: list[WeeklyEventRecord] = field(default_factory=list)
     metadata: dict[str, Any] = field(default_factory=dict)
     created_at: str = ""

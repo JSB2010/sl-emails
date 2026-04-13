@@ -7,6 +7,14 @@ from ..domain.dates import display_date, overlap_dates
 from ..domain.weekly import WeeklyDraftRecord
 
 
+def copy_overrides_for_audience(week: WeeklyDraftRecord, audience: str) -> dict[str, str]:
+    overrides = dict(week.copy_overrides or {})
+    audience_overrides = (week.copy_overrides_by_audience or {}).get(audience)
+    if isinstance(audience_overrides, dict):
+        overrides.update({key: str(value or "").strip() for key, value in audience_overrides.items()})
+    return overrides
+
+
 def renderable_events_for_audience(
     week: WeeklyDraftRecord,
     audience: str,
@@ -95,7 +103,7 @@ def build_weekly_email_outputs(
             heading=week.heading,
             intro_note=week.notes,
             email_subject=subject,
-            copy_overrides=week.copy_overrides,
+            copy_overrides=copy_overrides_for_audience(week, audience),
             icon_base_url=icon_base_url,
         )
         outputs[audience] = {

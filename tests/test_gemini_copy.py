@@ -4,7 +4,7 @@ import unittest
 from unittest.mock import MagicMock, patch
 
 from sl_emails.domain.weekly import WeeklyDraftRecord, WeeklyEventRecord
-from sl_emails.services.gemini_copy import _normalize_generated_copy, generate_week_copy
+from sl_emails.services.gemini_copy import _normalize_generated_copy, _week_context_text, generate_week_copy
 
 
 def sample_week() -> WeeklyDraftRecord:
@@ -60,6 +60,16 @@ class NormalizeGeneratedCopyTests(unittest.TestCase):
                     "hero_text": "Hero",
                     "empty_day_template": "No events today.",
                 },
+                "copy_overrides_by_audience": {
+                    "middle-school": {
+                        "hero_text": "Middle hero",
+                        "empty_day_template": "Nothing on {weekday}.",
+                    },
+                    "upper-school": {
+                        "hero_text": "Upper hero",
+                        "intro_text": "Upper-only summary.",
+                    },
+                },
             }
         )
 
@@ -67,6 +77,18 @@ class NormalizeGeneratedCopyTests(unittest.TestCase):
         self.assertEqual(payload["subject_overrides"]["upper-school"], "Upper subject")
         self.assertEqual(payload["copy_overrides"]["hero_text"], "Hero")
         self.assertEqual(payload["copy_overrides"]["empty_day_template"], "")
+        self.assertEqual(payload["copy_overrides_by_audience"]["middle-school"]["hero_text"], "Middle hero")
+        self.assertEqual(payload["copy_overrides_by_audience"]["middle-school"]["empty_day_template"], "Nothing on {weekday}.")
+        self.assertEqual(payload["copy_overrides_by_audience"]["upper-school"]["intro_text"], "Upper-only summary.")
+
+    def test_week_context_lists_events_under_scoped_audience_blocks(self) -> None:
+        context = _week_context_text(sample_week())
+
+        middle_block = context.split("Audience middle-school:", 1)[1].split("Audience upper-school:", 1)[0]
+        upper_block = context.split("Audience upper-school:", 1)[1]
+        self.assertIn("Spring Play", middle_block)
+        self.assertNotIn("Varsity Girls Soccer", middle_block)
+        self.assertIn("Varsity Girls Soccer", upper_block)
 
 
 class GenerateWeekCopyTests(unittest.TestCase):
@@ -82,9 +104,12 @@ class GenerateWeekCopyTests(unittest.TestCase):
                             {
                                 "text": (
                                     '{"heading":"Week Ahead","notes":"","subject_overrides":{"middle-school":"MS Subject","upper-school":"US Subject"},'
-                                    '"copy_overrides":{"hero_text":"Hero line","intro_title":"At a glance","intro_text":"Summary text",'
+                                    '"copy_overrides_by_audience":{"middle-school":{"hero_text":"MS hero","intro_title":"MS glance","intro_text":"MS summary",'
                                     '"spotlight_label":"Spotlight","schedule_label":"Schedule","also_on_schedule_label":"Also on the schedule",'
-                                    '"empty_day_template":"Nothing on {weekday}.","cta_eyebrow":"Support","cta_title":"Show up","cta_text":"Be there."}}'
+                                    '"empty_day_template":"Nothing on {weekday}.","cta_eyebrow":"Support","cta_title":"Show up","cta_text":"Be there."},'
+                                    '"upper-school":{"hero_text":"US hero","intro_title":"US glance","intro_text":"US summary",'
+                                    '"spotlight_label":"Spotlight","schedule_label":"Schedule","also_on_schedule_label":"Also on the schedule",'
+                                    '"empty_day_template":"Nothing on {weekday}.","cta_eyebrow":"Support","cta_title":"Show up","cta_text":"Be there."}}}'
                                 )
                             }
                         ]
@@ -97,6 +122,8 @@ class GenerateWeekCopyTests(unittest.TestCase):
         result = generate_week_copy(sample_week(), api_key="test-key", model="gemini-3-flash-preview")
 
         self.assertEqual(result["heading"], "Week Ahead")
+        self.assertEqual(result["copy_overrides_by_audience"]["middle-school"]["intro_text"], "MS summary")
+        self.assertEqual(result["copy_overrides_by_audience"]["upper-school"]["intro_text"], "US summary")
         _, kwargs = mock_post.call_args
         self.assertIn("system_instruction", kwargs["json"])
         self.assertEqual(kwargs["json"]["contents"][0]["role"], "user")
@@ -105,6 +132,7 @@ class GenerateWeekCopyTests(unittest.TestCase):
         self.assertIn("Kent Denver", kwargs["json"]["system_instruction"]["parts"][0]["text"])
         self.assertIn("Week context:", kwargs["json"]["contents"][0]["parts"][0]["text"])
         self.assertIn("Varsity Girls Soccer", kwargs["json"]["contents"][0]["parts"][0]["text"])
+        self.assertIn("copy_overrides_by_audience", kwargs["json"]["contents"][0]["parts"][0]["text"])
 
 
 if __name__ == "__main__":

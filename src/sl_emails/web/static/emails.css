@@ -1832,8 +1832,16 @@ textarea:focus-visible,
 @media (max-width: 620px) {
   .app-topbar { padding: 14px 16px; }
   .app-topbar-inner { gap: 10px; }
+  .topbar-branding { width: 100%; }
+  .topbar-brand { font-size: 12px; }
+  .topbar-product { font-size: 12px; }
   .topbar-account { width: 100%; justify-content: flex-start; }
+  .topbar-user { word-break: break-word; }
   .cmd-bar { padding: 10px 12px 0; }
+  .state-banner { padding: 10px 12px; }
+  .state-banner-inner { align-items: flex-start; }
+  #state-meta { margin-left: 0; white-space: normal; width: 100%; }
+  .status-pill { white-space: normal; }
   .app-shell { padding: 10px 12px; }
   .cmd-actions-grid-secondary,
   .cmd-actions-grid-primary { grid-template-columns: 1fr; }
@@ -1841,7 +1849,21 @@ textarea:focus-visible,
   .week-picker-footer { flex-direction: column; align-items: stretch; }
   .week-picker-actions { width: 100%; }
   .week-card { min-height: 92px; }
+  .panel h2 { font-size: 22px; }
+  .panel h3 { font-size: 18px; }
+  .events-panel-title { font-size: 22px; }
+  .event-summary-line strong { font-size: 20px; }
+  .event-tools { flex-direction: column; align-items: stretch; }
+  .event-search-label { min-width: 0; width: 100%; }
+  .event-tools input[type="search"],
+  .event-tools select { width: 100%; }
+  .event-tools select { min-width: 0; }
+  .inline-pair { grid-template-columns: 1fr; }
+  .preview-tabs { flex-direction: column; }
+  .tab-btn { justify-content: space-between; }
+  .preview-frame { min-height: 320px; }
   .status-step { grid-template-columns: 24px minmax(0, 1fr); gap: 10px; }
   .status-step-number { width: 24px; height: 24px; font-size: 10px; }
   .status-step:not(:last-child)::after { left: 11px; top: 30px; }
+  .flash-toast { left: 12px; right: 12px; max-width: none; }
 }

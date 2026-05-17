@@ -283,6 +283,19 @@ function dispatchSportsEmails(dispatch, config, options) {
     }
 
     const emails = normalizeApprovedOutputs(payload, weekId);
+
+    const audiencesToSend = [
+      { key: 'middle-school', recipients: config.EMAIL_RECIPIENTS.MIDDLE_SCHOOL, email: emails.middleSchool },
+      { key: 'upper-school', recipients: config.EMAIL_RECIPIENTS.UPPER_SCHOOL, email: emails.upperSchool },
+    ].filter(a => (a.email.rendered_occurrence_count || 0) > 0);
+
+    if (audiencesToSend.length === 0) {
+      console.log(`⏭️ No events for any audience in week ${weekId}; skipping email delivery.`);
+      reportAutomationActivity(weekId, 'send', 'skipped', `No events for any audience in week ${weekId}; no emails sent.`);
+      logEmailActivity('SKIP', `No events in either audience for week ${weekId}`);
+      return { ok: false, status: 'skipped', week_id: weekId, message: `No events for any audience in week ${weekId}; no emails sent.` };
+    }
+
     const sendClaim = claimWeekSend(weekId, config);
 
     if (sendClaim && sendClaim.sent) {
@@ -297,20 +310,11 @@ function dispatchSportsEmails(dispatch, config, options) {
     sendClaimed = true;
 
     let sentCount = 0;
-    const totalEmails = 2;
-
-    if (!sendEmail(config.EMAIL_RECIPIENTS.MIDDLE_SCHOOL, emails.middleSchool.subject, emails.middleSchool.html, config)) {
-      throw new Error(`Failed to send middle-school email for ${weekId}`);
-    }
-    sentCount++;
-
-    if (!sendEmail(config.EMAIL_RECIPIENTS.UPPER_SCHOOL, emails.upperSchool.subject, emails.upperSchool.html, config)) {
-      throw new Error(`Failed to send upper-school email for ${weekId}`);
-    }
-    sentCount++;
-
-    if (sentCount !== totalEmails) {
-      throw new Error(`Expected to send ${totalEmails} emails but only sent ${sentCount}`);
+    for (const { key, recipients, email } of audiencesToSend) {
+      if (!sendEmail(recipients, email.subject, email.html, config)) {
+        throw new Error(`Failed to send ${key} email for ${weekId}`);
+      }
+      sentCount++;
     }
 
     const sentState = markWeekSent(weekId, config);

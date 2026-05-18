@@ -719,6 +719,29 @@ test('dispatcher sends no emails and does not claim send lock when both audience
   assert.equal(harness.deliveries.length, 0);
   assert.equal(harness.backendState.sent.sending, false);
   assert.equal(harness.backendState.sent.sent, false);
-  assert.equal(harness.backendState.activityCalls.at(-1).status, 'skipped');
-  assert.match(harness.backendState.activityCalls.at(-1).message, /no events/i);
+  const skippedCall = harness.backendState.activityCalls.at(-1);
+  assert.equal(skippedCall.status, 'skipped');
+  assert.match(skippedCall.message, /no events/i);
+  assert.deepEqual(skippedCall.details.audience_counts, { 'middle-school': 0, 'upper-school': 0 });
+  assert.equal(typeof skippedCall.details.delivery, 'object');
+  assert.equal(skippedCall.details.approved, true);
+});
+
+test('dispatcher sends both emails when rendered_occurrence_count is absent from backend payload', () => {
+  const harness = buildHarness({
+    todayIso: '2026-03-08',
+    isoWeekday: 7,
+    finalizeSuccess: true,
+    delivery: { mode: 'default', send_on: '2026-03-08', send_time: '16:00' },
+    senderOutputs: {
+      'middle-school': { audience: 'middle-school', subject: 'MS Sports', html: '<p>MS</p>' },
+      'upper-school': { audience: 'upper-school', subject: 'US Sports', html: '<p>US</p>' },
+    },
+  });
+
+  harness.exports.sendSportsEmails();
+
+  // A missing rendered_occurrence_count must NOT silently suppress sending.
+  assert.equal(harness.deliveries.length, 2);
+  assert.equal(harness.backendState.sent.sent, true);
 });

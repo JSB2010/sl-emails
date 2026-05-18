@@ -65,6 +65,10 @@ function buildHarness(options = {}) {
     approved: options.senderApproved !== false,
     delivery: senderDelivery,
     finalizeSuccess: Boolean(options.finalizeSuccess),
+    senderOutputs: options.senderOutputs || {
+      'middle-school': { audience: 'middle-school', subject: 'MS Sports', html: '<p>MS</p>', source_event_count: 3, rendered_occurrence_count: 3 },
+      'upper-school': { audience: 'upper-school', subject: 'US Sports', html: '<p>US</p>', source_event_count: 3, rendered_occurrence_count: 3 },
+    },
   };
   const deliveries = [];
   const adminEmails = [];
@@ -207,10 +211,7 @@ function buildHarness(options = {}) {
             ok: true,
             approved: backendState.approved,
             week_id: backendState.weekId,
-            outputs: {
-              'middle-school': { audience: 'middle-school', subject: 'MS Sports', html: '<p>MS</p>' },
-              'upper-school': { audience: 'upper-school', subject: 'US Sports', html: '<p>US</p>' },
-            },
+            outputs: backendState.senderOutputs,
             sent: { ...backendState.sent },
             delivery: { ...backendState.delivery },
           });
@@ -661,4 +662,86 @@ test('apps script sources use app-owned ingest, approved sender flow, and script
   assert.match(senderSource, /sender-output/);
   assert.match(senderSource, /PropertiesService/);
   assert.match(troubleshootingSource, /validateConfiguration/);
+});
+
+test('dispatcher skips middle-school email when middle school has no events', () => {
+  const harness = buildHarness({
+    todayIso: '2026-03-08',
+    isoWeekday: 7,
+    finalizeSuccess: true,
+    delivery: { mode: 'default', send_on: '2026-03-08', send_time: '16:00' },
+    senderOutputs: {
+      'middle-school': { audience: 'middle-school', subject: 'MS Sports', html: '<p>MS</p>', source_event_count: 0, rendered_occurrence_count: 0 },
+      'upper-school': { audience: 'upper-school', subject: 'US Sports', html: '<p>US</p>', source_event_count: 2, rendered_occurrence_count: 2 },
+    },
+  });
+
+  harness.exports.sendSportsEmails();
+
+  assert.equal(harness.deliveries.length, 1);
+  assert.equal(harness.deliveries[0].to, 'upper@example.test');
+  assert.equal(harness.backendState.sent.sent, true);
+});
+
+test('dispatcher skips upper-school email when upper school has no events', () => {
+  const harness = buildHarness({
+    todayIso: '2026-03-08',
+    isoWeekday: 7,
+    finalizeSuccess: true,
+    delivery: { mode: 'default', send_on: '2026-03-08', send_time: '16:00' },
+    senderOutputs: {
+      'middle-school': { audience: 'middle-school', subject: 'MS Sports', html: '<p>MS</p>', source_event_count: 3, rendered_occurrence_count: 3 },
+      'upper-school': { audience: 'upper-school', subject: 'US Sports', html: '<p>US</p>', source_event_count: 0, rendered_occurrence_count: 0 },
+    },
+  });
+
+  harness.exports.sendSportsEmails();
+
+  assert.equal(harness.deliveries.length, 1);
+  assert.equal(harness.deliveries[0].to, 'middle@example.test');
+  assert.equal(harness.backendState.sent.sent, true);
+});
+
+test('dispatcher sends no emails and does not claim send lock when both audiences have no events', () => {
+  const harness = buildHarness({
+    todayIso: '2026-03-08',
+    isoWeekday: 7,
+    finalizeSuccess: true,
+    delivery: { mode: 'default', send_on: '2026-03-08', send_time: '16:00' },
+    senderOutputs: {
+      'middle-school': { audience: 'middle-school', subject: 'MS Sports', html: '<p>MS</p>', source_event_count: 0, rendered_occurrence_count: 0 },
+      'upper-school': { audience: 'upper-school', subject: 'US Sports', html: '<p>US</p>', source_event_count: 0, rendered_occurrence_count: 0 },
+    },
+  });
+
+  harness.exports.sendSportsEmails();
+
+  assert.equal(harness.deliveries.length, 0);
+  assert.equal(harness.backendState.sent.sending, false);
+  assert.equal(harness.backendState.sent.sent, false);
+  const skippedCall = harness.backendState.activityCalls.at(-1);
+  assert.equal(skippedCall.status, 'skipped');
+  assert.match(skippedCall.message, /no events/i);
+  assert.deepEqual(skippedCall.details.audience_counts, { 'middle-school': 0, 'upper-school': 0 });
+  assert.equal(typeof skippedCall.details.delivery, 'object');
+  assert.equal(skippedCall.details.approved, true);
+});
+
+test('dispatcher sends both emails when rendered_occurrence_count is absent from backend payload', () => {
+  const harness = buildHarness({
+    todayIso: '2026-03-08',
+    isoWeekday: 7,
+    finalizeSuccess: true,
+    delivery: { mode: 'default', send_on: '2026-03-08', send_time: '16:00' },
+    senderOutputs: {
+      'middle-school': { audience: 'middle-school', subject: 'MS Sports', html: '<p>MS</p>' },
+      'upper-school': { audience: 'upper-school', subject: 'US Sports', html: '<p>US</p>' },
+    },
+  });
+
+  harness.exports.sendSportsEmails();
+
+  // A missing rendered_occurrence_count must NOT silently suppress sending.
+  assert.equal(harness.deliveries.length, 2);
+  assert.equal(harness.backendState.sent.sent, true);
 });

@@ -283,6 +283,30 @@ function dispatchSportsEmails(dispatch, config, options) {
     }
 
     const emails = normalizeApprovedOutputs(payload, weekId);
+
+    const audiencesToSend = [
+      { key: 'middle-school', recipients: config.EMAIL_RECIPIENTS.MIDDLE_SCHOOL, email: emails.middleSchool },
+      { key: 'upper-school', recipients: config.EMAIL_RECIPIENTS.UPPER_SCHOOL, email: emails.upperSchool },
+    ].filter(a => {
+      if (!a.email) return true; // guard: absent email output falls through to be caught during send
+      const count = a.email.rendered_occurrence_count;
+      return typeof count !== 'number' || count > 0; // absent/non-numeric → include (don't suppress silently)
+    });
+
+    if (audiencesToSend.length === 0) {
+      console.log(`⏭️ No events for any audience in week ${weekId}; skipping email delivery.`);
+      reportAutomationActivity(weekId, 'send', 'skipped', `No events for any audience in week ${weekId}; no emails sent.`, {
+        delivery: payload.delivery || {},
+        approved: !!payload.approved,
+        audience_counts: {
+          'middle-school': typeof emails.middleSchool.rendered_occurrence_count === 'number' ? emails.middleSchool.rendered_occurrence_count : null,
+          'upper-school': typeof emails.upperSchool.rendered_occurrence_count === 'number' ? emails.upperSchool.rendered_occurrence_count : null,
+        }
+      });
+      logEmailActivity('SKIP', `No events in either audience for week ${weekId}`);
+      return { ok: false, status: 'skipped', week_id: weekId, message: `No events for any audience in week ${weekId}; no emails sent.` };
+    }
+
     const sendClaim = claimWeekSend(weekId, config);
 
     if (sendClaim && sendClaim.sent) {
@@ -297,20 +321,11 @@ function dispatchSportsEmails(dispatch, config, options) {
     sendClaimed = true;
 
     let sentCount = 0;
-    const totalEmails = 2;
-
-    if (!sendEmail(config.EMAIL_RECIPIENTS.MIDDLE_SCHOOL, emails.middleSchool.subject, emails.middleSchool.html, config)) {
-      throw new Error(`Failed to send middle-school email for ${weekId}`);
-    }
-    sentCount++;
-
-    if (!sendEmail(config.EMAIL_RECIPIENTS.UPPER_SCHOOL, emails.upperSchool.subject, emails.upperSchool.html, config)) {
-      throw new Error(`Failed to send upper-school email for ${weekId}`);
-    }
-    sentCount++;
-
-    if (sentCount !== totalEmails) {
-      throw new Error(`Expected to send ${totalEmails} emails but only sent ${sentCount}`);
+    for (const { key, recipients, email } of audiencesToSend) {
+      if (!sendEmail(recipients, email.subject, email.html, config)) {
+        throw new Error(`Failed to send ${key} email for ${weekId}`);
+      }
+      sentCount++;
     }
 
     const sentState = markWeekSent(weekId, config);

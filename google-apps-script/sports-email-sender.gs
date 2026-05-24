@@ -758,28 +758,45 @@ function sendAdminReviewNotification(weekId, ingestResult, config) {
   const totalEvents = Number(sourceSummary.total_events || 0);
   const athleticsEvents = Number(sourceSummary.athletics_events || 0);
   const artsEvents = Number(sourceSummary.arts_events || 0);
+  const totalRequests = Number(
+    sourceSummary.total_requests ||
+      sourceSummary.request_count ||
+      sourceSummary.requests ||
+      sourceSummary.pending_requests ||
+      sourceSummary.pending_request_count ||
+      0
+  );
   const created = ingestResult && ingestResult.action === 'created';
+  const noEventsOrRequests = created && totalEvents === 0 && totalRequests === 0;
   const subject = created
     ? `Review sports email draft for ${weekId}`
     : `Review existing sports email draft for ${weekId}`;
-  const statusLine = created
-    ? `A new weekly draft is ready for review with ${totalEvents} imported events.`
-    : 'A weekly draft already existed for this week, so the backend left it unchanged.';
-  const countsLine = created
-    ? `Imported events: ${athleticsEvents} athletics, ${artsEvents} arts, ${totalEvents} total.`
-    : 'Existing draft preserved. Open the review link to continue editing and approval.';
+  const statusLine = noEventsOrRequests
+    ? 'No events.'
+    : created
+      ? `A new weekly draft is ready for review with ${totalEvents} imported events.`
+      : 'A weekly draft already existed for this week, so the backend left it unchanged.';
+  const countsLine = noEventsOrRequests
+    ? ''
+    : created
+      ? `Imported events: ${athleticsEvents} athletics, ${artsEvents} arts, ${totalEvents} total.`
+      : 'Existing draft preserved. Open the review link to continue editing and approval.';
+  const body = noEventsOrRequests
+    ? `${statusLine}\n`
+    : `${statusLine}\n\n` +
+      `${countsLine}\n\n` +
+      `Review and approve here:\n${reviewUrl}\n`;
+  const htmlBody = noEventsOrRequests
+    ? `<p>${statusLine}</p>`
+    : `<p>${statusLine}</p>` +
+      `<p>${countsLine}</p>` +
+      `<p><a href="${reviewUrl}">Open weekly review</a></p>`;
 
   MailApp.sendEmail({
     to: config.ADMIN_NOTIFICATION_EMAILS.join(','),
     subject,
-    body:
-      `${statusLine}\n\n` +
-      `${countsLine}\n\n` +
-      `Review and approve here:\n${reviewUrl}\n`,
-    htmlBody:
-      `<p>${statusLine}</p>` +
-      `<p>${countsLine}</p>` +
-      `<p><a href="${reviewUrl}">Open weekly review</a></p>`,
+    body,
+    htmlBody,
     name: config.EMAIL_FROM_NAME,
     replyTo: config.REPLY_TO_EMAIL,
     charset: 'UTF-8'

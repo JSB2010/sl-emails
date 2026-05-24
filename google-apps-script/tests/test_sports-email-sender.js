@@ -58,6 +58,7 @@ function buildHarness(options = {}) {
     failIngest: Boolean(options.failIngest),
     failSignageRefresh: Boolean(options.failSignageRefresh),
     ingestAction: options.ingestAction || 'created',
+    ingestSourceSummary: options.ingestSourceSummary || null,
     weekId,
     todayIso,
     signageDayId,
@@ -192,16 +193,18 @@ function buildHarness(options = {}) {
             return makeResponse(503, { ok: false, error: 'scheduled ingest failed' });
           }
 
+          const sourceSummary = backendState.ingestSourceSummary || {
+            athletics_events: backendState.ingestAction === 'created' ? 2 : 0,
+            arts_events: backendState.ingestAction === 'created' ? 1 : 0,
+            total_events: backendState.ingestAction === 'created' ? 3 : 0,
+          };
+
           return makeResponse(200, {
             ok: true,
             week_id: backendState.weekId,
             action: backendState.ingestAction,
             reason: backendState.ingestAction === 'created' ? 'created_from_sources' : 'existing_draft',
-            source_summary: {
-              athletics_events: backendState.ingestAction === 'created' ? 2 : 0,
-              arts_events: backendState.ingestAction === 'created' ? 1 : 0,
-              total_events: backendState.ingestAction === 'created' ? 3 : 0,
-            },
+            source_summary: sourceSummary,
             week: { week_id: backendState.weekId, delivery: ingestWeekDelivery },
           });
         }
@@ -593,6 +596,20 @@ test('sunday draft cycle still emails review link when draft already exists', ()
   assert.match(harness.adminEmails[0].subject, /existing sports email draft/i);
   assert.match(harness.adminEmails[0].body, /left it unchanged/i);
   assert.match(harness.adminEmails[0].htmlBody, /emails\?week=2026-03-09/i);
+});
+
+test('sunday draft cycle admin email says no events when there are no events and no requests', () => {
+  const harness = buildHarness({
+    ingestAction: 'created',
+    ingestSourceSummary: { athletics_events: 0, arts_events: 0, total_events: 0, request_count: 0 },
+  });
+
+  harness.exports.runSundayDraftCycle();
+
+  assert.equal(harness.backendState.ingestCalls, 1);
+  assert.equal(harness.adminEmails.length, 1);
+  assert.match(harness.adminEmails[0].body, /^No events\.\n$/);
+  assert.match(harness.adminEmails[0].htmlBody, /^<p>No events\.<\/p>$/);
 });
 
 test('sunday draft cycle suppresses review email when skipped week already exists', () => {
